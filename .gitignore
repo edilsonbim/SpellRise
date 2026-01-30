@@ -1,0 +1,41 @@
+##############################
+# Unreal Engine (generated)
+##############################
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+# Personal backup strategy: keep repo light
+Content/
+
+
+# IDE / Editor
+.vs/
+.idea/
+.vscode/
+
+##############################
+# Visual Studio / Rider junk
+##############################
+*.VC.db
+*.opendb
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.ipch
+*.log
+*.tmp
+
+##############################
+# OS junk
+##############################
+.DS_Store
+Thumbs.db
+desktop.ini
+
+##############################
+# Plugin generated folders (keep plugin source/content!)
+##############################
+Plugins/*/Binaries/
+Plugins/*/Intermediate/

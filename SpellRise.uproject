@@ -1,0 +1,68 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{BCED6E85-4FFC-3D9B-45D3-4EA8433DD67F}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "SpellRise",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "GameplayStateTree",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "Water",
+			"Enabled": true
+		},
+		{
+			"Name": "ExampleCustomDataInterface",
+			"Enabled": true
+		},
+		{
+			"Name": "ClonerEffector",
+			"Enabled": true
+		},
+		{
+			"Name": "NiagaraMRQ",
+			"Enabled": true
+		},
+		{
+			"Name": "NiagaraNanite",
+			"Enabled": true
+		},
+		{
+			"Name": "PCGNiagaraInterop",
+			"Enabled": true
+		},
+		{
+			"Name": "NiagaraFluids",
+			"Enabled": true
+		},
+		{
+			"Name": "Cascade",
+			"Enabled": false
+		}
+	],
+	"TargetPlatforms": [
+		"Windows"
+	]
+}
