@@ -30,7 +30,9 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 {
 	Super::OnRep_ActivateAbilities();
 	
-	ASpellRiseCharacterBase * Character = Cast<ASpellRiseCharacterBase>(GetOwner());
+	AActor* Avatar = GetAvatarActor();
+	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Avatar);
+
 	if (!Character) return;
 	
 	bool bAbilitiesChanged = false;

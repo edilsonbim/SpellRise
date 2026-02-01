@@ -38,28 +38,12 @@
 			"Enabled": true
 		},
 		{
-			"Name": "ClonerEffector",
-			"Enabled": true
-		},
-		{
-			"Name": "NiagaraMRQ",
-			"Enabled": true
-		},
-		{
-			"Name": "NiagaraNanite",
-			"Enabled": true
-		},
-		{
 			"Name": "PCGNiagaraInterop",
 			"Enabled": true
 		},
 		{
-			"Name": "NiagaraFluids",
+			"Name": "CascadeToNiagaraConverter",
 			"Enabled": true
-		},
-		{
-			"Name": "Cascade",
-			"Enabled": false
 		}
 	],
 	"TargetPlatforms": [
