@@ -1,8 +1,25 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿#include "BasicAttributeSet.h"
 
-#include "BasicAttributeSet.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
+
+namespace SpellRiseBasic
+{
+	// CarryWeight (capacidade). Você pode ajustar depois:
+	// - Base 30 (já estava)
+	// - Gear pesado deve aumentar isso
+	constexpr float CARRY_MIN = 0.f;
+	constexpr float CARRY_MAX = 300.f; // cap seguro (ajuste quando tiver itens reais)
+
+	// Resistências em % (0..75)
+	constexpr float RES_MIN = 0.f;
+	constexpr float RES_MAX = 75.f;
+
+	// Armor bruto (diminishing no ExecCalc).
+	// Cap aqui é só safety pra não explodir numericamente.
+	constexpr float ARMOR_MIN = 0.f;
+	constexpr float ARMOR_MAX = 1000.f;
+}
 
 UBasicAttributeSet::UBasicAttributeSet()
 {
@@ -10,8 +27,8 @@ UBasicAttributeSet::UBasicAttributeSet()
 	CarryWeight = 30.f;
 
 	// Defense
-	PhysicalResistance = 0.f; // percent 0..75
-	MagicResistance = 0.f;    // percent 0..75
+	PhysicalResistance = 0.f;
+	MagicResistance = 0.f;
 	Armor = 0.f;
 }
 
@@ -32,19 +49,19 @@ void UBasicAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute,
 
 	if (Attribute == GetCarryWeightAttribute())
 	{
-		NewValue = FMath::Max(NewValue, 0.f);
+		NewValue = FMath::Clamp(NewValue, SpellRiseBasic::CARRY_MIN, SpellRiseBasic::CARRY_MAX);
 	}
 	else if (Attribute == GetPhysicalResistanceAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue, 0.f, 75.f);
+		NewValue = FMath::Clamp(NewValue, SpellRiseBasic::RES_MIN, SpellRiseBasic::RES_MAX);
 	}
 	else if (Attribute == GetMagicResistanceAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue, 0.f, 75.f);
+		NewValue = FMath::Clamp(NewValue, SpellRiseBasic::RES_MIN, SpellRiseBasic::RES_MAX);
 	}
 	else if (Attribute == GetArmorAttribute())
 	{
-		NewValue = FMath::Max(0.f, NewValue);
+		NewValue = FMath::Clamp(NewValue, SpellRiseBasic::ARMOR_MIN, SpellRiseBasic::ARMOR_MAX);
 	}
 }
 
@@ -54,22 +71,21 @@ void UBasicAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallb
 
 	const FGameplayAttribute& Attr = Data.EvaluatedData.Attribute;
 
-	// Post clamps
 	if (Attr == GetCarryWeightAttribute())
 	{
-		SetCarryWeight(FMath::Max(0.f, GetCarryWeight()));
+		SetCarryWeight(FMath::Clamp(GetCarryWeight(), SpellRiseBasic::CARRY_MIN, SpellRiseBasic::CARRY_MAX));
 	}
 	else if (Attr == GetPhysicalResistanceAttribute())
 	{
-		SetPhysicalResistance(FMath::Clamp(GetPhysicalResistance(), 0.f, 75.f));
+		SetPhysicalResistance(FMath::Clamp(GetPhysicalResistance(), SpellRiseBasic::RES_MIN, SpellRiseBasic::RES_MAX));
 	}
 	else if (Attr == GetMagicResistanceAttribute())
 	{
-		SetMagicResistance(FMath::Clamp(GetMagicResistance(), 0.f, 75.f));
+		SetMagicResistance(FMath::Clamp(GetMagicResistance(), SpellRiseBasic::RES_MIN, SpellRiseBasic::RES_MAX));
 	}
 	else if (Attr == GetArmorAttribute())
 	{
-		SetArmor(FMath::Max(0.f, GetArmor()));
+		SetArmor(FMath::Clamp(GetArmor(), SpellRiseBasic::ARMOR_MIN, SpellRiseBasic::ARMOR_MAX));
 	}
 }
 

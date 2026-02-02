@@ -1,11 +1,10 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "BasicAttributeSet.generated.h"
+
 
 #define SPELLRISE_ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
 	GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
@@ -25,6 +24,11 @@ public:
 	   INVENTORY / WEIGHT
 	   ======================= */
 
+	/**
+	 * CarryWeight = capacidade de carga (cap), NÃO o peso atual.
+	 * - Usado na fórmula de Cast Stability (mais "peso/capacidade" = mais estabilidade).
+	 * - O "peso atual" (CurrentWeight) se você quiser no futuro é outro atributo.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Inventory", ReplicatedUsing=OnRep_CarryWeight)
 	FGameplayAttributeData CarryWeight;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UBasicAttributeSet, CarryWeight);
@@ -32,7 +36,8 @@ public:
 	/* =======================
 	   DEFENSE
 	   ======================= */
-	// Resistances stored as PERCENT values (0..75). Convert to fraction (÷100) inside ExecCalcs.
+
+	// Resistances armazenadas como PERCENT (0..75). Converter para fração (÷100) no ExecCalc.
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Defense", ReplicatedUsing=OnRep_PhysicalResistance)
 	FGameplayAttributeData PhysicalResistance;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UBasicAttributeSet, PhysicalResistance);
@@ -41,6 +46,7 @@ public:
 	FGameplayAttributeData MagicResistance;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UBasicAttributeSet, MagicResistance);
 
+	// Armor em valor bruto (diminishing returns no ExecCalc)
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Defense", ReplicatedUsing=OnRep_Armor)
 	FGameplayAttributeData Armor;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UBasicAttributeSet, Armor);

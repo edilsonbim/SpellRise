@@ -1,36 +1,50 @@
 ﻿#include "CombatAttributeSet.h"
+
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemComponent.h"
 
 namespace SpellRiseAttr
 {
+	// Primaries
 	constexpr float PRIMARY_MIN = 10.f;
 	constexpr float PRIMARY_MAX = 60.f;
 
-	// CastSpeed is percent (can be negative for slow).
+	// CastSpeed % (pode ser negativo)
 	constexpr float CASTSPEED_MIN = -80.f;
 	constexpr float CASTSPEED_MAX = 200.f;
 
-	// Bonus stats: keep sane
+	// Bonus stats (gear/buffs/catalyst)
 	constexpr float CASTSTAB_MIN = 0.f;
 	constexpr float CASTSTAB_MAX = 500.f;
 
 	constexpr float BREAK_MIN = 0.f;
 	constexpr float BREAK_MAX = 500.f;
+
+	// Spell power (bonus)
+	constexpr float SPELLPOWER_MIN = 0.f;
+	constexpr float SPELLPOWER_MAX = 500.f;
+
+	// Move speed bonus (uu/s)
+	constexpr float MOVESPEED_MIN = 0.f;
+	constexpr float MOVESPEED_MAX = 600.f; // safety cap
 }
 
 UCombatAttributeSet::UCombatAttributeSet()
 {
+	// Primaries começam no mínimo (permite “crescer” via itens/level)
 	InitVigor(SpellRiseAttr::PRIMARY_MIN);
 	InitFocus(SpellRiseAttr::PRIMARY_MIN);
 	InitAgility(SpellRiseAttr::PRIMARY_MIN);
 	InitWillpower(SpellRiseAttr::PRIMARY_MIN);
 	InitAttunement(SpellRiseAttr::PRIMARY_MIN);
 
+	// Secundários bônus começam neutros
 	InitCastSpeed(0.f);
 	InitCastStability(0.f);
 	InitBreakPower(0.f);
+	InitSpellPower(0.f);
+	InitMoveSpeed(0.f);
 }
 
 void UCombatAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -46,13 +60,18 @@ void UCombatAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, CastSpeed, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, CastStability, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, BreakPower, COND_None, REPNOTIFY_Always);
+
+	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, SpellPower, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, MoveSpeed, COND_None, REPNOTIFY_Always);
 }
 
 void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
-	// Primary clamps
+	// -------------------------
+	// Primaries clamps
+	// -------------------------
 	if (Attribute == GetVigorAttribute()
 		|| Attribute == GetFocusAttribute()
 		|| Attribute == GetAgilityAttribute()
@@ -60,8 +79,13 @@ void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute
 		|| Attribute == GetAttunementAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseAttr::PRIMARY_MIN, SpellRiseAttr::PRIMARY_MAX);
+		return;
 	}
-	else if (Attribute == GetCastSpeedAttribute())
+
+	// -------------------------
+	// Secondary clamps
+	// -------------------------
+	if (Attribute == GetCastSpeedAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseAttr::CASTSPEED_MIN, SpellRiseAttr::CASTSPEED_MAX);
 	}
@@ -73,6 +97,14 @@ void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseAttr::BREAK_MIN, SpellRiseAttr::BREAK_MAX);
 	}
+	else if (Attribute == GetSpellPowerAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, SpellRiseAttr::SPELLPOWER_MIN, SpellRiseAttr::SPELLPOWER_MAX);
+	}
+	else if (Attribute == GetMoveSpeedAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, SpellRiseAttr::MOVESPEED_MIN, SpellRiseAttr::MOVESPEED_MAX);
+	}
 }
 
 void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
@@ -81,6 +113,9 @@ void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 
 	const FGameplayAttribute& A = Data.EvaluatedData.Attribute;
 
+	// -------------------------
+	// Primaries post-clamps
+	// -------------------------
 	if (A == GetVigorAttribute())
 	{
 		SetVigor(FMath::Clamp(GetVigor(), SpellRiseAttr::PRIMARY_MIN, SpellRiseAttr::PRIMARY_MAX));
@@ -101,6 +136,9 @@ void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 	{
 		SetAttunement(FMath::Clamp(GetAttunement(), SpellRiseAttr::PRIMARY_MIN, SpellRiseAttr::PRIMARY_MAX));
 	}
+	// -------------------------
+	// Secondaries post-clamps
+	// -------------------------
 	else if (A == GetCastSpeedAttribute())
 	{
 		SetCastSpeed(FMath::Clamp(GetCastSpeed(), SpellRiseAttr::CASTSPEED_MIN, SpellRiseAttr::CASTSPEED_MAX));
@@ -112,6 +150,14 @@ void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 	else if (A == GetBreakPowerAttribute())
 	{
 		SetBreakPower(FMath::Clamp(GetBreakPower(), SpellRiseAttr::BREAK_MIN, SpellRiseAttr::BREAK_MAX));
+	}
+	else if (A == GetSpellPowerAttribute())
+	{
+		SetSpellPower(FMath::Clamp(GetSpellPower(), SpellRiseAttr::SPELLPOWER_MIN, SpellRiseAttr::SPELLPOWER_MAX));
+	}
+	else if (A == GetMoveSpeedAttribute())
+	{
+		SetMoveSpeed(FMath::Clamp(GetMoveSpeed(), SpellRiseAttr::MOVESPEED_MIN, SpellRiseAttr::MOVESPEED_MAX));
 	}
 }
 
@@ -150,4 +196,12 @@ void UCombatAttributeSet::OnRep_CastStability(const FGameplayAttributeData& OldV
 void UCombatAttributeSet::OnRep_BreakPower(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, BreakPower, OldValue);
+}
+void UCombatAttributeSet::OnRep_SpellPower(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, SpellPower, OldValue);
+}
+void UCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, MoveSpeed, OldValue);
 }

@@ -15,17 +15,24 @@
 
 /**
  * Primary / combat attributes for SpellRise.
- * - Primary stats are clamped 10..60.
- * - CastSpeed is percent.
- * - CastStability and BreakPower are BONUS stats (additive) to allow gear/buffs to scale the system.
  *
- * Stability formula (computed at runtime, uses Carga from BasicAttributeSet):
- *   Stability = (Focus*1.0) + (Willpower*0.6) + (Carga*0.4) + CastStability(BONUS)
+ * Primaries (clamped 10..60):
+ *   - Vigor, Focus, Agility, Willpower, Attunement
  *
- * Break formula (computed at runtime):
- *   Break = (Agility*0.4) + (Vigor*0.3) + WeaponImpact + BreakPower(BONUS)
+ * Secondary bonuses (for gear/buffs/catalyst):
+ *   - CastSpeed      (% faster/slower cast)
+ *   - CastStability  (bonus stability; reduces interrupt pressure)
+ *   - BreakPower     (bonus break; increases interrupt pressure)
+ *   - SpellPower     (bonus spell damage scaling)
+ *   - MoveSpeed      (bonus walk speed in uu/s; applied by character code)
+ *
+ * Notes for archetypes:
+ *   - Heavy melee: Vigor + Willpower + BreakPower
+ *   - Archer: Agility + (some Vigor) + BreakPower + MoveSpeed
+ *   - Mage: Attunement + Focus + CastSpeed + SpellPower
+ *   - Support: Focus + Willpower + CastStability
  */
-UCLASS()
+UCLASS(BlueprintType)
 class SPELLRISE_API UCombatAttributeSet : public UAttributeSet
 {
 	GENERATED_BODY()
@@ -33,7 +40,9 @@ class SPELLRISE_API UCombatAttributeSet : public UAttributeSet
 public:
 	UCombatAttributeSet();
 
-	/** Primary Stats (persistent, clamped to 10..60) */
+	// -------------------------
+	// Primaries (replicated)
+	// -------------------------
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Primary", ReplicatedUsing=OnRep_Vigor)
 	FGameplayAttributeData Vigor;
 	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, Vigor);
@@ -54,20 +63,45 @@ public:
 	FGameplayAttributeData Attunement;
 	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, Attunement);
 
-	/** Cast speed in percent. Example: 0 = normal, 25 = 25% faster, -20 = 20% slower. */
+	// -------------------------
+	// Casting bonuses (replicated)
+	// -------------------------
+
+	/** Percent. Example: 0 = normal, 25 = 25% faster, -20 = 20% slower. */
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Casting", ReplicatedUsing=OnRep_CastSpeed)
 	FGameplayAttributeData CastSpeed;
 	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, CastSpeed);
 
-	/** BONUS stability (added to computed stability). */
+	/** BONUS stability (additive). Used by abilities to reduce interrupt/cast break. */
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Casting", ReplicatedUsing=OnRep_CastStability)
 	FGameplayAttributeData CastStability;
 	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, CastStability);
 
-	/** BONUS break power (added to computed break). */
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Casting", ReplicatedUsing=OnRep_BreakPower)
+	// -------------------------
+	// Pressure / break bonuses (replicated)
+	// -------------------------
+
+	/** BONUS break power (additive). Used by damage system to increase interrupt pressure. */
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Combat", ReplicatedUsing=OnRep_BreakPower)
 	FGameplayAttributeData BreakPower;
 	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, BreakPower);
+
+	// -------------------------
+	// Spell & Utility bonuses (replicated)
+	// -------------------------
+
+	/** BONUS spell power (additive). Used by spell damage calc. */
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Combat", ReplicatedUsing=OnRep_SpellPower)
+	FGameplayAttributeData SpellPower;
+	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, SpellPower);
+
+	/**
+	 * BONUS move speed in uu/s (additive to MaxWalkSpeed).
+	 * Example: +50 means +50 uu/s.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Utility", ReplicatedUsing=OnRep_MoveSpeed)
+	FGameplayAttributeData MoveSpeed;
+	ATTRIBUTE_ACCESSORS_BASIC(UCombatAttributeSet, MoveSpeed);
 
 protected:
 	// Replication callbacks
@@ -80,6 +114,9 @@ protected:
 	UFUNCTION() void OnRep_CastSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CastStability(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_BreakPower(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION() void OnRep_SpellPower(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MoveSpeed(const FGameplayAttributeData& OldValue);
 
 	// GAS
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
