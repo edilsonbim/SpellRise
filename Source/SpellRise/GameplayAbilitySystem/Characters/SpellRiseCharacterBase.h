@@ -1,17 +1,16 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
-#include "GameplayEffectTypes.h" // FGameplayEventData
+
 #include "SpellRiseCharacterBase.generated.h"
 
+// Forward Declarations
 class USpellRiseAbilitySystemComponent;
-class UAbilitySystemComponent;
 class UGameplayAbility;
 class UGameplayEffect;
 
@@ -20,8 +19,16 @@ class UCombatAttributeSet;
 class UResourceAttributeSet;
 class UCatalystAttributeSet;
 
+class USpellRiseWeaponComponent;
+class UDA_WeaponDefinition;
+
+// Enum central do projeto (definido em SpellRiseGameplayAbility.h)
+enum class EAbilityInputID : uint8;
+
 UCLASS()
-class SPELLRISE_API ASpellRiseCharacterBase : public ACharacter, public IAbilitySystemInterface
+class SPELLRISE_API ASpellRiseCharacterBase
+	: public ACharacter
+	, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -29,123 +36,13 @@ public:
 	ASpellRiseCharacterBase();
 
 	// =========================================================
-	// GAS: Core + AttributeSets
+	// Engine
 	// =========================================================
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AbilitySystem", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AbilitySystem", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AbilitySystem", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UCombatAttributeSet> CombatAttributeSet = nullptr;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AbilitySystem", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UResourceAttributeSet> ResourceAttributeSet = nullptr;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AbilitySystem", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<UCatalystAttributeSet> CatalystAttributeSet = nullptr;
-
-protected:
-	// =========================================================
-	// GAS: Startup / Config
-	// =========================================================
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AbilitySystem")
-	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Mixed;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AbilitySystem")
-	TArray<TSubclassOf<UGameplayAbility>> StartingAbilities;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AbilitySystem|Startup")
-	TSubclassOf<UGameplayEffect> GE_RecalculateResources;
-
-	// ✅ Regen sempre ativo (recomendado usar 1 GE único infinito/periodic)
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AbilitySystem|Startup")
-	TSubclassOf<UGameplayEffect> GE_RegenBase;
-
-	// ✅ Alternativa: 3 GEs separados (Health/Mana/Stamina). Use se não quiser GE único.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AbilitySystem|Startup")
-	TArray<TSubclassOf<UGameplayEffect>> GE_RegenEffects;
-
-	// =========================================================
-	// Catalyst Proc
-	// =========================================================
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
-	float CatalystProcDuration = 5.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
-	float CatalystChargeThreshold = 100.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
-	float CatalystChargeConsume = 100.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
-	TSubclassOf<UGameplayEffect> GE_Catalyst_Active_Lv1;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
-	TSubclassOf<UGameplayEffect> GE_Catalyst_Active_Lv2;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
-	TSubclassOf<UGameplayEffect> GE_Catalyst_Active_Lv3;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Catalyst")
-	bool bCatalystProcInProgress = false;
-
-	// =========================================================
-	// Death
-	// =========================================================
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Death")
-	FGameplayTag DeadStateTag;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Death")
-	TSubclassOf<UGameplayEffect> GE_Death;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Death")
-	bool bIsDead = false;
-
-	bool bASCDelegatesBound = false;
-
-protected:
-	// =========================================================
-	// Internal helpers
-	// =========================================================
-
-	void ApplyStartupEffects();
-	void BindASCDelegates();
-	void RecalculateDerivedStats();
-
-	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
-	void OnHealthChanged(const FOnAttributeChangeData& Data);
-
-	// ✅ Regen: aplica GE(s) infinito(s) no servidor (sempre ativo)
-	void ApplyRegenStartupEffects();
-
-	// ✅ Helper: aplica um GE com spec (serve pra regen/catalyst/etc.)
-	void ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass);
-
-	/** Catalyst: called when CatalystCharge changes */
-	void OnCatalystChargeChanged(const FOnAttributeChangeData& Data);
-
-	/** Server-only: consumes charge and applies proc GE */
-	void TryProcCatalyst_Server();
-
-	/** Pick correct GE based on CatalystLevel */
-	TSubclassOf<UGameplayEffect> GetCatalystProcGE() const;
-
-protected:
-	// =========================================================
-	// Engine overrides
-	// =========================================================
+	virtual void PostInitializeComponents() override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void BeginPlay() override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
-
-public:
-	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	// =========================================================
@@ -154,62 +51,176 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	// =========================================================
+	// Weapon
+	// =========================================================
+	UFUNCTION(BlueprintPure, Category="SpellRise|Weapon")
+	FORCEINLINE USpellRiseWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
+
+	// =========================================================
+	// GAS Input bridge (Character -> ASC)
+	// =========================================================
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
+	void SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
+	void SR_ClearAbilityInput();
+
+	// =========================================================
 	// GAS API
 	// =========================================================
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(
+		const TArray<TSubclassOf<UGameplayAbility>>& AbilitiesToGrant,
+		int32 Level = 1);
 
-	UFUNCTION(BlueprintCallable, Category="AbilitySystem")
-	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<TSubclassOf<UGameplayAbility>>& AbilitiesToGrant, int32 Level = 1);
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
+	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
 
-	UFUNCTION(BlueprintCallable, Category="AbilitySystem")
-	void RemoveAbilities(TArray<FGameplayAbilitySpecHandle> AbilityHandlesToRemove);
-
-	UFUNCTION(BlueprintCallable, Category="AbilitySystem")
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	void SendAbilitiesChangedEvent();
 
-	UFUNCTION(Server, Reliable, BlueprintCallable, Category="AbilitySystem")
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|GAS")
 	void ServerSendGameplayEventToSelf(const FGameplayEventData& EventData);
 
-	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="AbilitySystem")
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|GAS")
 	void MultiSendGameplayEventToActor(AActor* TargetActor, const FGameplayEventData& EventData);
 
 	// =========================================================
 	// Death
 	// =========================================================
+	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
+	FORCEINLINE bool IsDead() const { return bIsDead; }
 
 	UFUNCTION()
-	virtual void OnDeadTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
+	void OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount);
 
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="Death")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="SpellRise|Death")
 	void HandleDeath();
 
 	UFUNCTION(NetMulticast, Reliable)
 	void MultiHandleDeath();
 
 	// =========================================================
-	// Catalyst UI/VFX hook (optional)
+	// Catalyst (somente UI/VFX hooks)
 	// =========================================================
+	UFUNCTION(BlueprintPure, Category="SpellRise|Catalyst")
+	FORCEINLINE UCatalystAttributeSet* GetCatalystAttributeSet() const { return CatalystAttributeSet; }
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void MultiOnCatalystProc(int32 ProcLevel);
+	void MultiOnCatalystProc(int32 CatalystTier);
 
-	UFUNCTION(BlueprintImplementableEvent, Category="Catalyst")
-	void BP_OnCatalystProc(int32 ProcLevel);
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Catalyst")
+	void BP_OnCatalystProc(int32 CatalystTier);
 
 	// =========================================================
 	// Damage Pop
 	// =========================================================
-	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="UI")
+	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="SpellRise|UI")
 	void MultiShowDamagePop(float Damage, AActor* InstigatorActor, FGameplayTag DamageTypeTag, bool bIsCrit);
 
-	UFUNCTION(BlueprintImplementableEvent, Category="UI")
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|UI")
 	void BP_ShowDamagePop(float Damage, AActor* InstigatorActor, FGameplayTag DamageTypeTag, bool bIsCrit);
 
+protected:
 	// =========================================================
-	// Convenience getters
+	// Components
 	// =========================================================
-	UFUNCTION(BlueprintPure, Category="AbilitySystem")
-	bool IsDead() const { return bIsDead; }
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseWeaponComponent> WeaponComponent = nullptr;
 
-	UFUNCTION(BlueprintPure, Category="Catalyst")
-	UCatalystAttributeSet* GetCatalystAttributeSet() const { return CatalystAttributeSet; }
+	// =========================================================
+	// Weapon Startup
+	// =========================================================
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Weapon|Startup")
+	TObjectPtr<UDA_WeaponDefinition> DefaultWeapon = nullptr;
+
+	// =========================================================
+	// GAS: Core + AttributeSets
+	// =========================================================
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UCombatAttributeSet> CombatAttributeSet = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UResourceAttributeSet> ResourceAttributeSet = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UCatalystAttributeSet> CatalystAttributeSet = nullptr;
+
+	// =========================================================
+	// GAS: Startup / Config
+	// =========================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|GAS")
+	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Mixed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|GAS|Startup")
+	TArray<TSubclassOf<UGameplayAbility>> StartingAbilities;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Startup")
+	TSubclassOf<UGameplayEffect> GE_RecalculateResources;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
+	TSubclassOf<UGameplayEffect> GE_RegenBase;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
+	TArray<TSubclassOf<UGameplayEffect>> GE_RegenEffects;
+
+	// =========================================================
+	// Input (Legacy Input)
+	// =========================================================
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Input|Legacy")
+	FName Action_PrimaryAttack = TEXT("PrimaryAttack");
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Input|Legacy")
+	FName Action_SecondaryAttack = TEXT("SecondaryAttack");
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Input|Legacy")
+	FName Action_Cancel = TEXT("Cancel");
+
+	void AbilityInputPressed(EAbilityInputID InputID);
+	void AbilityInputReleased(EAbilityInputID InputID);
+
+	void LI_PrimaryAttackPressed();
+	void LI_PrimaryAttackReleased();
+
+	void LI_SecondaryAttackPressed();
+	void LI_SecondaryAttackReleased();
+
+	void LI_CancelPressed();
+	void LI_CancelReleased();
+
+	// =========================================================
+	// Death
+	// =========================================================
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
+	FGameplayTag DeadStateTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
+	TSubclassOf<UGameplayEffect> GE_Death;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
+	bool bIsDead = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS")
+	bool bASCDelegatesBound = false;
+
+	// =========================================================
+	// Internal helpers
+	// =========================================================
+	void InitASCActorInfo();
+
+	void ApplyStartupEffects();
+	void BindASCDelegates();
+	void RecalculateDerivedStats();
+
+	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
+	void OnHealthChanged(const FOnAttributeChangeData& Data);
+
+	void ApplyRegenStartupEffects();
+	void ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass);
 };

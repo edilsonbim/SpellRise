@@ -19,24 +19,186 @@ static FGameplayTag TAG_State_Catalyst_Active()
 USpellRiseAbilitySystemComponent::USpellRiseAbilitySystemComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+
+	InputPressedSpecHandles.Reset();
+	InputReleasedSpecHandles.Reset();
+	InputHeldSpecHandles.Reset();
 }
 
 void USpellRiseAbilitySystemComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ✅ O proc automático deve ser decidido NO SERVER
+	// Não confie 100% em BeginPlay para bindar (ActorInfo pode não estar pronto ainda).
 	if (IsOwnerActorAuthoritative())
 	{
-		BindCatalystChargeListener_Server();
+		EnsureCatalystChargeListenerBound_Server();
 	}
+}
+
+// =========================================================
+// Input bridge
+// =========================================================
+void USpellRiseAbilitySystemComponent::SR_AbilityInputPressed(int32 InputID)
+{
+	AbilityLocalInputPressed(InputID);
+}
+
+void USpellRiseAbilitySystemComponent::SR_AbilityInputReleased(int32 InputID)
+{
+	AbilityLocalInputReleased(InputID);
+}
+
+// =========================================================
+// Input capture hooks
+// =========================================================
+void USpellRiseAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
+{
+	Super::AbilitySpecInputPressed(Spec);
+
+	InputPressedSpecHandles.AddUnique(Spec.Handle);
+	InputHeldSpecHandles.AddUnique(Spec.Handle);
+}
+
+void USpellRiseAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
+{
+	Super::AbilitySpecInputReleased(Spec);
+
+	InputReleasedSpecHandles.AddUnique(Spec.Handle);
+	InputHeldSpecHandles.Remove(Spec.Handle);
+}
+
+// =========================================================
+// Input processing
+// =========================================================
+void USpellRiseAbilitySystemComponent::SR_ClearAbilityInput()
+{
+	InputPressedSpecHandles.Reset();
+	InputReleasedSpecHandles.Reset();
+	InputHeldSpecHandles.Reset();
+}
+
+void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)
+{
+	AActor* Avatar = GetAvatarActor();
+	APawn* AvatarPawn = Cast<APawn>(Avatar);
+
+	// Só o pawn local processa input (evita lixo em proxies / server dedicado)
+	if (!AvatarPawn || !AvatarPawn->IsLocallyControlled())
+	{
+		SR_ClearAbilityInput();
+		return;
+	}
+
+	if (bGamePaused)
+	{
+		SR_ClearAbilityInput();
+		return;
+	}
+
+	TArray<FGameplayAbilitySpecHandle> AbilitiesToActivate;
+	AbilitiesToActivate.Reserve(InputPressedSpecHandles.Num());
+
+	// 1) Pressed
+	{
+		const TArray<FGameplayAbilitySpecHandle> PressedSnapshot = InputPressedSpecHandles;
+
+		for (const FGameplayAbilitySpecHandle& Handle : PressedSnapshot)
+		{
+			FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+			if (!Spec || !Spec->Ability)
+			{
+				continue;
+			}
+
+			if (Spec->IsActive())
+			{
+				Super::AbilitySpecInputPressed(*Spec);
+			}
+			else
+			{
+				AbilitiesToActivate.AddUnique(Handle);
+			}
+		}
+	}
+
+	// 2) Held
+	{
+		const TArray<FGameplayAbilitySpecHandle> HeldSnapshot = InputHeldSpecHandles;
+
+		for (const FGameplayAbilitySpecHandle& Handle : HeldSnapshot)
+		{
+			FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+			if (!Spec || !Spec->Ability)
+			{
+				continue;
+			}
+
+			if (Spec->IsActive())
+			{
+				Super::AbilitySpecInputPressed(*Spec);
+			}
+		}
+	}
+
+	// 3) Activate
+	for (const FGameplayAbilitySpecHandle& Handle : AbilitiesToActivate)
+	{
+		const bool bAllowRemoteActivation = true;
+		TryActivateAbility(Handle, bAllowRemoteActivation);
+	}
+
+	// 4) Released
+	{
+		const TArray<FGameplayAbilitySpecHandle> ReleasedSnapshot = InputReleasedSpecHandles;
+
+		for (const FGameplayAbilitySpecHandle& Handle : ReleasedSnapshot)
+		{
+			FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+			if (!Spec || !Spec->Ability)
+			{
+				continue;
+			}
+
+			if (Spec->IsActive())
+			{
+				Super::AbilitySpecInputReleased(*Spec);
+			}
+		}
+	}
+
+	// 5) Clear one-frame arrays
+	InputPressedSpecHandles.Reset();
+	InputReleasedSpecHandles.Reset();
+}
+
+// =========================================================
+// Catalyst (SINGLE SOURCE OF TRUTH)
+// =========================================================
+void USpellRiseAbilitySystemComponent::EnsureCatalystChargeListenerBound_Server()
+{
+	if (!IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+
+	if (bCatalystListenerBound)
+	{
+		return;
+	}
+
+	// Exigimos Avatar para evitar bind prematuro demais
+	if (!GetAvatarActor())
+	{
+		return;
+	}
+
+	BindCatalystChargeListener_Server();
+	bCatalystListenerBound = true;
 }
 
 void USpellRiseAbilitySystemComponent::BindCatalystChargeListener_Server()
 {
-	// Se o AttributeSet não existe ainda por algum motivo, o delegate ainda funciona,
-	// mas o valor pode vir 0 até o ASC estar inicializado. Mesmo assim ok.
-
 	GetGameplayAttributeValueChangeDelegate(
 		UCatalystAttributeSet::GetCatalystChargeAttribute()
 	).AddUObject(this, &USpellRiseAbilitySystemComponent::OnCatalystChargeChanged);
@@ -44,32 +206,209 @@ void USpellRiseAbilitySystemComponent::BindCatalystChargeListener_Server()
 
 void USpellRiseAbilitySystemComponent::OnCatalystChargeChanged(const FOnAttributeChangeData& Data)
 {
-	// Server only
 	if (!IsOwnerActorAuthoritative())
 	{
 		return;
 	}
 
-	// Só dispara quando cruza o limiar (ex: 95 -> 100)
+	// Detecta cruzamento para "ready" (100)
 	const bool bCrossedToReady = (Data.OldValue < 100.f && Data.NewValue >= 100.f);
 	if (!bCrossedToReady)
 	{
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Charge crossed 100: Old=%.2f New=%.2f"), Data.OldValue, Data.NewValue);
-
-	// ✅ tenta procar imediatamente (antes de qualquer reset)
 	TryProcCatalystIfReady();
 }
 
+// ---------------------------------------------------------
+// Agressor ganha charge quando causa dano real
+// ---------------------------------------------------------
+bool USpellRiseAbilitySystemComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
+{
+	if (!IsOwnerActorAuthoritative())
+	{
+		return false;
+	}
+
+	EnsureCatalystChargeListenerBound_Server();
+
+	AActor* SourceActor = GetAvatarActor();
+	if (!SourceActor || !TargetActor || TargetActor == SourceActor)
+	{
+		return false;
+	}
+
+	// Se o próprio source está morto, não acumula
+	if (HasMatchingGameplayTag(TAG_State_Dead()))
+	{
+		return false;
+	}
+
+	// Se já está ativo, não acumula (um proc por vez)
+	if (HasMatchingGameplayTag(TAG_State_Catalyst_Active()))
+	{
+		return false;
+	}
+
+	// Não ganha charge batendo em alvo morto
+	if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor))
+	{
+		if (TargetASC->HasMatchingGameplayTag(TAG_State_Dead()))
+		{
+			return false;
+		}
+	}
+
+	if (!GE_CatalystAddCharge)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[CAT] GE_CatalystAddCharge is NULL on %s (Owner=%s Avatar=%s). Set it on the ASC component defaults in the Character BP."),
+			*GetNameSafe(this),
+			*GetNameSafe(GetOwnerActor()),
+			*GetNameSafe(GetAvatarActor()));
+		return false;
+	}
+
+	FGameplayEffectContextHandle Ctx = MakeEffectContext();
+	Ctx.AddSourceObject(SourceActor);
+
+	FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(GE_CatalystAddCharge, 1.f, Ctx);
+	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[CAT] MakeOutgoingSpec failed for GE_CatalystAddCharge on %s"), *GetNameSafe(SourceActor));
+		return false;
+	}
+
+	ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	return true;
+}
+
+// ---------------------------------------------------------
+// Vítima ganha charge quando toma dano real (anti-zerg)
+// ---------------------------------------------------------
+bool USpellRiseAbilitySystemComponent::TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorActor)
+{
+	if (!IsOwnerActorAuthoritative())
+	{
+		return false;
+	}
+
+	EnsureCatalystChargeListenerBound_Server();
+
+	AActor* VictimActor = GetAvatarActor();
+	if (!VictimActor)
+	{
+		return false;
+	}
+
+	// Se a vítima está morta, não acumula
+	if (HasMatchingGameplayTag(TAG_State_Dead()))
+	{
+		return false;
+	}
+
+	// Se já está ativo, não acumula (um proc por vez)
+	if (HasMatchingGameplayTag(TAG_State_Catalyst_Active()))
+	{
+		return false;
+	}
+
+	// Evita auto-hit
+	if (InstigatorActor && InstigatorActor == VictimActor)
+	{
+		return false;
+	}
+
+	if (!GE_CatalystAddCharge)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[CAT] GE_CatalystAddCharge is NULL on %s (Owner=%s Avatar=%s). Set it on the ASC component defaults in the Character BP."),
+			*GetNameSafe(this),
+			*GetNameSafe(GetOwnerActor()),
+			*GetNameSafe(GetAvatarActor()));
+		return false;
+	}
+
+	FGameplayEffectContextHandle Ctx = MakeEffectContext();
+	// Para dano tomado, SourceObject útil é o instigator (se existir), senão a própria vítima
+	Ctx.AddSourceObject(InstigatorActor ? InstigatorActor : VictimActor);
+
+	FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(GE_CatalystAddCharge, 1.f, Ctx);
+	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[CAT] MakeOutgoingSpec failed for GE_CatalystAddCharge on victim %s"), *GetNameSafe(VictimActor));
+		return false;
+	}
+
+	ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	return true;
+}
+
+void USpellRiseAbilitySystemComponent::TryProcCatalystIfReady()
+{
+	if (!IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+
+	EnsureCatalystChargeListenerBound_Server();
+
+	// Evita proc duplicado por tag
+	if (HasMatchingGameplayTag(TAG_State_Catalyst_Active()))
+	{
+		return;
+	}
+
+	if (!CatalystProcAbilityClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CATALYST] CatalystProcAbilityClass not set."));
+		return;
+	}
+
+	const float CurrentCharge = GetNumericAttribute(UCatalystAttributeSet::GetCatalystChargeAttribute());
+	if (CurrentCharge < 100.f)
+	{
+		return;
+	}
+
+	FGameplayAbilitySpec* Spec = FindAbilitySpecFromClass(CatalystProcAbilityClass);
+	if (!Spec)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Proc ability not granted on ASC."));
+		return;
+	}
+
+	const bool bAllowRemoteActivation = true;
+	const bool bActivated = TryActivateAbility(Spec->Handle, bAllowRemoteActivation);
+
+	if (bActivated)
+	{
+		if (ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(GetAvatarActor()))
+		{
+			int32 Tier = 1;
+			if (const UCatalystAttributeSet* CatAS = Character->GetCatalystAttributeSet())
+			{
+				Tier = FMath::Clamp(FMath::RoundToInt(CatAS->GetCatalystLevel()), 1, 3);
+			}
+			Character->MultiOnCatalystProc(Tier);
+		}
+	}
+}
+
+// =========================================================
+// Ability replication change tracking
+// =========================================================
 void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 {
 	Super::OnRep_ActivateAbilities();
 
 	AActor* Avatar = GetAvatarActor();
 	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Avatar);
-	if (!Character) return;
+	if (!Character)
+	{
+		return;
+	}
 
 	bool bAbilitiesChanged = (LastActivatableAbilities.Num() != ActivatableAbilities.Items.Num());
 
@@ -77,7 +416,8 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 	{
 		for (int32 i = 0; i < ActivatableAbilities.Items.Num(); i++)
 		{
-			if (LastActivatableAbilities[i].Ability != ActivatableAbilities.Items[i].Ability)
+			if (LastActivatableAbilities.IsValidIndex(i) &&
+				LastActivatableAbilities[i].Ability != ActivatableAbilities.Items[i].Ability)
 			{
 				bAbilitiesChanged = true;
 				break;
@@ -90,97 +430,4 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 		Character->SendAbilitiesChangedEvent();
 		LastActivatableAbilities = ActivatableAbilities.Items;
 	}
-}
-
-bool USpellRiseAbilitySystemComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
-{
-	if (!IsOwnerActorAuthoritative())
-	{
-		return false;
-	}
-
-	AActor* SourceActor = GetOwnerActor();
-	if (!SourceActor || !TargetActor || TargetActor == SourceActor)
-	{
-		return false;
-	}
-
-	// não conta durante o proc ativo
-	if (HasMatchingGameplayTag(TAG_State_Catalyst_Active()))
-	{
-		return false;
-	}
-
-	// não conta se alvo morto
-	if (UAbilitySystemComponent* TargetASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor))
-	{
-		if (TargetASC->HasMatchingGameplayTag(TAG_State_Dead()))
-		{
-			return false;
-		}
-	}
-
-	if (!GE_CatalystAddCharge)
-	{
-		return false;
-	}
-
-	FGameplayEffectContextHandle Ctx = MakeEffectContext();
-	Ctx.AddSourceObject(SourceActor);
-
-	FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(GE_CatalystAddCharge, 1.f, Ctx);
-	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
-	{
-		return false;
-	}
-
-	ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-
-	// ✅ NÃO chama TryProc aqui.
-	// O delegate OnCatalystChargeChanged vai disparar quando cruzar 100.
-	return true;
-}
-
-void USpellRiseAbilitySystemComponent::TryProcCatalystIfReady()
-{
-	// Server only
-	if (!IsOwnerActorAuthoritative())
-	{
-		return;
-	}
-
-	// Não ativa se já está ativo
-	if (HasMatchingGameplayTag(TAG_State_Catalyst_Active()))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Skip proc: already active tag."));
-		return;
-	}
-
-	if (!CatalystProcAbilityClass)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Skip proc: CatalystProcAbilityClass not set."));
-		return;
-	}
-
-	const float CurrentCharge = GetNumericAttribute(UCatalystAttributeSet::GetCatalystChargeAttribute());
-	if (CurrentCharge < 100.f)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Skip proc: Charge=%.2f < 100"), CurrentCharge);
-		return;
-	}
-
-	// ✅ A habilidade precisa estar GRANTED no server (via Character/GrantAbilities/Startup)
-	// Se manual funciona, ela provavelmente está.
-	FGameplayAbilitySpec* Spec = FindAbilitySpecFromClass(CatalystProcAbilityClass);
-	if (!Spec)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Proc ability not granted on ASC. Grant it on spawn/startup."));
-		return;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[CATALYST] Activating proc ability. Charge=%.2f"), CurrentCharge);
-
-	// Ativa usando handle (mais confiável)
-	const bool bActivated = TryActivateAbility(Spec->Handle, /*bAllowRemoteActivation*/ false);
-	UE_LOG(LogTemp, Warning, TEXT("[CATALYST] TryActivateAbility result=%d"), bActivated ? 1 : 0);
 }
