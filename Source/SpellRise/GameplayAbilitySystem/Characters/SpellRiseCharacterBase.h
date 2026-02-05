@@ -223,4 +223,7 @@ protected:
 
 	void ApplyRegenStartupEffects();
 	void ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass);
+
+	// ✅ NOVO: garante anim tick/anim init no server (mesmo se BP sobrescrever)
+	void ForceServerAnimTick();
 };

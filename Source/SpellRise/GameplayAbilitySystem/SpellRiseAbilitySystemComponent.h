@@ -41,6 +41,11 @@ protected:
 	virtual void AbilitySpecInputReleased(FGameplayAbilitySpec& Spec) override;
 
 public:
+	// Melee window hooks (called by AnimNotifyState)
+	void SR_MeleeWindowBegin();
+	void SR_MeleeWindowTick(bool bDebugTrace);
+	void SR_MeleeWindowEnd();
+
 	// =========================================================
 	// Input public API
 	// =========================================================

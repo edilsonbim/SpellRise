@@ -5,6 +5,45 @@
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/Abilities/GA_MeleeAttack.h"
+
+void USpellRiseAbilitySystemComponent::SR_MeleeWindowBegin()
+{
+	// Mantido para extensões (ex: iniciar combo buffer, VFX, etc).
+}
+
+void USpellRiseAbilitySystemComponent::SR_MeleeWindowTick(bool bDebugTrace)
+{
+	// Server authoritative: only server should apply damage.
+	// Clients can still run montage and feedback locally.
+	if (!IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+
+	// Find an active melee ability instance and ask it to attempt a hit.
+	for (FGameplayAbilitySpec& Spec : ActivatableAbilities.Items)
+	{
+		if (!Spec.IsActive() || !Spec.Ability)
+		{
+			continue;
+		}
+
+		if (UGA_MeleeAttack* Melee = Cast<UGA_MeleeAttack>(Spec.GetPrimaryInstance()))
+		{
+			Melee->AttemptMeleeHitFromWindow(this, bDebugTrace);
+			return;
+		}
+
+		// Fallback: if GetPrimaryInstance is null (rare), try CDO cast (won't work for per-actor instance)
+	}
+}
+
+void USpellRiseAbilitySystemComponent::SR_MeleeWindowEnd()
+{
+	// Mantido para extensões (ex: fechar buffer, etc).
+}
+
 
 static FGameplayTag TAG_State_Dead()
 {
