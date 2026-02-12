@@ -1,6 +1,0 @@
-[20920:17320:0211/235450.348:WARNING:chrome_main_delegate.cc(745)] This is Chrome version 128.0.6613.138 (not a warning)
-[20920:17320:0211/235450.395:WARNING:account_consistency_mode_manager.cc(77)] Desktop Identity Consistency cannot be enabled as no OAuth client ID and client secret have been configured.
-[20920:17320:0211/235451.997:WARNING:external_registry_loader_win.cc(232)] Error observing HKLM: 5
-[15556:11252:0211/235453.026:WARNING:frame_impl.cc(430)] virtual CefFrameImpl::SendProcessMessage sent to detached frame 5-7873BB65978F0DCE5E5074677669A4AC will be ignored
-[20920:17320:0211/235458.350:ERROR:device_event_log_impl.cc(196)] [23:54:58.019] USB: usb_service_win.cc:105 SetupDiGetDeviceProperty({{A45C254E-DF1C-4EFD-8020-67D146A850E0}, 6}) failed: Elemento não encontrado. (0x490)
-[20920:17320:0211/235533.661:WARNING:pref_notifier_impl.cc(41)] Pref observer for media_router.cast_allow_all_ips found at shutdown.

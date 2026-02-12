@@ -1,1 +1,70 @@
-﻿/SpellRise.sln
+﻿# ========================================
+# Unreal Engine 5.x
+# ========================================
+
+# Generated folders
+Binaries/
+Build/
+Intermediate/
+Saved/
+DerivedDataCache/
+
+# Unreal auto-generated project files
+*.opensdf
+*.sdf
+*.suo
+*.tmp
+*.VC.db
+*.VC.opendb
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Visual Studio
+.vs/
+*.user
+*.userprefs
+*.sln
+*.sln.DotSettings
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# VSCode
+.vscode/
+
+# Logs
+*.log
+
+# Crash dumps
+*.dmp
+*.mdmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+*.backup
+*.old
+
+# Unreal Editor user settings
+Config/DefaultEditorPerProjectUserSettings.ini
+
+# Packaged builds
+Windows/
+Linux/
+Mac/
+Android/
+IOS/
+
+# Plugin generated folders
+Plugins/*/Intermediate/
+Plugins/*/Binaries/
+
+# Hot reload artifacts
+*.modules
+*.target
+*.version
