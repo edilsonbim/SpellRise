@@ -1,0 +1,15 @@
+{
+	"version": 1,
+	"changelists": [
+		{
+			"guid": "00000000000000000000000000000000",
+			"description": "Default Uncontrolled Changelist",
+			"files": [
+				"C:/Users/biM/Documents/Unreal Projects/SpellRise/Content/GamePlayAbilitySystem/Abilities/GA_BP_MeleeCombo.uasset",
+				"C:/Users/biM/Documents/Unreal Projects/SpellRise/Content/Combat/Weapons/DA_Weapon_ShortSword.uasset",
+				"C:/Users/biM/Documents/Unreal Projects/SpellRise/Content/Core/Player/BP_SpellRisePlayer.uasset",
+				"C:/Users/biM/Documents/Unreal Projects/SpellRise/Content/GamePlayAbilitySystem/Abilities/NewBlueprint.uasset"
+			]
+		}
+	]
+}

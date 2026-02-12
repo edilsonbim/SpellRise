@@ -1,0 +1,20 @@
+{
+	"SourceFiles": [
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Source\\SpellRise\\SpellRise.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RD\\RD.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderBlueprint\\RiderBlueprint.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderDebuggerSupport\\RiderDebuggerSupport.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderGameControl\\RiderGameControl.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderLC\\RiderLC.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderLink\\RiderLink.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderLogging\\RiderLogging.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\Developer\\RiderLink\\Source\\RiderShaderInfo\\RiderShaderInfo.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\VisualStudioTools\\Source\\VisualStudioBlueprintDebuggerHelper\\VisualStudioBlueprintDebuggerHelper.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Plugins\\VisualStudioTools\\Source\\VisualStudioTools\\VisualStudioTools.Build.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Source\\SpellRise.Target.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Source\\SpellRiseClient.Target.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Source\\SpellRiseEditor.Target.cs",
+		"C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Source\\SpellRiseServer.Target.cs"
+	],
+	"EngineVersion": "5.7.2"
+}

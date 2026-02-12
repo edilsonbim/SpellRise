@@ -1,0 +1,2 @@
+/Game/Maps/Map2/Map2.Map2:PersistentLevel.BP_SpellRisePlayer_C_0.TalentTreeComponent
+/Game/GamePlayAbilitySystem/Talents/TalentTreeComponent.TalentTreeComponent_C
