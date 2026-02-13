@@ -67,6 +67,10 @@ struct FMeleeDamageConfig
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Damage|Tags")
     FGameplayTagContainer HitReactTags;
+
+    /** Distância máxima para considerar um hit (em unidades). 0 = usa MinStepDistance * 10 como fallback. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Damage", meta = (ClampMin = "0.0"))
+    float MaxHitDistance = 0.0f;
 };
 
 USTRUCT(BlueprintType)

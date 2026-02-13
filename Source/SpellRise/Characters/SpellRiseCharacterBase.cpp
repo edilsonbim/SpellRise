@@ -392,6 +392,9 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	
 		if (HasAuthority())
 		{
+			UE_LOG(LogTemp, Warning, TEXT("[Server] Equipping weapon: %s"), *GetNameSafe(DefaultMeleeWeaponData));
+			WeaponComponent->EquipWeapon(DefaultMeleeWeaponData);
+		
 			if (!WeaponComponent)
 			{
 				WeaponComponent = FindComponentByClass<USpellRiseWeaponComponent>();

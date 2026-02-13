@@ -66,9 +66,16 @@ bool USpellRiseContinuousTrace::GetSocketLocations(FVector& OutBase, FVector& Ou
     if (!Primitive)
         return false;
 
-    if (!Primitive->DoesSocketExist(CurrentConfig.SocketBase) || 
-        !Primitive->DoesSocketExist(CurrentConfig.SocketTip))
+    if (!Primitive->DoesSocketExist(CurrentConfig.SocketBase))
+    {
+        UE_LOG(LogTemp, Error, TEXT("[ContinuousTrace] Socket '%s' does not exist on weapon mesh!"), *CurrentConfig.SocketBase.ToString());
         return false;
+    }
+    if (!Primitive->DoesSocketExist(CurrentConfig.SocketTip))
+    {
+        UE_LOG(LogTemp, Error, TEXT("[ContinuousTrace] Socket '%s' does not exist on weapon mesh!"), *CurrentConfig.SocketTip.ToString());
+        return false;
+    }
 
     OutBase = Primitive->GetSocketLocation(CurrentConfig.SocketBase);
     OutTip = Primitive->GetSocketLocation(CurrentConfig.SocketTip);

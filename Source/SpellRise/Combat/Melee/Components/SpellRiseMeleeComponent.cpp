@@ -3,7 +3,6 @@
 #include "SpellRise/Combat/Melee/Traces/SpellRiseContinuousTrace.h"
 #include "SpellRise/Combat/Melee/Components/SpellRiseHitHistoryComponent.h"
 #include "SpellRise/Weapons/Components/SpellRiseWeaponComponent.h"
-#include "UObject/ConstructorHelpers.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffect.h"
@@ -21,22 +20,11 @@ USpellRiseMeleeComponent::USpellRiseMeleeComponent()
     bDidHitThisWindow = false;
     bDebugVisual = false;
     CurrentComboIndex = 0;
-    DamageEffectClass = nullptr;
+    DamageEffectClass = nullptr;   // Inicia nulo – será configurado no Blueprint
     WeaponData = nullptr;
     TraceComponent = nullptr;
     HistoryComponent = nullptr;
     CachedWeaponMesh = nullptr;
-    
-    // Fallback: tenta carregar GE_MeleeDamage
-    static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageEffectFinder(
-        TEXT("/Game/GameplayAbilities/Effects/GE_MeleeDamage.GE_MeleeDamage_C")
-    );
-    
-    if (DamageEffectFinder.Succeeded())
-    {
-        DamageEffectClass = DamageEffectFinder.Class;
-        UE_LOG(LogTemp, Verbose, TEXT("[Melee] Default DamageEffectClass loaded: GE_MeleeDamage"));
-    }
 }
 
 // ============================================================================
@@ -45,6 +33,27 @@ USpellRiseMeleeComponent::USpellRiseMeleeComponent()
 void USpellRiseMeleeComponent::BeginPlay()
 {
     Super::BeginPlay();
+
+    // Fallback para carregar a classe de dano do CDO (default object) do Blueprint
+    if (!DamageEffectClass)
+    {
+        if (UClass* OuterClass = GetClass())
+        {
+            if (USpellRiseMeleeComponent* DefaultObj = Cast<USpellRiseMeleeComponent>(OuterClass->GetDefaultObject()))
+            {
+                DamageEffectClass = DefaultObj->DamageEffectClass;
+                if (DamageEffectClass)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[Melee] DamageEffectClass loaded from CDO: %s"), 
+                        *DamageEffectClass->GetName());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("[Melee] CRITICAL: DamageEffectClass is still NULL after CDO fallback!"));
+                }
+            }
+        }
+    }
 
     // Cria TraceComponent se não existir
     if (!TraceComponent)
@@ -82,7 +91,7 @@ void USpellRiseMeleeComponent::SetDebugVisual(bool bEnable)
 }
 
 // ============================================================================
-// INITIALIZE WITH WEAPON DATA - CORRIGIDO!
+// INITIALIZE WITH WEAPON DATA
 // ============================================================================
 void USpellRiseMeleeComponent::InitializeWithWeaponData(const UDA_MeleeWeaponData* InWeaponData, USceneComponent* InWeaponMesh)
 {
@@ -106,7 +115,6 @@ void USpellRiseMeleeComponent::InitializeWithWeaponData(const UDA_MeleeWeaponDat
 
     if (TraceComponent)
     {
-        // 🔴 REMOVER DELEGATE ANTIGO ANTES DE ADICIONAR NOVO!
         TraceComponent->OnHitDetected.RemoveDynamic(this, &USpellRiseMeleeComponent::OnTraceHitDetected);
         
         TraceComponent->StartTrace(WeaponData->TraceConfig, CachedWeaponMesh);
@@ -199,7 +207,11 @@ bool USpellRiseMeleeComponent::ValidateHit(const FHitResult& Hit, AActor*& OutTa
     if (WeaponData)
     {
         const float Distance = GetOwner()->GetDistanceTo(OutTargetActor);
-        const float MaxDistance = WeaponData->TraceConfig.MinStepDistance * 10.0f;
+        float MaxDistance = WeaponData->DamageConfig.MaxHitDistance;
+        if (MaxDistance <= 0.0f)
+        {
+            MaxDistance = WeaponData->TraceConfig.MinStepDistance * 10.0f;
+        }
         if (Distance > MaxDistance) return false;
     }
 
@@ -243,7 +255,18 @@ void USpellRiseMeleeComponent::ApplyGameplayEffectDamage(AActor* TargetActor, UA
 {
     UAbilitySystemComponent* SourceASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(GetOwner());
     
-    if (!SourceASC || !TargetASC || !DamageEffectClass) return;
+    if (!SourceASC || !TargetASC)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Melee] Cannot apply damage: SourceASC or TargetASC is null."));
+        return;
+    }
+
+    if (!DamageEffectClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Melee] DamageEffectClass is NULL! Please set it in the Blueprint."));
+        return;
+    }
+
     if (!SourceASC->IsOwnerActorAuthoritative()) return;
 
     FGameplayEffectContextHandle EffectContext = SourceASC->MakeEffectContext();
@@ -262,6 +285,10 @@ void USpellRiseMeleeComponent::ApplyGameplayEffectDamage(AActor* TargetActor, UA
             UE_LOG(LogTemp, Verbose, TEXT("[Melee] SetByCaller: %s = %.1f"), 
                 *DamageTag.ToString(), Damage);
         }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Melee] Damage tag 'Data.BaseWeaponDamage' not found! Damage may not be passed."));
     }
 
     SourceASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);

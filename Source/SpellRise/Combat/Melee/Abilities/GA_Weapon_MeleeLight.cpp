@@ -12,6 +12,7 @@
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"      // ESSENCIAL para UAnimMontage completo
 #include "Math/UnrealMathUtility.h"
 
 UGA_Weapon_MeleeLight::UGA_Weapon_MeleeLight()
@@ -111,14 +112,21 @@ void UGA_Weapon_MeleeLight::CacheWeaponData()
     CachedComboWindowEndTag = FGameplayTag();
 
     AActor* Avatar = GetAvatar();
-    if (!Avatar) return;
+    if (!Avatar) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Cache] Avatar is NULL!"));
+        return;
+    }
 
     USpellRiseWeaponComponent* WeaponComp = Avatar->FindComponentByClass<USpellRiseWeaponComponent>();
-    if (!WeaponComp) return;
+    if (!WeaponComp) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Cache] WeaponComponent not found on %s"), *GetNameSafe(Avatar));
+        return;
+    }
 
     CachedMeleeComponent = WeaponComp->GetMeleeComponent();
 
-    // ✅ Agora GetEquippedWeapon() retorna const UDA_MeleeWeaponData*
     if (CachedMeleeComponent && WeaponComp->GetEquippedWeapon())
     {
         const UDA_MeleeWeaponData* Data = WeaponComp->GetEquippedWeapon();
@@ -127,26 +135,35 @@ void UGA_Weapon_MeleeLight::CacheWeaponData()
         CachedMaxComboHits = Data->ComboConfig.MaxComboHits;
         CachedComboWindowBeginTag = Data->ComboConfig.ComboWindowBeginTag;
         CachedComboWindowEndTag = Data->ComboConfig.ComboWindowEndTag;
+        
+        UE_LOG(LogTemp, Warning, TEXT("[Cache] Loaded from DataAsset: Montage=%s, Sections=%d, MaxHits=%d"),
+            CachedAttackMontage ? *CachedAttackMontage->GetName() : TEXT("NULL"),
+            CachedComboSections.Num(), CachedMaxComboHits);
     }
 
     // Fallback legacy
     if (!CachedAttackMontage)
     {
         CachedAttackMontage = AttackMontage_Legacy;
+        UE_LOG(LogTemp, Warning, TEXT("[Cache] Using Legacy fallback: %s"),
+            CachedAttackMontage ? *CachedAttackMontage->GetName() : TEXT("NULL"));
     }
 
     if (CachedComboSections.Num() == 0)
     {
         CachedComboSections = { FName("Hit1"), FName("Hit2"), FName("Hit3") };
+        UE_LOG(LogTemp, Warning, TEXT("[Cache] Using default combo sections"));
     }
 
     if (!CachedComboWindowBeginTag.IsValid())
     {
         CachedComboWindowBeginTag = FGameplayTag::RequestGameplayTag(TEXT("Event.Melee.ComboWindow.Begin"), false);
+        UE_LOG(LogTemp, Verbose, TEXT("[Cache] Using default Begin tag"));
     }
     if (!CachedComboWindowEndTag.IsValid())
     {
         CachedComboWindowEndTag = FGameplayTag::RequestGameplayTag(TEXT("Event.Melee.ComboWindow.End"), false);
+        UE_LOG(LogTemp, Verbose, TEXT("[Cache] Using default End tag"));
     }
 }
 
@@ -160,6 +177,9 @@ void UGA_Weapon_MeleeLight::InitializeMeleeComponent()
 
     WeaponComp->InitializeMeleeComponent();
     CachedMeleeComponent = WeaponComp->GetMeleeComponent();
+    
+    UE_LOG(LogTemp, Warning, TEXT("[Init] MeleeComponent initialized: %s"), 
+        CachedMeleeComponent ? *CachedMeleeComponent->GetName() : TEXT("NULL"));
 }
 
 float UGA_Weapon_MeleeLight::GetAttackSpeedMultiplierFromASC() const
@@ -186,9 +206,9 @@ void UGA_Weapon_MeleeLight::ApplyCurrentMontagePlayRate(float NewRate) const
 
     if (UAnimInstance* Anim = GetAvatarAnimInstance())
     {
-        if (CachedAttackMontage && Anim->Montage_IsPlaying(CachedAttackMontage))
+        if (CachedAttackMontage && Anim->Montage_IsPlaying(CachedAttackMontage.Get()))
         {
-            Anim->Montage_SetPlayRate(CachedAttackMontage, NewRate);
+            Anim->Montage_SetPlayRate(CachedAttackMontage.Get(), NewRate);
         }
     }
 }
@@ -211,8 +231,12 @@ void UGA_Weapon_MeleeLight::TryApplyHitOnceForCurrentWindow()
 // ============================================================================
 void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
 {
+    UE_LOG(LogTemp, Warning, TEXT("[StartCombo] Attempting index %d/%d, Sections=%d"), 
+        NewIndex + 1, CachedMaxComboHits, CachedComboSections.Num());
+
     if (!CachedComboSections.IsValidIndex(NewIndex) || NewIndex >= CachedMaxComboHits)
     {
+        UE_LOG(LogTemp, Error, TEXT("[StartCombo] Invalid index %d - Finishing"), NewIndex);
         FinishCombo(false);
         return;
     }
@@ -231,8 +255,16 @@ void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
     }
 
     UAnimInstance* Anim = GetAvatarAnimInstance();
-    if (!CachedAttackMontage || !Anim)
+    if (!Anim)
     {
+        UE_LOG(LogTemp, Error, TEXT("[StartCombo] AnimInstance is NULL!"));
+        FinishCombo(true);
+        return;
+    }
+
+    if (!CachedAttackMontage)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[StartCombo] CachedAttackMontage is NULL!"));
         FinishCombo(true);
         return;
     }
@@ -240,15 +272,21 @@ void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
     const float AttackSpeedMult = GetAttackSpeedMultiplierFromASC();
     const float EffectiveRate = FMath::Clamp(MontagePlayRate * AttackSpeedMult, 0.05f, 5.0f);
 
-    if (Anim->Montage_IsPlaying(CachedAttackMontage))
+    UE_LOG(LogTemp, Verbose, TEXT("[StartCombo] Rate: base=%.2f, mult=%.2f, effective=%.2f"),
+        MontagePlayRate, AttackSpeedMult, EffectiveRate);
+
+    if (Anim->Montage_IsPlaying(CachedAttackMontage.Get()))
     {
+        UE_LOG(LogTemp, Verbose, TEXT("[StartCombo] Montage already playing - jumping to section %s"),
+            *CachedComboSections[ComboIndex].ToString());
+
         if (UAbilitySystemComponent* ASC = GetASC())
         {
             ASC->CurrentMontageJumpToSection(CachedComboSections[ComboIndex]);
         }
         else
         {
-            Anim->Montage_JumpToSection(CachedComboSections[ComboIndex], CachedAttackMontage);
+            Anim->Montage_JumpToSection(CachedComboSections[ComboIndex], CachedAttackMontage.Get());
         }
 
         ApplyCurrentMontagePlayRate(EffectiveRate);
@@ -264,7 +302,7 @@ void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
     MontageTask = UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
         this,
         NAME_None,
-        CachedAttackMontage,
+        CachedAttackMontage.Get(),
         EffectiveRate,
         CachedComboSections[ComboIndex],
         false,
@@ -273,14 +311,25 @@ void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
 
     if (!MontageTask)
     {
+        UE_LOG(LogTemp, Error, TEXT("[StartCombo] Failed to create MontageTask!"));
         FinishCombo(true);
         return;
     }
+
+    UE_LOG(LogTemp, Warning, TEXT("[StartCombo] MontageTask created successfully"));
 
     MontageTask->OnCompleted.AddDynamic(this, &UGA_Weapon_MeleeLight::OnMontageCompleted);
     MontageTask->OnInterrupted.AddDynamic(this, &UGA_Weapon_MeleeLight::OnMontageInterrupted);
     MontageTask->OnCancelled.AddDynamic(this, &UGA_Weapon_MeleeLight::OnMontageCancelled);
     MontageTask->ReadyForActivation();
+    
+    // Verificação adicional: ver se a montagem realmente começou
+    if (UAnimInstance* CheckAnim = GetAvatarAnimInstance())
+    {
+        bool bIsPlaying = CheckAnim->Montage_IsPlaying(CachedAttackMontage.Get());
+        UE_LOG(LogTemp, Warning, TEXT("[StartCombo] After activation - Montage playing: %s"), 
+            bIsPlaying ? TEXT("YES") : TEXT("NO"));
+    }
 }
 
 void UGA_Weapon_MeleeLight::CancelCombo()
@@ -302,9 +351,11 @@ void UGA_Weapon_MeleeLight::StopAttackMontage()
 {
     if (!CachedAttackMontage) 
     {
-        UE_LOG(LogTemp, Warning, TEXT("[Combo] ❌ CachedAttackMontage is NULL!"));
+        UE_LOG(LogTemp, Warning, TEXT("[Stop] CachedAttackMontage is NULL!"));
         return;
     }
+
+    UE_LOG(LogTemp, Verbose, TEXT("[Stop] Stopping montage with blend out %.2f"), StopBlendOutTime);
 
     if (UAbilitySystemComponent* ASC = GetASC())
     {
@@ -314,7 +365,7 @@ void UGA_Weapon_MeleeLight::StopAttackMontage()
     {
         if (UAnimInstance* Anim = GetAvatarAnimInstance())
         {
-            Anim->Montage_Stop(StopBlendOutTime, CachedAttackMontage);
+            Anim->Montage_Stop(StopBlendOutTime, CachedAttackMontage.Get());
         }
     }
 }
@@ -324,30 +375,48 @@ void UGA_Weapon_MeleeLight::StopAttackMontage()
 // ============================================================================
 void UGA_Weapon_MeleeLight::StartWaitingForComboWindowBegin()
 {
-    if (!CachedComboWindowBeginTag.IsValid()) return;
+    if (!CachedComboWindowBeginTag.IsValid()) 
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("[Wait] Begin tag invalid, skipping"));
+        return;
+    }
 
     WaitComboBeginTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
         this, CachedComboWindowBeginTag, nullptr, true, false
     );
 
-    if (!WaitComboBeginTask) return;
+    if (!WaitComboBeginTask) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Wait] Failed to create WaitComboBeginTask"));
+        return;
+    }
 
     WaitComboBeginTask->EventReceived.AddDynamic(this, &UGA_Weapon_MeleeLight::OnComboWindowBegin);
     WaitComboBeginTask->ReadyForActivation();
+    UE_LOG(LogTemp, Verbose, TEXT("[Wait] Waiting for Begin tag: %s"), *CachedComboWindowBeginTag.ToString());
 }
 
 void UGA_Weapon_MeleeLight::StartWaitingForComboWindowEnd()
 {
-    if (!CachedComboWindowEndTag.IsValid()) return;
+    if (!CachedComboWindowEndTag.IsValid()) 
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("[Wait] End tag invalid, skipping"));
+        return;
+    }
 
     WaitComboEndTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
         this, CachedComboWindowEndTag, nullptr, true, false
     );
 
-    if (!WaitComboEndTask) return;
+    if (!WaitComboEndTask) 
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Wait] Failed to create WaitComboEndTask"));
+        return;
+    }
 
     WaitComboEndTask->EventReceived.AddDynamic(this, &UGA_Weapon_MeleeLight::OnComboWindowEnd);
     WaitComboEndTask->ReadyForActivation();
+    UE_LOG(LogTemp, Verbose, TEXT("[Wait] Waiting for End tag: %s"), *CachedComboWindowEndTag.ToString());
 }
 
 void UGA_Weapon_MeleeLight::ActivateAbility(
@@ -358,8 +427,15 @@ void UGA_Weapon_MeleeLight::ActivateAbility(
 {
     Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
+    UE_LOG(LogTemp, Warning, TEXT("[Activate] Ability activated"));
+    UE_LOG(LogTemp, Warning, TEXT("[Ability] ActivateAbility on %s"), IsServer() ? TEXT("SERVER") : TEXT("CLIENT"));
+
     if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid() || !DamageGE)
     {
+        UE_LOG(LogTemp, Error, TEXT("[Activate] Failed: ActorInfo=%s, ASC=%s, DamageGE=%s"),
+            ActorInfo ? TEXT("OK") : TEXT("NULL"),
+            (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid()) ? TEXT("OK") : TEXT("NULL"),
+            *GetNameSafe(DamageGE));
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
         return;
     }
@@ -368,12 +444,16 @@ void UGA_Weapon_MeleeLight::ActivateAbility(
 
     if (!CachedAttackMontage || CachedComboSections.Num() == 0)
     {
+        UE_LOG(LogTemp, Error, TEXT("[Activate] Failed: Montage=%s, Sections=%d"),
+            CachedAttackMontage ? *CachedAttackMontage->GetName() : TEXT("NULL"),
+            CachedComboSections.Num());
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
         return;
     }
 
     if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
     {
+        UE_LOG(LogTemp, Warning, TEXT("[Activate] Commit failed"));
         EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
         return;
     }
@@ -412,8 +492,7 @@ void UGA_Weapon_MeleeLight::InputPressed(
 
 void UGA_Weapon_MeleeLight::OnComboWindowBegin(FGameplayEventData Payload)
 {
-    StartWaitingForComboWindowBegin();
-
+    // NÃO recriar a task aqui – ela já terminou.
     bAcceptingComboInput = true;
     bComboInputQueued = false;
     bDidHitThisWindow = false;
@@ -431,11 +510,11 @@ void UGA_Weapon_MeleeLight::OnComboWindowBegin(FGameplayEventData Payload)
 }
 
 // ============================================================================
-// LÓGICA PRINCIPAL - SERVER AUTHORITATIVE COM MULTICAST!
+// LÓGICA PRINCIPAL - SERVER AUTHORITATIVE
 // ============================================================================
 void UGA_Weapon_MeleeLight::OnComboWindowEnd(FGameplayEventData Payload)
 {
-    StartWaitingForComboWindowEnd();
+    // NÃO recriar a task aqui – ela já terminou.
     bAcceptingComboInput = false;
 
     if (IsServer())
@@ -444,41 +523,22 @@ void UGA_Weapon_MeleeLight::OnComboWindowEnd(FGameplayEventData Payload)
         {
             // ✅ AVANÇAR
             bComboInputQueued = false;
-            const int32 NextHitIndex = ComboIndex + 1;
-            
             UE_LOG(LogTemp, Warning, TEXT("[Combo][SERVER] ✅ DECISION: Advance %d -> %d"), 
-                ComboIndex + 1, NextHitIndex + 1);
-            
-            StartComboAt(NextHitIndex);
+                ComboIndex + 1, ComboIndex + 2);
+            StartComboAt(ComboIndex + 1);
         }
         else
         {
             // ❌ CANCELAR
-            UE_LOG(LogTemp, Warning, TEXT("[Combo][SERVER] ❌ DECISION: Cancel at hit %d"), 
-                ComboIndex + 1);
-            
-            // ENVIA MULTICAST PARA PARAR A MONTAGEM EM TODOS
-            Multicast_StopMontage();
-            
+            UE_LOG(LogTemp, Warning, TEXT("[Combo][SERVER] ❌ DECISION: Cancel at hit %d"), ComboIndex + 1);
+            StopAttackMontage();
             FinishCombo(true);
         }
     }
     else
     {
-        // CLIENTE: apenas aguarda – a montagem será parada pelo multicast ou pela replicação
         UE_LOG(LogTemp, Verbose, TEXT("[Combo][CLIENT] ⏳ Waiting..."));
     }
-}
-
-// ============================================================================
-// MULTICAST PARA PARAR A MONTAGEM
-// ============================================================================
-void UGA_Weapon_MeleeLight::Multicast_StopMontage_Implementation()
-{
-    UE_LOG(LogTemp, Warning, TEXT("[Combo][Multicast] 🛑 Stopping montage on %s"), 
-        IsServer() ? TEXT("SERVER") : TEXT("CLIENT"));
-    
-    StopAttackMontage();
 }
 
 void UGA_Weapon_MeleeLight::OnMontageCompleted()
@@ -525,6 +585,7 @@ void UGA_Weapon_MeleeLight::StopAllTasks()
 
 void UGA_Weapon_MeleeLight::FinishCombo(bool bCancelled)
 {
+    UE_LOG(LogTemp, Verbose, TEXT("[Finish] Combo finished, cancelled=%d"), bCancelled);
     EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, bCancelled);
 }
 

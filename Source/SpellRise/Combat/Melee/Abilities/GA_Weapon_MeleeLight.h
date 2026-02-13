@@ -70,12 +70,6 @@ private:
     bool bDidHitThisWindow = false;
     bool bShouldCancelOnWindowEnd = false;
 
-    // ============================================
-    // MULTICAST - PARA TODOS OS CLIENTES E SERVIDOR
-    // ============================================
-    UFUNCTION(NetMulticast, Reliable)
-    void Multicast_StopMontage();
-
     UPROPERTY()
     TObjectPtr<UAbilityTask_PlayMontageAndWait> MontageTask = nullptr;
 
@@ -100,7 +94,6 @@ private:
     UPROPERTY(Transient)
     int32 CachedMaxComboHits = 3;
 
-    // 🔴 NOVAS TAGS EM CACHE
     UPROPERTY(Transient)
     FGameplayTag CachedComboWindowBeginTag;
 

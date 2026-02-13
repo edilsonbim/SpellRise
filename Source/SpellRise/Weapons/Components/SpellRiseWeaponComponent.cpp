@@ -48,7 +48,6 @@ void USpellRiseWeaponComponent::InitializeMeleeComponent()
     USceneComponent* WeaponMesh = Cast<USceneComponent>(EquippedWeaponActor->Mesh);
     if (WeaponMesh)
     {
-        // 🔥 EquippedWeapon é const, mas InitializeWithWeaponData espera const (não modifica)
         MeleeComponent->InitializeWithWeaponData(EquippedWeapon, WeaponMesh);
         bMeleeComponentInitialized = true;
     }
@@ -67,6 +66,8 @@ void USpellRiseWeaponComponent::EquipWeapon(const UDA_MeleeWeaponData* NewWeapon
     }
 
     EquippedWeapon = NewWeapon;
+    // Reset da flag de inicialização para que a nova arma seja configurada corretamente
+    bMeleeComponentInitialized = false;
 
     if (bRebuildVisualOnServer) OnRep_EquippedWeapon();
     Owner->ForceNetUpdate();
