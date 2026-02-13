@@ -4,9 +4,9 @@ public class SpellRise : ModuleRules
 {
 	public SpellRise(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PCHUsage = PCHUsageMode.NoPCHs; // CRÍTICO: Mudar de UseExplicitOrSharedPCHs para NoPCHs
-		bUseUnity = false; // Desabilitar Unity Build para LiveCoding
-		
+		PCHUsage = PCHUsageMode.NoPCHs;
+		bUseUnity = false;
+        
 		PublicDependencyModuleNames.AddRange(new string[] { 
 			"Core", 
 			"CoreUObject", 
@@ -20,12 +20,17 @@ public class SpellRise : ModuleRules
 			"Slate",
 			"SlateCore"
 		});
-		
+        
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"UnrealEd",
 			"PropertyEditor",
 			"AudioMixer",
 			"EditorStyle"
 		});
+        
+		// NÃO ADICIONE ISTO:
+		// PrivateIncludePaths.Add("SpellRise/Combat/Melee/Components");
+		// PublicAdditionalLibraries.Add(...);
+		// NÃO ADICIONE ARQUIVOS .cpp MANUALMENTE!
 	}
 }

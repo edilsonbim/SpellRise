@@ -24,10 +24,11 @@
 
 // SpellRise Weapons
 #include "SpellRise/Weapons/Components/SpellRiseWeaponComponent.h"
-#include "SpellRise/Weapons/Data/DA_WeaponDefinition.h"
-#include "Animation/AnimInstance.h"  // ESSENCIAL - Resolve o erro UAnimInstance incomplete
+#include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h" 
+#include "Animation/AnimInstance.h"
+
 // ---------------------------------------------------------
-// Gameplay Tags (Versão otimizada)
+// Gameplay Tags
 // ---------------------------------------------------------
 namespace SpellRiseTags
 {
@@ -382,44 +383,57 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	InitASCActorInfo();
 	BindASCDelegates();
 
-	UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] PossessedBy: Auth=%d Char=%s WeaponComp=%s DefaultWeapon=%s CompEquippedWeapon=%s"),
+	UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] PossessedBy: Auth=%d Char=%s WeaponComp=%s DefaultMeleeWeaponData=%s CompEquippedWeapon=%s"),
 		HasAuthority() ? 1 : 0,
 		*GetNameSafe(this),
 		*GetNameSafe(WeaponComponent),
-		*GetNameSafe(DefaultWeapon),
+		*GetNameSafe(DefaultMeleeWeaponData),
 		WeaponComponent ? *GetNameSafe(WeaponComponent->GetEquippedWeapon()) : TEXT("NULL"));
-
-	if (HasAuthority())
-	{
-		if (!WeaponComponent)
+	
+		if (HasAuthority())
 		{
-			UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] WeaponComponent STILL NULL on server for %s. Fix BP: remove duplicate weapon components and keep the native WeaponComponent."), *GetNameSafe(this));
-		}
-		else
-		{
-			if (DefaultWeapon)
+			if (!WeaponComponent)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] Equipping DefaultWeapon on server: %s -> %s"),
-					*GetNameSafe(this), *GetNameSafe(DefaultWeapon));
+				WeaponComponent = FindComponentByClass<USpellRiseWeaponComponent>();
+			}
 
-				WeaponComponent->EquipWeapon(DefaultWeapon);
-			}
-			else if (UDA_WeaponDefinition* Already = WeaponComponent->GetEquippedWeapon())
+			if (WeaponComponent)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] DefaultWeapon NULL, using component EquippedWeapon: %s"), *GetNameSafe(Already));
-				WeaponComponent->EquipWeapon(Already);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] NO WEAPON on server for %s. Set DefaultWeapon or WeaponComponent.EquippedWeapon."), *GetNameSafe(this));
-			}
-		}
+				if (DefaultMeleeWeaponData)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] Equipping DefaultMeleeWeaponData on server: %s -> %s"),
+						*GetNameSafe(this), *GetNameSafe(DefaultMeleeWeaponData));
 
-		GrantAbilities(StartingAbilities);
-		ApplyRegenStartupEffects();
-		ApplyStartupEffects();
+					WeaponComponent->EquipWeapon(DefaultMeleeWeaponData);
+				}
+				else if (const UDA_MeleeWeaponData* Already = WeaponComponent->GetEquippedWeapon()) // ✅ const!
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] DefaultMeleeWeaponData NULL, using component EquippedWeapon: %s"), *GetNameSafe(Already));
+					WeaponComponent->EquipWeapon(Already);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] NO WEAPON on server for %s. Set DefaultMeleeWeaponData."), *GetNameSafe(this));
+				}
+			}
+
+			// Concede habilidades da arma
+			if (DefaultMeleeWeaponData)
+			{
+				for (TSubclassOf<UGameplayAbility> AbilityClass : DefaultMeleeWeaponData->GrantAbilities)
+				{
+					if (AbilityClass)
+					{
+						GrantAbilities({ AbilityClass });
+					}
+				}
+			}
+
+			GrantAbilities(StartingAbilities);
+			ApplyRegenStartupEffects();
+			ApplyStartupEffects();
+		}
 	}
-}
 
 void ASpellRiseCharacterBase::OnRep_PlayerState()
 {
