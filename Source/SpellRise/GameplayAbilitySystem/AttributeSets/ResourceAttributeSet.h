@@ -59,8 +59,6 @@ public:
 
 	// -------------------------
 	// Regen (replicated)
-	// - valores em "por segundo"
-	// - o tick é feito por GameplayEffect periódico (não aqui)
 	// -------------------------
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Regen", ReplicatedUsing=OnRep_HealthRegen)
 	FGameplayAttributeData HealthRegen;

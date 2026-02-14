@@ -3,14 +3,14 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
-#include "AbilitySystemComponent.h"
+#include "AbilitySystemComponent.h" // ✅ necessário para EGameplayEffectReplicationMode
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
 
-// 🔥 Forward declaration do novo Data Asset
-class UDA_MeleeWeaponData;
+// ✅ Usa o enum central já existente (não redefinir!)
+#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h" // contém EAbilityInputID
 
-#include "SpellRiseCharacterBase.generated.h"
+class UDA_MeleeWeaponData;
 
 // Forward Declarations
 class USpellRiseAbilitySystemComponent;
@@ -24,9 +24,9 @@ class UCatalystAttributeSet;
 class UDerivedStatsAttributeSet;
 
 class USpellRiseWeaponComponent;
+class UAbilitySystemComponent;
 
-// Enum central do projeto
-enum class EAbilityInputID : uint8;
+#include "SpellRiseCharacterBase.generated.h"
 
 UCLASS()
 class SPELLRISE_API ASpellRiseCharacterBase
@@ -119,7 +119,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USpellRiseWeaponComponent> WeaponComponent = nullptr;
 
-	// 🔥 NOVO: Arma padrão (Data Asset unificado)
+	// Default weapon data
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|Weapon|Startup")
 	TObjectPtr<UDA_MeleeWeaponData> DefaultMeleeWeaponData = nullptr;
 
@@ -142,7 +142,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UDerivedStatsAttributeSet> DerivedStatsAttributeSet = nullptr;
 
-	// GAS: Startup / Config
+	// GAS config
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpellRise|GAS")
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Mixed;
 
@@ -171,6 +171,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "SpellRise|Input|Legacy")
 	FName Action_Cancel = TEXT("Cancel");
 
+	// GAS input bridge (symbols must exist in .cpp)
 	void AbilityInputPressed(EAbilityInputID InputID);
 	void AbilityInputReleased(EAbilityInputID InputID);
 

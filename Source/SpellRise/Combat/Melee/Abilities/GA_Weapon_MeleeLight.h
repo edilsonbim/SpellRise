@@ -4,10 +4,10 @@
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "GameplayTagContainer.h"
 #include "Engine/EngineTypes.h"
+
 #include "GA_Weapon_MeleeLight.generated.h"
 
 class UAnimMontage;
-class UGameplayEffect;
 class UAbilityTask_PlayMontageAndWait;
 class UAbilityTask_WaitGameplayEvent;
 class UAnimInstance;
@@ -17,129 +17,123 @@ class USpellRiseMeleeComponent;
 UCLASS()
 class SPELLRISE_API UGA_Weapon_MeleeLight : public USpellRiseGameplayAbility
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UGA_Weapon_MeleeLight();
+	UGA_Weapon_MeleeLight();
 
-    virtual void InputPressed(
-        const FGameplayAbilitySpecHandle Handle,
-        const FGameplayAbilityActorInfo* ActorInfo,
-        const FGameplayAbilityActivationInfo ActivationInfo) override;
+	virtual void InputPressed(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
-    virtual void ActivateAbility(
-        const FGameplayAbilitySpecHandle Handle,
-        const FGameplayAbilityActorInfo* ActorInfo,
-        const FGameplayAbilityActivationInfo ActivationInfo,
-        const FGameplayEventData* TriggerEventData) override;
+	virtual void ActivateAbility(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		const FGameplayEventData* TriggerEventData) override;
 
-    virtual void EndAbility(
-        const FGameplayAbilitySpecHandle Handle,
-        const FGameplayAbilityActorInfo* ActorInfo,
-        const FGameplayAbilityActivationInfo ActivationInfo,
-        bool bReplicateEndAbility,
-        bool bWasCancelled) override;
+	virtual void EndAbility(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo,
+		bool bReplicateEndAbility,
+		bool bWasCancelled) override;
 
 protected:
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Damage")
-    TSubclassOf<UGameplayEffect> DamageGE;
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Anim|Legacy")
+	TObjectPtr<UAnimMontage> AttackMontage_Legacy = nullptr;
 
-    // Fallback para montagem (caso o Data Asset não tenha)
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Anim|Legacy")
-    TObjectPtr<UAnimMontage> AttackMontage_Legacy = nullptr;
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Anim", meta=(ClampMin="0.1"))
+	float MontagePlayRate = 1.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Anim", meta = (ClampMin = "0.1"))
-    float MontagePlayRate = 1.0f;
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Debug")
+	bool bDebug = false;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Debug")
-    bool bDebug = false;
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Anim", meta=(ClampMin="0.25", ClampMax="3.0"))
+	float AttackSpeedMin = 0.25f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Anim", meta = (ClampMin = "0.25", ClampMax = "3.0"))
-    float AttackSpeedMin = 0.25f;
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Anim", meta=(ClampMin="0.25", ClampMax="3.0"))
+	float AttackSpeedMax = 3.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Anim", meta = (ClampMin = "0.25", ClampMax = "3.0"))
-    float AttackSpeedMax = 3.0f;
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Anim", meta=(ClampMin="0.0"))
+	float StopBlendOutTime = 0.15f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "Melee|Anim", meta = (ClampMin = "0.0"))
-    float StopBlendOutTime = 0.15f;
+	// Id lógico do ataque (p/ net/telemetry). Pode ficar 0 por enquanto.
+	UPROPERTY(EditDefaultsOnly, Category="Melee|Net")
+	uint8 AttackId = 0;
 
 private:
-    int32 ComboIndex = 0;
-    bool bAcceptingComboInput = false;
-    bool bComboInputQueued = false;
-    bool bDidHitThisWindow = false;
-    bool bShouldCancelOnWindowEnd = false;
+	int32 ComboIndex = 0;
+	bool bAcceptingComboInput = false;
+	bool bComboInputQueued = false;
 
-    UPROPERTY()
-    TObjectPtr<UAbilityTask_PlayMontageAndWait> MontageTask = nullptr;
+	UPROPERTY()
+	TObjectPtr<UAbilityTask_PlayMontageAndWait> MontageTask = nullptr;
 
-    UPROPERTY()
-    TObjectPtr<UAbilityTask_WaitGameplayEvent> WaitComboBeginTask = nullptr;
+	UPROPERTY()
+	TObjectPtr<UAbilityTask_WaitGameplayEvent> WaitComboBeginTask = nullptr;
 
-    UPROPERTY()
-    TObjectPtr<UAbilityTask_WaitGameplayEvent> WaitComboEndTask = nullptr;
+	UPROPERTY()
+	TObjectPtr<UAbilityTask_WaitGameplayEvent> WaitComboEndTask = nullptr;
 
-    // ============================================
-    // CACHE – DADOS OBTIDOS DO MELEE WEAPON DATA
-    // ============================================
-    UPROPERTY(Transient)
-    TObjectPtr<UAnimMontage> CachedAttackMontage = nullptr;
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> CachedAttackMontage = nullptr;
 
-    UPROPERTY(Transient)
-    TObjectPtr<USpellRiseMeleeComponent> CachedMeleeComponent = nullptr;
+	// ✅ weak ptr evita include no .h e evita dangling
+	TWeakObjectPtr<USpellRiseMeleeComponent> CachedMeleeComponent;
 
-    UPROPERTY(Transient)
-    TArray<FName> CachedComboSections;
+	UPROPERTY(Transient)
+	TArray<FName> CachedComboSections;
 
-    UPROPERTY(Transient)
-    int32 CachedMaxComboHits = 3;
+	UPROPERTY(Transient)
+	int32 CachedMaxComboHits = 3;
 
-    UPROPERTY(Transient)
-    FGameplayTag CachedComboWindowBeginTag;
+	UPROPERTY(Transient)
+	FGameplayTag CachedComboWindowBeginTag;
 
-    UPROPERTY(Transient)
-    FGameplayTag CachedComboWindowEndTag;
+	UPROPERTY(Transient)
+	FGameplayTag CachedComboWindowEndTag;
 
-    // ============================================
-    // HELPERS
-    // ============================================
-    AActor* GetAvatar() const;
-    UAnimInstance* GetAvatarAnimInstance() const;
-    UAbilitySystemComponent* GetASC() const;
-    UWorld* GetWorldContext() const;
+	// Helpers
+	AActor* GetAvatar() const;
+	APawn* GetAvatarPawn() const;
+	UAnimInstance* GetAvatarAnimInstance() const;
+	UAbilitySystemComponent* GetASC() const;
 
-    bool IsServer() const;
-    bool IsLocallyControlled() const;
+	bool IsServer() const;
+	bool IsLocallyControlled() const;
+	float GetAimYaw() const;
 
-    void CacheWeaponData();
-    void InitializeMeleeComponent();
+	void CacheWeaponData();
+	void InitializeMeleeComponent();
 
-    float GetAttackSpeedMultiplierFromASC() const;
-    void ApplyCurrentMontagePlayRate(float NewRate) const;
+	float GetAttackSpeedMultiplierFromASC() const;
+	void ApplyCurrentMontagePlayRate(float NewRate) const;
 
-    void StartComboAt(int32 NewIndex);
-    void TryApplyHitOnceForCurrentWindow();
-    void CancelCombo();
-    void FinishCombo(bool bCancelled);
+	void StartComboAt(int32 NewIndex);
+	int32 ExtractComboIndexFromPayload(const FGameplayEventData& Payload) const;
 
-    void StopAttackMontage();
-    void StopAllTasks();
+	void FireLocalStartAttackForWindow(int32 WindowIdx);
 
-    void StartWaitingForComboWindowBegin();
-    void StartWaitingForComboWindowEnd();
+	void StopAttackMontage();
+	void StopAllTasks();
+	void StartWaitingForComboWindowBegin();
+	void StartWaitingForComboWindowEnd();
+	void FinishCombo(bool bCancelled);
 
-    UFUNCTION()
-    void OnComboWindowBegin(FGameplayEventData Payload);
+	UFUNCTION()
+	void OnComboWindowBegin(FGameplayEventData Payload);
 
-    UFUNCTION()
-    void OnComboWindowEnd(FGameplayEventData Payload);
+	UFUNCTION()
+	void OnComboWindowEnd(FGameplayEventData Payload);
 
-    UFUNCTION()
-    void OnMontageCompleted();
+	UFUNCTION()
+	void OnMontageCompleted();
 
-    UFUNCTION()
-    void OnMontageInterrupted();
+	UFUNCTION()
+	void OnMontageInterrupted();
 
-    UFUNCTION()
-    void OnMontageCancelled();
+	UFUNCTION()
+	void OnMontageCancelled();
 };

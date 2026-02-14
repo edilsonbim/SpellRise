@@ -1,3 +1,5 @@
+// SpellRiseWeaponActor.h
+
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,6 +8,11 @@
 
 class UStaticMeshComponent;
 
+/**
+ * Visual-only weapon actor.
+ * - No collision / no overlap (server-authoritative melee uses traces against targets).
+ * - Provides a StaticMeshComponent that MUST contain sockets used by Melee trace (e.g. Melee_Base / Melee_Tip).
+ */
 UCLASS(BlueprintType, Blueprintable)
 class SPELLRISE_API ASpellRiseWeaponActor : public AActor
 {
@@ -16,4 +23,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weapon")
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+protected:
+	virtual void BeginPlay() override;
+
+private:
+	void ValidateTraceSockets() const;
 };

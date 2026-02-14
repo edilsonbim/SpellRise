@@ -1,4 +1,4 @@
-﻿#include "DA_MeleeWeaponData.h"
+﻿#include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h"
 
 UDA_MeleeWeaponData::UDA_MeleeWeaponData()
 	: WeaponId(NAME_None)
