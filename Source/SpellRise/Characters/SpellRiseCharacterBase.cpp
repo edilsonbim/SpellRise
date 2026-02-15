@@ -1,11 +1,14 @@
-#include "SpellRiseCharacterBase.h"
 
-// Engine - Ordem organizada
+#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "InputCoreTypes.h"
+
+// Engine
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
 #include "Components/ChildActorComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerState.h"
 
 // GAS Core
 #include "AbilitySystemBlueprintLibrary.h"
@@ -13,7 +16,7 @@
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 
-// SpellRise GAS - Includes explícitos
+// SpellRise GAS
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
@@ -22,58 +25,61 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 
-// SpellRise Weapons
+// SpellRise Weapons / Data
 #include "SpellRise/Weapons/Components/SpellRiseWeaponComponent.h"
-#include "SpellRise/Weapons/Data/DA_WeaponDefinition.h"
-#include "Animation/AnimInstance.h"  // ESSENCIAL - Resolve o erro UAnimInstance incomplete
+#include "SpellRise/Combat/Melee/Runtime/SpellRiseMeleeComponent.h"
+#include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h"
+
+#include "Animation/AnimInstance.h"
+
 // ---------------------------------------------------------
-// Gameplay Tags (Versão otimizada)
+// Gameplay Tags
 // ---------------------------------------------------------
 namespace SpellRiseTags
 {
-	FGameplayTag State_Dead()
+	static FGameplayTag State_Dead()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"));
 		return Tag;
 	}
 
-	FGameplayTag State_DerivedStats_Active()
+	static FGameplayTag State_DerivedStats_Active()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.DerivedStats.Active"));
 		return Tag;
 	}
 
-	FGameplayTag Event_Abilities_Changed()
+	static FGameplayTag Event_Abilities_Changed()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Event.Abilities.Changed"));
 		return Tag;
 	}
 
-	FGameplayTag Data_MaxHealth()
+	static FGameplayTag Data_MaxHealth()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth"));
 		return Tag;
 	}
 
-	FGameplayTag Data_MaxMana()
+	static FGameplayTag Data_MaxMana()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxMana"));
 		return Tag;
 	}
 
-	FGameplayTag Data_MaxStamina()
+	static FGameplayTag Data_MaxStamina()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxStamina"));
 		return Tag;
 	}
 
-	FGameplayTag Data_MaxShield()
+	static FGameplayTag Data_MaxShield()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxShield"));
 		return Tag;
 	}
 
-	FGameplayTag Data_CarryWeight()
+	static FGameplayTag Data_CarryWeight()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.CarryWeight"));
 		return Tag;
@@ -87,7 +93,7 @@ void ASpellRiseCharacterBase::ApplyMovementSpeedFromAttributes()
 {
 	USpellRiseAbilitySystemComponent* ASC = Cast<USpellRiseAbilitySystemComponent>(GetAbilitySystemComponent());
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
-	
+
 	if (!ASC || !MoveComp)
 	{
 		return;
@@ -110,6 +116,39 @@ void ASpellRiseCharacterBase::OnMoveSpeedChanged(const FOnAttributeChangeData& D
 	ApplyMovementSpeedFromAttributes();
 }
 
+// ===== FIX LNK2019: Implementação dos símbolos faltando =====
+void ASpellRiseCharacterBase::AbilityInputPressed(EAbilityInputID InputID)
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	AbilitySystemComponent->AbilityLocalInputPressed(static_cast<int32>(InputID));
+}
+
+void ASpellRiseCharacterBase::AbilityInputReleased(EAbilityInputID InputID)
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	AbilitySystemComponent->AbilityLocalInputReleased(static_cast<int32>(InputID));
+}
+
+
+
 // ---------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------
@@ -127,7 +166,8 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
 
 	WeaponComponent = CreateDefaultSubobject<USpellRiseWeaponComponent>(TEXT("WeaponComponent"));
-
+	MeleeComponent  = CreateDefaultSubobject<USpellRiseMeleeComponent>(TEXT("MeleeComponent"));
+	
 	DeadStateTag = SpellRiseTags::State_Dead();
 
 	GetCapsuleComponent()->InitCapsuleSize(35.0f, 90.0f);
@@ -245,8 +285,10 @@ void ASpellRiseCharacterBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Owning client drives input → ASC input queue → ProcessAbilityInput()
 	if (!IsLocallyControlled())
 	{
+		// Remote proxies should not keep stale input flags
 		if (!HasAuthority() && AbilitySystemComponent)
 		{
 			AbilitySystemComponent->SR_ClearAbilityInput();
@@ -289,6 +331,10 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 		return;
 	}
 
+	// ✅ TESTE FORÇADO
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed,  this, &ASpellRiseCharacterBase::LI_PrimaryAttackPressed);
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, this, &ASpellRiseCharacterBase::LI_PrimaryAttackReleased);
+
 	if (Action_PrimaryAttack != NAME_None)
 	{
 		PlayerInputComponent->BindAction(Action_PrimaryAttack, IE_Pressed,  this, &ASpellRiseCharacterBase::LI_PrimaryAttackPressed);
@@ -308,30 +354,22 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 	}
 }
 
-void ASpellRiseCharacterBase::AbilityInputPressed(EAbilityInputID InputID)
+void ASpellRiseCharacterBase::LI_PrimaryAttackPressed()
 {
-	if (!AbilitySystemComponent)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GAS][Input] ASC is null on %s"), *GetName());
-		return;
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[INPUT] LMB -> PrimaryAttack pressed | Char=%s | LC=%d"),
+		*GetNameSafe(this), IsLocallyControlled() ? 1 : 0);
 
-	AbilitySystemComponent->SR_AbilityInputPressed(static_cast<int32>(InputID));
+	AbilityInputPressed(EAbilityInputID::PrimaryAttack);
 }
 
-void ASpellRiseCharacterBase::AbilityInputReleased(EAbilityInputID InputID)
+void ASpellRiseCharacterBase::LI_PrimaryAttackReleased()
 {
-	if (!AbilitySystemComponent)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GAS][Input] ASC is null on %s"), *GetName());
-		return;
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[INPUT] LMB -> PrimaryAttack released | Char=%s | LC=%d"),
+		*GetNameSafe(this), IsLocallyControlled() ? 1 : 0);
 
-	AbilitySystemComponent->SR_AbilityInputReleased(static_cast<int32>(InputID));
+	AbilityInputReleased(EAbilityInputID::PrimaryAttack);
 }
 
-void ASpellRiseCharacterBase::LI_PrimaryAttackPressed()    { AbilityInputPressed(EAbilityInputID::PrimaryAttack); }
-void ASpellRiseCharacterBase::LI_PrimaryAttackReleased()   { AbilityInputReleased(EAbilityInputID::PrimaryAttack); }
 void ASpellRiseCharacterBase::LI_SecondaryAttackPressed()  { AbilityInputPressed(EAbilityInputID::SecondaryAttack); }
 void ASpellRiseCharacterBase::LI_SecondaryAttackReleased() { AbilityInputReleased(EAbilityInputID::SecondaryAttack); }
 void ASpellRiseCharacterBase::LI_CancelPressed()           { AbilityInputPressed(EAbilityInputID::Cancel); }
@@ -360,7 +398,7 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 }
 
 // ---------------------------------------------------------
-// Possession / Replication
+// Possession / Replication (FIX: chaves/indentação)
 // ---------------------------------------------------------
 void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 {
@@ -382,43 +420,57 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	InitASCActorInfo();
 	BindASCDelegates();
 
-	UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] PossessedBy: Auth=%d Char=%s WeaponComp=%s DefaultWeapon=%s CompEquippedWeapon=%s"),
+	UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] PossessedBy: Auth=%d Char=%s WeaponComp=%s DefaultMeleeWeaponData=%s CompEquippedWeapon=%s"),
 		HasAuthority() ? 1 : 0,
 		*GetNameSafe(this),
 		*GetNameSafe(WeaponComponent),
-		*GetNameSafe(DefaultWeapon),
+		*GetNameSafe(DefaultMeleeWeaponData),
 		WeaponComponent ? *GetNameSafe(WeaponComponent->GetEquippedWeapon()) : TEXT("NULL"));
 
-	if (HasAuthority())
+	if (!HasAuthority())
 	{
-		if (!WeaponComponent)
-		{
-			UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] WeaponComponent STILL NULL on server for %s. Fix BP: remove duplicate weapon components and keep the native WeaponComponent."), *GetNameSafe(this));
-		}
-		else
-		{
-			if (DefaultWeapon)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] Equipping DefaultWeapon on server: %s -> %s"),
-					*GetNameSafe(this), *GetNameSafe(DefaultWeapon));
-
-				WeaponComponent->EquipWeapon(DefaultWeapon);
-			}
-			else if (UDA_WeaponDefinition* Already = WeaponComponent->GetEquippedWeapon())
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] DefaultWeapon NULL, using component EquippedWeapon: %s"), *GetNameSafe(Already));
-				WeaponComponent->EquipWeapon(Already);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] NO WEAPON on server for %s. Set DefaultWeapon or WeaponComponent.EquippedWeapon."), *GetNameSafe(this));
-			}
-		}
-
-		GrantAbilities(StartingAbilities);
-		ApplyRegenStartupEffects();
-		ApplyStartupEffects();
+		return;
 	}
+
+	if (!WeaponComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] WeaponComponent is NULL on server for %s"), *GetNameSafe(this));
+		return;
+	}
+
+	// Equip default weapon
+	if (DefaultMeleeWeaponData)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] Equipping DefaultMeleeWeaponData on server: %s -> %s"),
+			*GetNameSafe(this), *GetNameSafe(DefaultMeleeWeaponData));
+
+		WeaponComponent->EquipWeapon(DefaultMeleeWeaponData);
+	}
+	else if (const UDA_MeleeWeaponData* Already = WeaponComponent->GetEquippedWeapon())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] DefaultMeleeWeaponData NULL, using component EquippedWeapon: %s"), *GetNameSafe(Already));
+		WeaponComponent->EquipWeapon(Already);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] NO WEAPON on server for %s. Set DefaultMeleeWeaponData."), *GetNameSafe(this));
+	}
+
+	// Grant weapon abilities (if set)
+	if (DefaultMeleeWeaponData)
+	{
+		for (TSubclassOf<UGameplayAbility> AbilityClass : DefaultMeleeWeaponData->GrantAbilities)
+		{
+			if (AbilityClass)
+			{
+				GrantAbilities({ AbilityClass });
+			}
+		}
+	}
+
+	GrantAbilities(StartingAbilities);
+	ApplyRegenStartupEffects();
+	ApplyStartupEffects();
 }
 
 void ASpellRiseCharacterBase::OnRep_PlayerState()
@@ -878,10 +930,7 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 		GetComponents<UChildActorComponent>(ChildActorComps);
 		for (UChildActorComponent* CAC : ChildActorComps)
 		{
-			if (!CAC)
-			{
-				continue;
-			}
+			if (!CAC) continue;
 			CAC->DestroyChildActor();
 		}
 	}
@@ -891,10 +940,7 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 		GetAttachedActors(AttachedActors);
 		for (AActor* Attached : AttachedActors)
 		{
-			if (!Attached)
-			{
-				continue;
-			}
+			if (!Attached) continue;
 
 			if (Attached->GetOwner() == this)
 			{

@@ -7,11 +7,10 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "GameplayTagContainer.h"
-#include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerState.h"
+#include "Math/UnrealMathUtility.h"
 
 // ---------------------------------------------------------
-// Gameplay Tags (LAZY INIT)
+// Tags (lazy init)
 // ---------------------------------------------------------
 namespace SpellRiseTags
 {
@@ -52,7 +51,7 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
-	// Damage types
+	// Damage types (prefer Spec dynamic asset tags)
 	inline const FGameplayTag& DamageType_Spell()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell"), false);
@@ -65,7 +64,7 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
-	// Elements (optional)
+	// Elements
 	inline const FGameplayTag& Damage_Element_Fire()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Damage.Element.Fire"), false);
@@ -118,9 +117,6 @@ namespace SpellRiseTags
 // ---------------------------------------------------------
 UExecCalc_Damage::FCaptureDefs::FCaptureDefs()
 {
-	// IMPORTANT:
-	// Use bSnapshot=false so damage uses *current* derived stats at hit time.
-
 	WeaponDamageMultiplierDef = FGameplayEffectAttributeCaptureDefinition(
 		UDerivedStatsAttributeSet::GetWeaponDamageMultiplierAttribute(),
 		EGameplayEffectAttributeCaptureSource::Source,
@@ -215,31 +211,7 @@ UExecCalc_Damage::UExecCalc_Damage()
 }
 
 // ---------------------------------------------------------
-// Avatar resolve
-// ---------------------------------------------------------
-static AActor* ResolveAvatarActor(AActor* OwnerActor, AActor* AvatarActor)
-{
-	if (APlayerState* PS = Cast<APlayerState>(AvatarActor))
-	{
-		if (APawn* Pawn = PS->GetPawn())
-		{
-			return Pawn;
-		}
-	}
-
-	if (APlayerState* PSOwner = Cast<APlayerState>(OwnerActor))
-	{
-		if (APawn* Pawn = PSOwner->GetPawn())
-		{
-			return Pawn;
-		}
-	}
-
-	return AvatarActor ? AvatarActor : OwnerActor;
-}
-
-// ---------------------------------------------------------
-// Random (crit roll)
+// Random (server-only roll is fine)
 // ---------------------------------------------------------
 static bool SR_RollChancePct(float ChancePct)
 {
@@ -257,67 +229,53 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	UAbilitySystemComponent* SourceASC = ExecutionParams.GetSourceAbilitySystemComponent();
 	UAbilitySystemComponent* TargetASC = ExecutionParams.GetTargetAbilitySystemComponent();
+	if (!SourceASC || !TargetASC)
+	{
+		return;
+	}
 
-	AActor* SourceOwner = SourceASC ? SourceASC->GetOwnerActor() : nullptr;
-	AActor* TargetOwner = TargetASC ? TargetASC->GetOwnerActor() : nullptr;
+	const FGameplayTagContainer& SpecDynTags = Spec.GetDynamicAssetTags();
 
-	AActor* SourceAvatar = SourceASC ? SourceASC->GetAvatarActor() : nullptr;
-	AActor* TargetAvatar = TargetASC ? TargetASC->GetAvatarActor() : nullptr;
-
-	AActor* SourceAvatarResolved = ResolveAvatarActor(SourceOwner, SourceAvatar);
-	AActor* TargetAvatarResolved = ResolveAvatarActor(TargetOwner, TargetAvatar);
-
-	const FGameplayTagContainer* SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
-	const FGameplayTagContainer* TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
-
-	const bool bIsSpell = (SourceTags && SpellRiseTags::DamageType_Spell().IsValid())
-		? SourceTags->HasTag(SpellRiseTags::DamageType_Spell())
-		: false;
-
-	const bool bIsMelee = (!bIsSpell && SourceTags && SpellRiseTags::DamageType_Melee().IsValid())
-		? SourceTags->HasTag(SpellRiseTags::DamageType_Melee())
-		: false;
+	// Prefer spec dynamic tags for type
+	const bool bIsSpell = SpellRiseTags::DamageType_Spell().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Spell());
+	const bool bIsMelee = (!bIsSpell) && SpellRiseTags::DamageType_Melee().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Melee());
 
 	const TCHAR* TypeStr =
 		bIsSpell ? TEXT("Spell") :
 		(bIsMelee ? TEXT("Melee") : TEXT("Weapon"));
 
 	FAggregatorEvaluateParameters Params;
-	Params.SourceTags = SourceTags;
-	Params.TargetTags = TargetTags;
+	Params.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
+	Params.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
 
+	// Captured source stats
 	float WeaponDamageMult = 1.f;
 	float SpellPowerMult = 1.f;
-	float CritChance = 0.f;
-	float CritDamageMult = 1.5f;
-	float ArmorPenPct = 0.f;
-	float ElemPenPct = 0.f;
 
-	const bool bOkWDM = ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WeaponDamageMultiplierDef, Params, WeaponDamageMult);
-	const bool bOkSPM = ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.SpellPowerMultiplierDef, Params, SpellPowerMult);
-	const bool bOkCC  = ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritChanceDef, Params, CritChance);
-	const bool bOkCD  = ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, CritDamageMult);
-	const bool bOkAP  = ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, ArmorPenPct);
-	const bool bOkEP  = ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ElementPenetrationDef, Params, ElemPenPct);
+	float CritChance01 = 0.f;     // 0..1
+	float CritDamageMult = 1.5f;  // multiplier (1.5..2.0)
+	float ArmorPenPct = 0.f;      // percent 0..100
+	float ElemPenPct = 0.f;       // percent 0..100
+
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WeaponDamageMultiplierDef, Params, WeaponDamageMult);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.SpellPowerMultiplierDef, Params, SpellPowerMult);
+
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritChanceDef, Params, CritChance01);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, CritDamageMult);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, ArmorPenPct);
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ElementPenetrationDef, Params, ElemPenPct);
 
 	WeaponDamageMult = FMath::Clamp(WeaponDamageMult, 0.f, 10.f);
 	SpellPowerMult   = FMath::Clamp(SpellPowerMult, 0.f, 10.f);
-	CritChance       = FMath::Clamp(CritChance, 0.f, 0.60f);
-	CritDamageMult   = FMath::Clamp(CritDamageMult, 1.f, 3.0f);
+
+	// DESIGN: soft cap 25% crit chance, 200% crit damage
+	CritChance01     = FMath::Clamp(CritChance01, 0.f, 0.25f);
+	CritDamageMult   = FMath::Clamp(CritDamageMult, 1.f, 2.0f);
+
 	ArmorPenPct      = FMath::Clamp(ArmorPenPct, 0.f, 75.f);
 	ElemPenPct       = FMath::Clamp(ElemPenPct, 0.f, 75.f);
 
-	UE_LOG(LogTemp, Warning, TEXT("[DMG_CAP] Type=%s | SrcOwner=%s SrcAvatar=%s | TgtOwner=%s TgtAvatar=%s"),
-		TypeStr,
-		SourceOwner ? *SourceOwner->GetName() : TEXT("None"),
-		SourceAvatarResolved ? *SourceAvatarResolved->GetName() : TEXT("None"),
-		TargetOwner ? *TargetOwner->GetName() : TEXT("None"),
-		TargetAvatarResolved ? *TargetAvatarResolved->GetName() : TEXT("None"));
-
-	UE_LOG(LogTemp, Warning, TEXT("[DMG_CAP] ok(WDM=%d SPM=%d CC=%d CD=%d AP=%d EP=%d) | WDM=%.3f SPM=%.3f CC=%.3f CD=%.3f AP=%.1f EP=%.1f"),
-		bOkWDM ? 1 : 0, bOkSPM ? 1 : 0, bOkCC ? 1 : 0, bOkCD ? 1 : 0, bOkAP ? 1 : 0, bOkEP ? 1 : 0,
-		WeaponDamageMult, SpellPowerMult, CritChance, CritDamageMult, ArmorPenPct, ElemPenPct);
-
+	// Base + optional scaling
 	const float BaseDamage = FMath::Max(
 		0.f,
 		bIsSpell
@@ -339,6 +297,7 @@ void UExecCalc_Damage::Execute_Implementation(
 	float FinalDamage = BaseDamage * PowerMultiplier * DamageScaling;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 
+	// Target defenses
 	float PhysicalResistPct = 0.f, MagicResistPct = 0.f, Armor = 0.f;
 	float ElementalResistBasePct = 0.f;
 	float FireResistPct = 0.f;
@@ -362,53 +321,44 @@ void UExecCalc_Damage::Execute_Implementation(
 	Armor = FMath::Max(0.f, Armor);
 
 	const float ArmorPen01 = FMath::Clamp(ArmorPenPct / 100.f, 0.f, 0.75f);
-	const float ElemPen01 = FMath::Clamp(ElemPenPct / 100.f, 0.f, 0.75f);
+	const float ElemPen01  = FMath::Clamp(ElemPenPct  / 100.f, 0.f, 0.75f);
 
 	const float EffectiveArmor = Armor * (1.f - ArmorPen01);
 
-	float SpellResist01 = 0.f;
+	// Mitigation
+	float Mitigation = 0.f;
+
 	if (bIsSpell)
 	{
 		float SelectedElemResistPct = -1.f;
 
-		if (SpellRiseTags::Damage_Element_Fire().IsValid() && Spec.GetDynamicAssetTags().HasTag(SpellRiseTags::Damage_Element_Fire()))
-		{
+		if (SpellRiseTags::Damage_Element_Fire().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Fire()))
 			SelectedElemResistPct = FireResistPct;
-		}
-		else if (SpellRiseTags::Damage_Element_Frost().IsValid() && Spec.GetDynamicAssetTags().HasTag(SpellRiseTags::Damage_Element_Frost()))
-		{
+		else if (SpellRiseTags::Damage_Element_Frost().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Frost()))
 			SelectedElemResistPct = FrostResistPct;
-		}
-		else if (SpellRiseTags::Damage_Element_Lightning().IsValid() && Spec.GetDynamicAssetTags().HasTag(SpellRiseTags::Damage_Element_Lightning()))
-		{
+		else if (SpellRiseTags::Damage_Element_Lightning().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Lightning()))
 			SelectedElemResistPct = LightningResistPct;
-		}
-		else if (SpellRiseTags::Damage_Element_Elemental().IsValid() && Spec.GetDynamicAssetTags().HasTag(SpellRiseTags::Damage_Element_Elemental()))
-		{
+		else if (SpellRiseTags::Damage_Element_Elemental().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Elemental()))
 			SelectedElemResistPct = ElementalResistBasePct;
-		}
 
 		const float BasePct =
 			(SelectedElemResistPct >= 0.f) ? SelectedElemResistPct :
 			(ElementalResistBasePct > 0.f ? ElementalResistBasePct : MagicResistPct);
 
-		SpellResist01 = FMath::Clamp(BasePct / 100.f, 0.f, 0.75f);
+		float SpellResist01 = FMath::Clamp(BasePct / 100.f, 0.f, 0.75f);
 		SpellResist01 *= (1.f - ElemPen01);
 		SpellResist01 = FMath::Clamp(SpellResist01, 0.f, 0.75f);
-	}
 
-	const float PhysicalResist01 = PhysicalResistPct / 100.f;
-
-	const float ArmorDenom = FMath::Max(1.f, EffectiveArmor + 200.f);
-	const float ArmorMitigation = EffectiveArmor / ArmorDenom;
-
-	float Mitigation = 0.f;
-	if (bIsSpell)
-	{
 		Mitigation = SpellResist01;
 	}
 	else
 	{
+		const float PhysicalResist01 = PhysicalResistPct / 100.f;
+
+		// Armor curve: Armor / (Armor + 200)
+		const float ArmorDenom = FMath::Max(1.f, EffectiveArmor + 200.f);
+		const float ArmorMitigation = EffectiveArmor / ArmorDenom;
+
 		Mitigation = (ArmorMitigation * 0.70f) + (PhysicalResist01 * 0.30f);
 	}
 
@@ -417,12 +367,13 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 
+	// Crit
 	bool bCrit = false;
 	float CritMult = 1.f;
 
 	if (FinalDamage > 0.f)
 	{
-		const float CritChancePct = CritChance * 100.f;
+		const float CritChancePct = CritChance01 * 100.f;
 		bCrit = (ForceCrit > 0.f) ? true : SR_RollChancePct(CritChancePct);
 
 		if (bCrit)
@@ -442,17 +393,5 @@ void UExecCalc_Damage::Execute_Implementation(
 				FinalDamage
 			)
 		);
-
-		UE_LOG(LogTemp, Warning, TEXT("[DAMAGE] Base=%.2f Final=%.2f Mit=%.2f Type=%s Crit=%s x%.2f (WDM=%.2f SPM=%.2f Scale=%.2f CC=%.2f%%)"),
-			BaseDamage,
-			FinalDamage,
-			Mitigation,
-			TypeStr,
-			bCrit ? TEXT("YES") : TEXT("NO"),
-			CritMult,
-			WeaponDamageMult,
-			SpellPowerMult,
-			DamageScaling,
-			CritChance * 100.f);
 	}
 }

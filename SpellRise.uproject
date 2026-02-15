@@ -45,6 +45,10 @@
 		{
 			"Name": "CommonUI",
 			"Enabled": false
+		},
+		{
+			"Name": "AIAssistant",
+			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [
