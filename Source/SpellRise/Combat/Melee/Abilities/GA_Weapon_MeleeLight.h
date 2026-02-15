@@ -4,6 +4,7 @@
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "GameplayTagContainer.h"
 #include "Engine/EngineTypes.h"
+#include "TimerManager.h"
 
 #include "GA_Weapon_MeleeLight.generated.h"
 
@@ -59,7 +60,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="Melee|Anim", meta=(ClampMin="0.0"))
 	float StopBlendOutTime = 0.15f;
 
-	// Id lógico do ataque (p/ net/telemetry). Pode ficar 0 por enquanto.
 	UPROPERTY(EditDefaultsOnly, Category="Melee|Net")
 	uint8 AttackId = 0;
 
@@ -80,7 +80,6 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> CachedAttackMontage = nullptr;
 
-	// ✅ weak ptr evita include no .h e evita dangling
 	TWeakObjectPtr<USpellRiseMeleeComponent> CachedMeleeComponent;
 
 	UPROPERTY(Transient)
@@ -95,7 +94,11 @@ private:
 	UPROPERTY(Transient)
 	FGameplayTag CachedComboWindowEndTag;
 
+	// ✅ Dedicated-server safe: server não depende de anim notify para saber quando a seção terminou
+	FTimerHandle ServerSectionEndTimer;
+
 	// Helpers
+	
 	AActor* GetAvatar() const;
 	APawn* GetAvatarPawn() const;
 	UAnimInstance* GetAvatarAnimInstance() const;
@@ -122,6 +125,16 @@ private:
 	void StartWaitingForComboWindowEnd();
 	void FinishCombo(bool bCancelled);
 
+	// ✅ Anti auto-chain (runtime)
+	void ClearAutoChainLinks() const;
+	FName GetCurrentMontageSectionName() const;
+	bool TryAdvanceCombo_Server(const TCHAR* Reason);
+	
+	// ✅ Server authority over section endings
+	void ScheduleServerSectionEndTimer();
+	UFUNCTION()
+	void OnServerSectionEnd();
+
 	UFUNCTION()
 	void OnComboWindowBegin(FGameplayEventData Payload);
 
@@ -136,4 +149,10 @@ private:
 
 	UFUNCTION()
 	void OnMontageCancelled();
+	
+	// Helpers
+	int32 GetCurrentComboIndexFromMontage() const;
+	void SetNextSection_LocalOrASC(const FName& From, const FName& To);
+	bool IsMontagePlaying() const;
+
 };

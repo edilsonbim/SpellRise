@@ -1,4 +1,3 @@
-// SpellRiseCharacterBase.cpp (EDITADO - completo, focado no FIX do LNK e includes)
 
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "InputCoreTypes.h"
@@ -28,6 +27,7 @@
 
 // SpellRise Weapons / Data
 #include "SpellRise/Weapons/Components/SpellRiseWeaponComponent.h"
+#include "SpellRise/Combat/Melee/Runtime/SpellRiseMeleeComponent.h"
 #include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h"
 
 #include "Animation/AnimInstance.h"
@@ -148,6 +148,7 @@ void ASpellRiseCharacterBase::AbilityInputReleased(EAbilityInputID InputID)
 }
 
 
+
 // ---------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------
@@ -165,7 +166,8 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
 
 	WeaponComponent = CreateDefaultSubobject<USpellRiseWeaponComponent>(TEXT("WeaponComponent"));
-
+	MeleeComponent  = CreateDefaultSubobject<USpellRiseMeleeComponent>(TEXT("MeleeComponent"));
+	
 	DeadStateTag = SpellRiseTags::State_Dead();
 
 	GetCapsuleComponent()->InitCapsuleSize(35.0f, 90.0f);

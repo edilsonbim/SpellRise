@@ -24,6 +24,7 @@ class UCatalystAttributeSet;
 class UDerivedStatsAttributeSet;
 
 class USpellRiseWeaponComponent;
+class USpellRiseMeleeComponent;
 class UAbilitySystemComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
@@ -54,6 +55,10 @@ public:
 	// Weapon
 	UFUNCTION(BlueprintPure, Category = "SpellRise|Weapon")
 	FORCEINLINE USpellRiseWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
+
+	// Melee
+	UFUNCTION(BlueprintPure, Category = "SpellRise|Melee")
+	FORCEINLINE USpellRiseMeleeComponent* GetMeleeComponent() const { return MeleeComponent; }
 
 	// GAS Input bridge
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS|Input")
@@ -118,6 +123,11 @@ protected:
 	// Components
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USpellRiseWeaponComponent> WeaponComponent = nullptr;
+
+	// Combat (melee runtime)
+	// Exists as a default subobject on the base Character so every BP child inherits it consistently.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USpellRiseMeleeComponent> MeleeComponent = nullptr;
 
 	// Default weapon data
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|Weapon|Startup")

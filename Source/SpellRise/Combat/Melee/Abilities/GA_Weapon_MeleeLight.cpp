@@ -1,3 +1,9 @@
+// GA_Weapon_MeleeLight.cpp (COMPLETO - corrigido para DS + Owning Client)
+// - Predição local de transição de seção (cliente) + autoridade no server
+// - Helpers implementados (corrige LNK2019 / members missing)
+// - ComboIndex sincroniza pela seção atual do montage
+// - Server continua podendo decidir via timer, mas o client não fica preso em Hit1
+
 #include "GA_Weapon_MeleeLight.h"
 
 #include "AbilitySystemComponent.h"
@@ -84,6 +90,82 @@ float UGA_Weapon_MeleeLight::GetAimYaw() const
 	const FRotator YawRot = C ? C->GetControlRotation() : Avatar->GetActorRotation();
 	return YawRot.Yaw;
 }
+
+// --------------------------
+// Helpers (NOVO)
+// --------------------------
+
+bool UGA_Weapon_MeleeLight::IsMontagePlaying() const
+{
+	if (!CachedAttackMontage) return false;
+
+	if (UAbilitySystemComponent* ASC = GetASC())
+	{
+		return ASC->GetCurrentMontage() == CachedAttackMontage.Get();
+	}
+
+	if (UAnimInstance* Anim = GetAvatarAnimInstance())
+	{
+		return Anim->Montage_IsPlaying(CachedAttackMontage.Get());
+	}
+
+	return false;
+}
+
+int32 UGA_Weapon_MeleeLight::GetCurrentComboIndexFromMontage() const
+{
+	if (!CachedAttackMontage || CachedComboSections.Num() == 0)
+	{
+		return ComboIndex;
+	}
+
+	FName CurrentSection = NAME_None;
+
+	// Prefer AnimInstance query (mais confiável para seção atual)
+	if (UAnimInstance* Anim = GetAvatarAnimInstance())
+	{
+		if (Anim->Montage_IsPlaying(CachedAttackMontage.Get()))
+		{
+			CurrentSection = Anim->Montage_GetCurrentSection(CachedAttackMontage.Get());
+		}
+	}
+
+	// Fallback: se não achou, mantém ComboIndex
+	if (CurrentSection.IsNone())
+	{
+		return ComboIndex;
+	}
+
+	for (int32 i = 0; i < CachedComboSections.Num(); i++)
+	{
+		if (CachedComboSections[i] == CurrentSection)
+		{
+			return i;
+		}
+	}
+
+	return ComboIndex;
+}
+
+void UGA_Weapon_MeleeLight::SetNextSection_LocalOrASC(const FName& From, const FName& To)
+{
+	if (!CachedAttackMontage) return;
+
+	if (UAbilitySystemComponent* ASC = GetASC())
+	{
+		ASC->CurrentMontageSetNextSectionName(From, To);
+		return;
+	}
+
+	if (UAnimInstance* Anim = GetAvatarAnimInstance())
+	{
+		Anim->Montage_SetNextSection(From, To, CachedAttackMontage.Get());
+	}
+}
+
+// --------------------------
+// Weapon cache/init
+// --------------------------
 
 void UGA_Weapon_MeleeLight::CacheWeaponData()
 {
@@ -178,6 +260,123 @@ int32 UGA_Weapon_MeleeLight::ExtractComboIndexFromPayload(const FGameplayEventDa
 	return FMath::Clamp(Idx, 0, FMath::Max(0, CachedMaxComboHits - 1));
 }
 
+void UGA_Weapon_MeleeLight::ClearAutoChainLinks() const
+{
+	// Mata autochain do asset em runtime
+	if (!CachedAttackMontage || CachedComboSections.Num() == 0)
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* ASC = GetASC())
+	{
+		for (const FName& Sec : CachedComboSections)
+		{
+			ASC->CurrentMontageSetNextSectionName(Sec, NAME_None);
+		}
+		return;
+	}
+
+	if (UAnimInstance* Anim = GetAvatarAnimInstance())
+	{
+		for (const FName& Sec : CachedComboSections)
+		{
+			Anim->Montage_SetNextSection(Sec, NAME_None, CachedAttackMontage.Get());
+		}
+	}
+}
+
+// --------------------------
+// Server timer decide avanço
+// --------------------------
+
+void UGA_Weapon_MeleeLight::ScheduleServerSectionEndTimer()
+{
+	if (!IsServer())
+	{
+		return;
+	}
+
+	AActor* Avatar = GetAvatar();
+	if (!Avatar || !CachedAttackMontage)
+	{
+		return;
+	}
+
+	UWorld* World = Avatar->GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().ClearTimer(ServerSectionEndTimer);
+
+	// Re-leitura segura do índice pela seção atual
+	ComboIndex = GetCurrentComboIndexFromMontage();
+	if (!CachedComboSections.IsValidIndex(ComboIndex))
+	{
+		return;
+	}
+
+	const int32 SectionIdx = CachedAttackMontage->GetSectionIndex(CachedComboSections[ComboIndex]);
+	if (SectionIdx == INDEX_NONE)
+	{
+		return;
+	}
+
+	const float AttackSpeedMult = GetAttackSpeedMultiplierFromASC();
+	const float EffectiveRate = FMath::Clamp(MontagePlayRate * AttackSpeedMult, 0.05f, 5.0f);
+
+	const float SectionLen = CachedAttackMontage->GetSectionLength(SectionIdx);
+
+	const float LeadTime = 0.05f;
+	const float Delay = FMath::Max(0.02f, (SectionLen / EffectiveRate) - LeadTime);
+
+	World->GetTimerManager().SetTimer(
+		ServerSectionEndTimer,
+		this,
+		&UGA_Weapon_MeleeLight::OnServerSectionEnd,
+		Delay,
+		false
+	);
+}
+
+void UGA_Weapon_MeleeLight::OnServerSectionEnd()
+{
+	if (!IsServer())
+	{
+		return;
+	}
+
+	ComboIndex = GetCurrentComboIndexFromMontage();
+
+	const bool bCanAdvance = (ComboIndex < CachedMaxComboHits - 1);
+	const bool bWantsAdvance = bComboInputQueued && bCanAdvance;
+
+	bComboInputQueued = false;
+
+	if (bWantsAdvance && CachedComboSections.IsValidIndex(ComboIndex) && CachedComboSections.IsValidIndex(ComboIndex + 1))
+	{
+		const FName From = CachedComboSections[ComboIndex];
+		const FName To   = CachedComboSections[ComboIndex + 1];
+
+		SetNextSection_LocalOrASC(From, To);
+
+		UE_LOG(LogTemp, Warning, TEXT("[GA][Server] Advance: %s -> %s | ComboIndex=%d"),
+			*From.ToString(), *To.ToString(), ComboIndex);
+
+		ComboIndex++;
+		ScheduleServerSectionEndTimer();
+		return;
+	}
+
+	// Não avançou: deixa terminar e finaliza no OnMontageCompleted()
+}
+
+// --------------------------
+// Combo start / montage task
+// --------------------------
+
 void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
 {
 	if (!CachedComboSections.IsValidIndex(NewIndex) || NewIndex >= CachedMaxComboHits)
@@ -210,6 +409,8 @@ void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
 		}
 
 		ApplyCurrentMontagePlayRate(EffectiveRate);
+		ClearAutoChainLinks();
+		ScheduleServerSectionEndTimer();
 		return;
 	}
 
@@ -239,11 +440,13 @@ void UGA_Weapon_MeleeLight::StartComboAt(int32 NewIndex)
 	MontageTask->OnInterrupted.AddDynamic(this, &UGA_Weapon_MeleeLight::OnMontageInterrupted);
 	MontageTask->OnCancelled.AddDynamic(this, &UGA_Weapon_MeleeLight::OnMontageCancelled);
 	MontageTask->ReadyForActivation();
+
+	ClearAutoChainLinks();
+	ScheduleServerSectionEndTimer();
 }
 
 void UGA_Weapon_MeleeLight::FireLocalStartAttackForWindow(int32 WindowIdx)
 {
-	// Gameplay should originate from owning client (predicted) and be validated on server.
 	if (!IsLocallyControlled())
 	{
 		return;
@@ -261,16 +464,15 @@ void UGA_Weapon_MeleeLight::FireLocalStartAttackForWindow(int32 WindowIdx)
 	}
 
 	MC->LocalStartAttack(
-		/*AttackId=*/AttackId,
-		/*Variation=*/static_cast<uint8>(FMath::Clamp(WindowIdx, 0, 255)),
-		/*AimYaw=*/GetAimYaw()
+		AttackId,
+		static_cast<uint8>(FMath::Clamp(WindowIdx, 0, 255)),
+		GetAimYaw()
 	);
-
-	if (bDebug)
-	{
-		UE_LOG(LogTemp, Verbose, TEXT("[MeleeLight] LocalStartAttack fired. WindowIdx=%d AttackId=%d"), WindowIdx, AttackId);
-	}
 }
+
+// --------------------------
+// Events / activation
+// --------------------------
 
 void UGA_Weapon_MeleeLight::StartWaitingForComboWindowBegin()
 {
@@ -285,8 +487,8 @@ void UGA_Weapon_MeleeLight::StartWaitingForComboWindowBegin()
 
 	WaitComboBeginTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
 		this, CachedComboWindowBeginTag, nullptr,
-		/*OnlyTriggerOnce=*/false,
-		/*OnlyMatchExact=*/false
+		false,
+		false
 	);
 
 	if (!WaitComboBeginTask) return;
@@ -308,8 +510,8 @@ void UGA_Weapon_MeleeLight::StartWaitingForComboWindowEnd()
 
 	WaitComboEndTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(
 		this, CachedComboWindowEndTag, nullptr,
-		/*OnlyTriggerOnce=*/false,
-		/*OnlyMatchExact=*/false
+		false,
+		false
 	);
 
 	if (!WaitComboEndTask) return;
@@ -355,7 +557,6 @@ void UGA_Weapon_MeleeLight::ActivateAbility(
 	StartWaitingForComboWindowBegin();
 	StartWaitingForComboWindowEnd();
 
-	// Plays Hit1. The actual gameplay (attack start) is fired when ComboWindowBegin event arrives.
 	StartComboAt(0);
 }
 
@@ -366,34 +567,46 @@ void UGA_Weapon_MeleeLight::InputPressed(
 {
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
-	// Only owning client queues combo input.
-	if (!IsLocallyControlled()) return;
+	if (!CurrentActorInfo) return;
+	if (!CachedAttackMontage || CachedComboSections.Num() == 0) return;
+	if (!IsMontagePlaying()) return;
 
-	if (!bAcceptingComboInput) return;
+	// Atualiza índice pela seção atual
+	ComboIndex = GetCurrentComboIndexFromMontage();
 	if (ComboIndex >= CachedMaxComboHits - 1) return;
 
+	// Buffer para o server decidir
 	bComboInputQueued = true;
 
-	if (bDebug)
+	// ✅ Predição local: se o player apertou, já seta próxima seção no owning client
+	// (sem isso, como você matou o autochain, o client fica preso no Hit1)
+	if (IsLocallyControlled() && CachedComboSections.IsValidIndex(ComboIndex + 1))
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[MeleeLight] Input queued (ComboIndex=%d)"), ComboIndex);
+		const FName From = CachedComboSections[ComboIndex];
+		const FName To   = CachedComboSections[ComboIndex + 1];
+
+		SetNextSection_LocalOrASC(From, To);
+
+		UE_LOG(LogTemp, Warning, TEXT("[GA][ClientPredict] SetNextSection %s -> %s | ComboIndex=%d"),
+			*From.ToString(), *To.ToString(), ComboIndex);
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[GA] InputPressed LC=%d SV=%d ComboIndex=%d Max=%d Queued=%d"),
+		IsLocallyControlled() ? 1 : 0,
+		IsServer() ? 1 : 0,
+		ComboIndex, CachedMaxComboHits, bComboInputQueued ? 1 : 0);
 }
 
 void UGA_Weapon_MeleeLight::OnComboWindowBegin(FGameplayEventData Payload)
 {
 	const int32 WindowIdx = ExtractComboIndexFromPayload(Payload);
 
-	// input window begins (owning client)
 	if (IsLocallyControlled())
 	{
 		bAcceptingComboInput = true;
 	}
 
-	// Align internal index (optional but useful)
-	ComboIndex = WindowIdx;
-
-	// ✅ This is the AAA timing hook: start attack when the montage window opens.
+	// Sempre dispara o hit window no owning client (é ele que chama LocalStartAttack)
 	FireLocalStartAttackForWindow(WindowIdx);
 }
 
@@ -405,25 +618,10 @@ void UGA_Weapon_MeleeLight::OnComboWindowEnd(FGameplayEventData Payload)
 	{
 		bAcceptingComboInput = false;
 	}
-
-	const bool bCanAdvance = (ComboIndex < CachedMaxComboHits - 1);
-	const bool bWantsAdvance = bComboInputQueued && bCanAdvance;
-
-	bComboInputQueued = false;
-
-	if (bWantsAdvance)
-	{
-		StartComboAt(ComboIndex + 1);
-		return;
-	}
-
-	StopAttackMontage();
-	FinishCombo(true);
 }
 
 void UGA_Weapon_MeleeLight::OnMontageCompleted()
 {
-	// Montage ended naturally; if you want auto-chain, do it here. For now, end.
 	FinishCombo(false);
 }
 
@@ -436,6 +634,10 @@ void UGA_Weapon_MeleeLight::OnMontageCancelled()
 {
 	FinishCombo(true);
 }
+
+// --------------------------
+// End / cleanup
+// --------------------------
 
 void UGA_Weapon_MeleeLight::StopAttackMontage()
 {
@@ -472,6 +674,15 @@ void UGA_Weapon_MeleeLight::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
+	AActor* Avatar = GetAvatar();
+	if (Avatar)
+	{
+		if (UWorld* World = Avatar->GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(ServerSectionEndTimer);
+		}
+	}
+
 	if (bWasCancelled)
 	{
 		StopAttackMontage();

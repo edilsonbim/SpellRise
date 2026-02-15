@@ -1,11 +1,8 @@
-// ============================================================================
-// SpellRiseWeaponComponent.cpp (COMPLETO - COM GRANT/CLEAR ABILITIES)
-// Path: Source/SpellRise/Weapons/Components/SpellRiseWeaponComponent.cpp
-// ============================================================================
 
 #include "SpellRise/Weapons/Components/SpellRiseWeaponComponent.h"
 
 #include "SpellRise/Combat/Melee/Runtime/SpellRiseMeleeComponent.h"
+#include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h"
 #include "SpellRise/Weapons/Actors/SpellRiseWeaponActor.h"
 
@@ -57,13 +54,23 @@ void USpellRiseWeaponComponent::ResolveMeleeComponentOnOwner()
 		return;
 	}
 
-	MeleeComponent = Owner->FindComponentByClass<USpellRiseMeleeComponent>();
+	// Prefer the strongly-typed component pointer from the base character (more robust than FindComponent on stale BPs).
+	if (ASpellRiseCharacterBase* SRChar = Cast<ASpellRiseCharacterBase>(Owner))
+	{
+		MeleeComponent = SRChar->GetMeleeComponent();
+	}
+
+	if (!MeleeComponent)
+	{
+		MeleeComponent = Owner->FindComponentByClass<USpellRiseMeleeComponent>();
+	}
 
 	if (!MeleeComponent)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[WeaponComponent] ❌ Owner has no SpellRiseMeleeComponent. Add it to the Character/BP."));
 	}
 }
+
 
 void USpellRiseWeaponComponent::OnRep_EquippedWeapon()
 {
