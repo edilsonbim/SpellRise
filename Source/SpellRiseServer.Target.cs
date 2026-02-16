@@ -1,7 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-using UnrealBuildTool;
-using System.Collections.Generic;
+﻿using UnrealBuildTool;
 
 public class SpellRiseServerTarget : TargetRules
 {
@@ -10,9 +7,11 @@ public class SpellRiseServerTarget : TargetRules
 		Type = TargetType.Server;
 
 		DefaultBuildSettings = BuildSettingsVersion.V6;
-		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_7;
+		IncludeOrderVersion  = EngineIncludeOrderVersion.Unreal5_7;
 
-		// ✅ Evita depender de SpellRise.dll (monolithic)
+		CppStandard = CppStandardVersion.Cpp20;
+
+		// Opcional: monolithic no server dedicado
 		LinkType = TargetLinkType.Monolithic;
 
 		ExtraModuleNames.Add("SpellRise");

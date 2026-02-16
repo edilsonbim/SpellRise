@@ -11,7 +11,7 @@ class UStaticMeshComponent;
 /**
  * Visual-only weapon actor.
  * - No collision / no overlap (server-authoritative melee uses traces against targets).
- * - Provides a StaticMeshComponent that MUST contain sockets used by Melee trace (e.g. Melee_Base / Melee_Tip).
+ * - Provides a StaticMeshComponent that MUST contain sockets used by combat (melee trace, staff muzzle, etc).
  */
 UCLASS(BlueprintType, Blueprintable)
 class SPELLRISE_API ASpellRiseWeaponActor : public AActor
@@ -28,5 +28,9 @@ protected:
 	virtual void BeginPlay() override;
 
 private:
-	void ValidateTraceSockets() const;
+	// Melee sockets are REQUIRED for melee weapons (kept as warnings).
+	void ValidateMeleeTraceSockets() const;
+
+	// Spell sockets are OPTIONAL (only verbose logs if missing).
+	void ValidateSpellSockets_Optional() const;
 };

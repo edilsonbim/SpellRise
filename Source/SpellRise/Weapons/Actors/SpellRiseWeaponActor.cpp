@@ -28,10 +28,12 @@ ASpellRiseWeaponActor::ASpellRiseWeaponActor()
 void ASpellRiseWeaponActor::BeginPlay()
 {
 	Super::BeginPlay();
-	ValidateTraceSockets();
+
+	ValidateMeleeTraceSockets();
+	ValidateSpellSockets_Optional();
 }
 
-void ASpellRiseWeaponActor::ValidateTraceSockets() const
+void ASpellRiseWeaponActor::ValidateMeleeTraceSockets() const
 {
 	// These must match your DA defaults unless overridden per weapon:
 	static const FName SocketBase(TEXT("Melee_Base"));
@@ -57,10 +59,36 @@ void ASpellRiseWeaponActor::ValidateTraceSockets() const
 	if (!bHasBase || !bHasTip)
 	{
 		UE_LOG(LogTemp, Warning,
-			   TEXT("[WeaponActor] Missing trace sockets on %s (Mesh=%s). Required: %s=%d %s=%d"),
+			   TEXT("[WeaponActor] Missing melee trace sockets on %s (Mesh=%s). Required: %s=%d %s=%d"),
 			   *GetName(),
 			   *GetNameSafe(Mesh->GetStaticMesh()),
 			   *SocketBase.ToString(), bHasBase ? 1 : 0,
 			   *SocketTip.ToString(), bHasTip ? 1 : 0);
+	}
+}
+
+void ASpellRiseWeaponActor::ValidateSpellSockets_Optional() const
+{
+	// Optional sockets for staff/projectiles:
+	static const FName SpellMuzzle(TEXT("Spell_Muzzle"));
+	static const FName SpellOrigin(TEXT("Spell_Origin"));
+
+	if (!Mesh || !Mesh->GetStaticMesh())
+	{
+		return;
+	}
+
+	const bool bHasMuzzle = Mesh->DoesSocketExist(SpellMuzzle);
+	const bool bHasOrigin = Mesh->DoesSocketExist(SpellOrigin);
+
+	// Optional: only verbose so it won't spam warnings for melee weapons.
+	if (!bHasMuzzle && !bHasOrigin)
+	{
+		UE_LOG(LogTemp, Verbose,
+			   TEXT("[WeaponActor] No spell sockets on %s (Mesh=%s). Optional sockets: %s / %s"),
+			   *GetName(),
+			   *GetNameSafe(Mesh->GetStaticMesh()),
+			   *SpellMuzzle.ToString(),
+			   *SpellOrigin.ToString());
 	}
 }

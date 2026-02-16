@@ -2,17 +2,21 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "Engine/DataAsset.h"
 #include "Engine/EngineTypes.h"
-#include "Particles/ParticleSystem.h"
-#include "Sound/SoundBase.h"
+#include "Engine/DataAsset.h"
 
 #include "DA_MeleeWeaponData.generated.h"
 
 class UAnimMontage;
 class UGameplayAbility;
 class UGameplayEffect;
+class UParticleSystem;
+class USoundBase;
+class AActor;
 
+// ============================================================================
+// TRACE CONFIG
+// ============================================================================
 USTRUCT(BlueprintType)
 struct FMeleeTraceConfig
 {
@@ -43,6 +47,9 @@ struct FMeleeTraceConfig
 	int32 BakedTracePoints = 15;
 };
 
+// ============================================================================
+// DAMAGE CONFIG
+// ============================================================================
 USTRUCT(BlueprintType)
 struct FMeleeDamageConfig
 {
@@ -73,6 +80,9 @@ struct FMeleeDamageConfig
 	float MaxHitDistance = 0.0f;
 };
 
+// ============================================================================
+// COMBO CONFIG
+// ============================================================================
 USTRUCT(BlueprintType)
 struct FMeleeComboConfig
 {
@@ -87,13 +97,16 @@ struct FMeleeComboConfig
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combo")
 	float StopBlendOutTime = 0.15f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combo")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combo|Events")
 	FGameplayTag ComboWindowBeginTag;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combo")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combo|Events")
 	FGameplayTag ComboWindowEndTag;
 };
 
+// ============================================================================
+// FEEDBACK CONFIG
+// ============================================================================
 USTRUCT(BlueprintType)
 struct FMeleeFeedbackConfig
 {
@@ -115,6 +128,9 @@ struct FMeleeFeedbackConfig
 	TObjectPtr<USoundBase> BlockSound = nullptr;
 };
 
+// ============================================================================
+// DATA ASSET
+// ============================================================================
 UCLASS(BlueprintType, Const)
 class SPELLRISE_API UDA_MeleeWeaponData : public UPrimaryDataAsset
 {
@@ -123,53 +139,61 @@ class SPELLRISE_API UDA_MeleeWeaponData : public UPrimaryDataAsset
 public:
 	UDA_MeleeWeaponData();
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
+	// Identity
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Identity")
 	FText DisplayName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Identity")
 	FName WeaponId;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Config")
+	// Melee Config
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
 	FMeleeTraceConfig TraceConfig;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Config")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
 	FMeleeDamageConfig DamageConfig;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Config")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
 	FMeleeComboConfig ComboConfig;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Config")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
 	FMeleeFeedbackConfig FeedbackConfig;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
+	TObjectPtr<UAnimMontage> AttackMontage = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
+	TSubclassOf<UGameplayEffect> DamageEffectClass;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Melee")
+	TSubclassOf<UGameplayEffect> DebuffEffectClass;
+
+	// Visual
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Visual")
 	TSubclassOf<AActor> WeaponActorClass;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Visual")
 	FName AttachSocketName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Visual")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Visual")
 	FTransform AttachOffset;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Animation")
-	TObjectPtr<UAnimMontage> AttackMontage;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Abilities")
+	// Abilities
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Weapon|Abilities")
 	TArray<TSubclassOf<UGameplayAbility>> GrantAbilities;
 
-	// ✅ Per-weapon damage GE override (used by MeleeComponent)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat|Damage")
-	TSubclassOf<UGameplayEffect> DamageEffectClass;
-
-	UFUNCTION(BlueprintPure, Category="Weapon")
+	UFUNCTION(BlueprintPure)
 	FORCEINLINE float GetFinalBaseDamage() const
 	{
 		return DamageConfig.BaseDamage * DamageConfig.DamageScalar;
 	}
 
-	UFUNCTION(BlueprintPure, Category="Weapon")
+	UFUNCTION(BlueprintPure)
 	FORCEINLINE float GetMaxHitDistanceResolved() const
 	{
-		if (DamageConfig.MaxHitDistance > 0.f) return DamageConfig.MaxHitDistance;
+		if (DamageConfig.MaxHitDistance > 0.f)
+			return DamageConfig.MaxHitDistance;
+
 		return FMath::Max(100.f, TraceConfig.MinStepDistance * 10.f);
 	}
 };

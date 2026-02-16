@@ -1,9 +1,14 @@
+// ============================================================================
+// SpellRiseWeaponComponent.cpp
+// Path: Source/SpellRise/Weapons/Components/SpellRiseWeaponComponent.cpp
+// ============================================================================
 
 #include "SpellRise/Weapons/Components/SpellRiseWeaponComponent.h"
 
 #include "SpellRise/Combat/Melee/Runtime/SpellRiseMeleeComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h"
+#include "SpellRise/Combat/Spells/Data/DA_StaffWeaponData.h"
 #include "SpellRise/Weapons/Actors/SpellRiseWeaponActor.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -41,6 +46,42 @@ UAbilitySystemComponent* USpellRiseWeaponComponent::GetOwnerASC() const
 	return UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Owner);
 }
 
+const UDA_MeleeWeaponData* USpellRiseWeaponComponent::GetEquippedMeleeWeapon() const
+{
+	return Cast<UDA_MeleeWeaponData>(EquippedWeapon);
+}
+
+const UDA_StaffWeaponData* USpellRiseWeaponComponent::GetEquippedStaffWeapon() const
+{
+	return Cast<UDA_StaffWeaponData>(EquippedWeapon);
+}
+
+UStaticMeshComponent* USpellRiseWeaponComponent::GetEquippedWeaponMesh() const
+{
+	if (!EquippedWeaponActor)
+	{
+		return nullptr;
+	}
+	return EquippedWeaponActor->Mesh;
+}
+
+bool USpellRiseWeaponComponent::GetWeaponSocketTransform(const FName SocketName, FTransform& OutTransform) const
+{
+	UStaticMeshComponent* WeaponMesh = GetEquippedWeaponMesh();
+	if (!WeaponMesh)
+	{
+		return false;
+	}
+
+	if (!WeaponMesh->DoesSocketExist(SocketName))
+	{
+		return false;
+	}
+
+	OutTransform = WeaponMesh->GetSocketTransform(SocketName, RTS_World);
+	return true;
+}
+
 void USpellRiseWeaponComponent::ResolveMeleeComponentOnOwner()
 {
 	if (MeleeComponent)
@@ -54,7 +95,6 @@ void USpellRiseWeaponComponent::ResolveMeleeComponentOnOwner()
 		return;
 	}
 
-	// Prefer the strongly-typed component pointer from the base character (more robust than FindComponent on stale BPs).
 	if (ASpellRiseCharacterBase* SRChar = Cast<ASpellRiseCharacterBase>(Owner))
 	{
 		MeleeComponent = SRChar->GetMeleeComponent();
@@ -71,6 +111,63 @@ void USpellRiseWeaponComponent::ResolveMeleeComponentOnOwner()
 	}
 }
 
+bool USpellRiseWeaponComponent::GetWeaponVisualData(
+	TSubclassOf<AActor>& OutWeaponActorClass,
+	FName& OutAttachSocketName,
+	FTransform& OutAttachOffset
+) const
+{
+	OutWeaponActorClass = nullptr;
+	OutAttachSocketName = NAME_None;
+	OutAttachOffset = FTransform::Identity;
+
+	if (!EquippedWeapon)
+	{
+		return false;
+	}
+
+	if (const UDA_MeleeWeaponData* MeleeDA = Cast<UDA_MeleeWeaponData>(EquippedWeapon))
+	{
+		OutWeaponActorClass = MeleeDA->WeaponActorClass;
+		OutAttachSocketName = MeleeDA->AttachSocketName;
+		OutAttachOffset = MeleeDA->AttachOffset;
+		return true;
+	}
+
+	if (const UDA_StaffWeaponData* StaffDA = Cast<UDA_StaffWeaponData>(EquippedWeapon))
+	{
+		OutWeaponActorClass = StaffDA->WeaponActorClass;
+		OutAttachSocketName = StaffDA->AttachSocketName;
+		OutAttachOffset = StaffDA->AttachOffset;
+		return true;
+	}
+
+	return false;
+}
+
+bool USpellRiseWeaponComponent::GetWeaponGrantedAbilities(TArray<TSubclassOf<UGameplayAbility>>& OutAbilities) const
+{
+	OutAbilities.Reset();
+
+	if (!EquippedWeapon)
+	{
+		return false;
+	}
+
+	if (const UDA_MeleeWeaponData* MeleeDA = Cast<UDA_MeleeWeaponData>(EquippedWeapon))
+	{
+		OutAbilities = MeleeDA->GrantAbilities;
+		return true;
+	}
+
+	if (const UDA_StaffWeaponData* StaffDA = Cast<UDA_StaffWeaponData>(EquippedWeapon))
+	{
+		OutAbilities = StaffDA->GrantAbilities;
+		return true;
+	}
+
+	return false;
+}
 
 void USpellRiseWeaponComponent::OnRep_EquippedWeapon()
 {
@@ -85,8 +182,12 @@ void USpellRiseWeaponComponent::OnRep_EquippedWeapon()
 	DestroyEquippedWeaponActor();
 	SpawnAndAttachWeaponActor();
 
-	ResolveMeleeComponentOnOwner();
-	InitializeMeleeComponent();
+	// Melee init ONLY if melee weapon equipped
+	if (Cast<UDA_MeleeWeaponData>(EquippedWeapon))
+	{
+		ResolveMeleeComponentOnOwner();
+		InitializeMeleeComponent();
+	}
 }
 
 void USpellRiseWeaponComponent::InitializeMeleeComponent()
@@ -94,7 +195,14 @@ void USpellRiseWeaponComponent::InitializeMeleeComponent()
 	ResolveMeleeComponentOnOwner();
 
 	if (bMeleeComponentInitialized) return;
-	if (!MeleeComponent || !EquippedWeaponActor || !EquippedWeapon) return;
+
+	const UDA_MeleeWeaponData* MeleeDA = Cast<UDA_MeleeWeaponData>(EquippedWeapon);
+	if (!MeleeDA) return;
+
+	if (!MeleeComponent || !EquippedWeaponActor)
+	{
+		return;
+	}
 
 	UStaticMeshComponent* WeaponStaticMesh = EquippedWeaponActor->Mesh;
 	if (!WeaponStaticMesh)
@@ -104,12 +212,12 @@ void USpellRiseWeaponComponent::InitializeMeleeComponent()
 	}
 
 	USceneComponent* WeaponMeshAsScene = WeaponStaticMesh;
-	MeleeComponent->InitializeWithWeaponData(EquippedWeapon, WeaponMeshAsScene);
+	MeleeComponent->InitializeWithWeaponData(MeleeDA, WeaponMeshAsScene);
 
 	bMeleeComponentInitialized = true;
 
 	UE_LOG(LogTemp, Log, TEXT("[WeaponComponent] ✅ Melee initialized. Weapon=%s Mesh=%s"),
-		*GetNameSafe(EquippedWeapon), *GetNameSafe(WeaponStaticMesh));
+		*GetNameSafe(MeleeDA), *GetNameSafe(WeaponStaticMesh));
 }
 
 void USpellRiseWeaponComponent::GrantWeaponAbilities_Server()
@@ -127,14 +235,17 @@ void USpellRiseWeaponComponent::GrantWeaponAbilities_Server()
 		return;
 	}
 
-	// GrantAbilities from weapon DA
-	for (TSubclassOf<UGameplayAbility> AbilityClass : EquippedWeapon->GrantAbilities)
+	TArray<TSubclassOf<UGameplayAbility>> Abilities;
+	if (!GetWeaponGrantedAbilities(Abilities))
+	{
+		return;
+	}
+
+	for (TSubclassOf<UGameplayAbility> AbilityClass : Abilities)
 	{
 		if (!AbilityClass) continue;
 
 		FGameplayAbilitySpec Spec(AbilityClass, 1);
-
-		// IMPORTANT: must match BP Press/Release InputID
 		Spec.InputID = WeaponPrimaryAttackInputID;
 
 		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
@@ -170,7 +281,17 @@ void USpellRiseWeaponComponent::ClearWeaponAbilities_Server()
 	GrantedAbilityHandles.Reset();
 }
 
-void USpellRiseWeaponComponent::EquipWeapon(const UDA_MeleeWeaponData* NewWeapon)
+void USpellRiseWeaponComponent::EquipMeleeWeapon(const UDA_MeleeWeaponData* NewWeapon)
+{
+	EquipWeapon(NewWeapon);
+}
+
+void USpellRiseWeaponComponent::EquipStaffWeapon(const UDA_StaffWeaponData* NewWeapon)
+{
+	EquipWeapon(NewWeapon);
+}
+
+void USpellRiseWeaponComponent::EquipWeapon(const UPrimaryDataAsset* NewWeapon)
 {
 	AActor* Owner = GetOwner();
 	if (!Owner) return;
@@ -206,7 +327,7 @@ void USpellRiseWeaponComponent::UnequipWeapon()
 	EquipWeapon(nullptr);
 }
 
-void USpellRiseWeaponComponent::ServerEquipWeapon_Implementation(const UDA_MeleeWeaponData* NewWeapon)
+void USpellRiseWeaponComponent::ServerEquipWeapon_Implementation(const UPrimaryDataAsset* NewWeapon)
 {
 	EquipWeapon(NewWeapon);
 }
@@ -228,7 +349,18 @@ void USpellRiseWeaponComponent::DestroyEquippedWeaponActor()
 
 void USpellRiseWeaponComponent::SpawnAndAttachWeaponActor()
 {
-	if (!EquippedWeapon || !EquippedWeapon->WeaponActorClass) return;
+	if (!EquippedWeapon) return;
+
+	TSubclassOf<AActor> WeaponActorClass = nullptr;
+	FName AttachSocketName = NAME_None;
+	FTransform AttachOffset = FTransform::Identity;
+
+	if (!GetWeaponVisualData(WeaponActorClass, AttachSocketName, AttachOffset))
+	{
+		return;
+	}
+
+	if (!WeaponActorClass) return;
 
 	UWorld* World = GetWorld();
 	if (!World) return;
@@ -241,12 +373,7 @@ void USpellRiseWeaponComponent::SpawnAndAttachWeaponActor()
 	Params.Instigator = Cast<APawn>(GetOwner());
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	AActor* Spawned = World->SpawnActor<AActor>(
-		EquippedWeapon->WeaponActorClass,
-		FTransform::Identity,
-		Params
-	);
-
+	AActor* Spawned = World->SpawnActor<AActor>(WeaponActorClass, FTransform::Identity, Params);
 	if (!Spawned) return;
 
 	EquippedWeaponVisualActor = Spawned;
@@ -255,10 +382,10 @@ void USpellRiseWeaponComponent::SpawnAndAttachWeaponActor()
 	Spawned->AttachToComponent(
 		SkelMesh,
 		FAttachmentTransformRules::SnapToTargetNotIncludingScale,
-		EquippedWeapon->AttachSocketName
+		AttachSocketName
 	);
 
-	Spawned->SetActorRelativeTransform(EquippedWeapon->AttachOffset);
+	Spawned->SetActorRelativeTransform(AttachOffset);
 }
 
 USkeletalMeshComponent* USpellRiseWeaponComponent::GetOwnerSkeletalMesh() const
@@ -280,10 +407,9 @@ void USpellRiseWeaponComponent::BeginPlay()
 
 	ResolveMeleeComponentOnOwner();
 
-	// Server may already have EquippedWeapon set by spawn defaults
+	// Server: ensure ability handles reflect EquippedWeapon at begin play
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		// ensure ability handles reflect EquippedWeapon at begin play
 		ClearWeaponAbilities_Server();
 		if (EquippedWeapon)
 		{
@@ -291,11 +417,16 @@ void USpellRiseWeaponComponent::BeginPlay()
 		}
 	}
 
-	// Client: EquippedWeapon arrives via OnRep
+	// Client: EquippedWeapon arrives via OnRep (but if pre-set in defaults, handle it)
 	if (EquippedWeapon)
 	{
 		SpawnAndAttachWeaponActor();
-		InitializeMeleeComponent();
+
+		// Only melee weapons init melee runtime
+		if (Cast<UDA_MeleeWeaponData>(EquippedWeapon))
+		{
+			InitializeMeleeComponent();
+		}
 	}
 }
 
@@ -317,7 +448,6 @@ void USpellRiseWeaponComponent::HandleOwnerDeath()
 
 	if (Owner->HasAuthority())
 	{
-		// remove weapon abilities on death (server)
 		ClearWeaponAbilities_Server();
 
 		EquippedWeapon = nullptr;

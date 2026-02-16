@@ -68,3 +68,6 @@ Plugins/*/Binaries/
 *.modules
 *.target
 *.version
+/Build_Client.bat
+/Build_Server.bat
+/steam_appid.txt

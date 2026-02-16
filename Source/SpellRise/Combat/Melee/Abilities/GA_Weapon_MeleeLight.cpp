@@ -186,7 +186,7 @@ void UGA_Weapon_MeleeLight::CacheWeaponData()
 
 	if (WeaponComp->GetEquippedWeapon())
 	{
-		const UDA_MeleeWeaponData* Data = WeaponComp->GetEquippedWeapon();
+		const UDA_MeleeWeaponData* Data = WeaponComp->GetEquippedMeleeWeapon();
 		CachedAttackMontage = Data->AttackMontage;
 		CachedComboSections = Data->ComboConfig.ComboSections;
 		CachedMaxComboHits = Data->ComboConfig.MaxComboHits;

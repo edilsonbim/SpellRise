@@ -438,37 +438,89 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 		return;
 	}
 
-	// Equip default weapon
-	if (DefaultMeleeWeaponData)
+	// ---------------------------------------------------------------------
+	// Weapon Startup (Server)
+	// ---------------------------------------------------------------------
+	if (!HasAuthority())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] Equipping DefaultMeleeWeaponData on server: %s -> %s"),
-			*GetNameSafe(this), *GetNameSafe(DefaultMeleeWeaponData));
-
-		WeaponComponent->EquipWeapon(DefaultMeleeWeaponData);
+		return;
 	}
-	else if (const UDA_MeleeWeaponData* Already = WeaponComponent->GetEquippedWeapon())
+
+	if (!WeaponComponent)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[WeaponStartup] DefaultMeleeWeaponData NULL, using component EquippedWeapon: %s"), *GetNameSafe(Already));
-		WeaponComponent->EquipWeapon(Already);
+		UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] WeaponComponent is NULL on server for %s"), *GetNameSafe(this));
+		return;
+	}
+
+	// Decide which weapon data we will use
+	const UDA_MeleeWeaponData* WeaponToEquip = DefaultMeleeWeaponData;
+	if (!WeaponToEquip)
+	{
+		WeaponToEquip = WeaponComponent->GetEquippedMeleeWeapon();
+	}
+
+	if (!WeaponToEquip)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] NO WEAPON on server for %s. Set DefaultMeleeWeaponData in BP defaults."), *GetNameSafe(this));
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[WeaponStartup] NO WEAPON on server for %s. Set DefaultMeleeWeaponData."), *GetNameSafe(this));
-	}
-
-	// Grant weapon abilities (if set)
-	if (DefaultMeleeWeaponData)
-	{
-		for (TSubclassOf<UGameplayAbility> AbilityClass : DefaultMeleeWeaponData->GrantAbilities)
+		// Validate socket exists on the character mesh BEFORE equipping
+		if (USkeletalMeshComponent* MeshComp = GetMesh())
 		{
-			if (AbilityClass)
+			const FName SocketName = WeaponToEquip->AttachSocketName;
+			if (!SocketName.IsNone() && !MeshComp->DoesSocketExist(SocketName))
 			{
-				GrantAbilities({ AbilityClass });
+				UE_LOG(LogTemp, Error,
+					TEXT("[WeaponAttach] Socket '%s' does NOT exist on Mesh '%s' (Char=%s). Fix DA_MeleeWeaponData.AttachSocketName."),
+					*SocketName.ToString(),
+					MeshComp->SkeletalMesh ? *GetNameSafe(MeshComp->SkeletalMesh) : TEXT("NULL"),
+					*GetNameSafe(this));
 			}
+			else
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("[WeaponStartup] Equipping weapon on server: Char=%s WeaponData=%s Socket=%s"),
+					*GetNameSafe(this),
+					*GetNameSafe(WeaponToEquip),
+					*SocketName.ToString());
+
+				WeaponComponent->EquipWeapon(WeaponToEquip);
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[WeaponAttach] GetMesh() is NULL on %s"), *GetNameSafe(this));
 		}
 	}
 
-	GrantAbilities(StartingAbilities);
+	// ---------------------------------------------------------------------
+	// Grant Abilities (Server)
+	// ---------------------------------------------------------------------
+
+	// Recommended: prevent duplicates on re-possess
+	static const FName StartupGrantedTagName(TEXT("SpellRise.StartupAbilitiesGranted"));
+
+	// If you already have a bool flag in header, use it instead of tags.
+	// Here we use a simple guard via Actor Tags (safe, but optional).
+	const bool bAlreadyGranted = Tags.Contains(StartupGrantedTagName);
+	if (!bAlreadyGranted)
+	{
+		// Grant weapon abilities from the equipped data (not only Default)
+		if (WeaponToEquip)
+		{
+			GrantAbilities(WeaponToEquip->GrantAbilities);
+		}
+
+		GrantAbilities(StartingAbilities);
+
+		Tags.AddUnique(StartupGrantedTagName);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GAS] Startup abilities already granted for %s (skipping)"), *GetNameSafe(this));
+	}
+
 	ApplyRegenStartupEffects();
 	ApplyStartupEffects();
 }
