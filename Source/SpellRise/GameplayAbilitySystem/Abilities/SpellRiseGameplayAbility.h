@@ -113,6 +113,42 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Casting")
 	void ActivateSpellFlow();
 
+    // ========================================================
+    // Ability wheel / channel support
+    // ========================================================
+
+    /**
+     * If true, the ability will automatically activate when it is selected
+     * from the player's ability wheel.  When selected, the owning character
+     * will simulate an input press for this ability and it will begin casting
+     * or fire immediately depending on its setup.  This does not trigger when
+     * the ability is granted, only when the player explicitly selects it in the
+     * UI.  Useful for self-targeted buffs or heals.
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Activation")
+    bool bActivateOnSelection = false;
+
+    /**
+     * If true, this ability is considered channelled.  Channelled abilities
+     * continue to run while the input is held and will be cancelled automatically
+     * when the input is released.  Channelled abilities should disable normal
+     * cast flow (bUseCasting should be false) and implement their effect in
+     * ActivateAbility.  The ability system will call EndAbility with a cancel
+     * flag when the input is released.
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Activation")
+    bool bChannelAbility = false;
+
+    /** Override to handle channelled abilities.  When bChannelAbility is true,
+     *  releasing the input will immediately cancel the ability.  The base
+     *  implementation also forwards the event to any casting flow.
+     */
+    virtual void InputReleased(
+        const FGameplayAbilitySpecHandle Handle,
+        const FGameplayAbilityActorInfo* ActorInfo,
+        const FGameplayAbilityActivationInfo ActivationInfo
+    ) override;
+
 protected:
 	// BP hooks
 	UFUNCTION(BlueprintImplementableEvent, Category="Casting|BP")

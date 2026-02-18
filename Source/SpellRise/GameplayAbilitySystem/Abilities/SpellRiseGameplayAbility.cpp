@@ -305,6 +305,23 @@ void USpellRiseGameplayAbility::FireInternal()
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, /*bReplicate*/true, /*bWasCancelled*/false);
 }
 
+void USpellRiseGameplayAbility::InputReleased(
+    const FGameplayAbilitySpecHandle Handle,
+    const FGameplayAbilityActorInfo* ActorInfo,
+    const FGameplayAbilityActivationInfo ActivationInfo)
+{
+    // Call parent implementation to ensure casting flow receives release events
+    Super::InputReleased(Handle, ActorInfo, ActivationInfo);
+
+    // If this ability is channelled, cancel when input is released
+    // Only act on locally owned instances; the ability system will replicate the cancel
+    if (bChannelAbility && IsActive())
+    {
+        // End with replicate flag true; treat as cancelled
+        EndAbility(Handle, ActorInfo, ActivationInfo, /*bReplicateEndAbility=*/true, /*bWasCancelled=*/true);
+    }
+}
+
 float USpellRiseGameplayAbility::GetChargeAlpha() const
 {
 	if (!bUseCasting || CastTime <= 0.f)

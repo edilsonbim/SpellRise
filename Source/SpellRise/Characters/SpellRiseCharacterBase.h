@@ -185,6 +185,43 @@ protected:
 	void AbilityInputPressed(EAbilityInputID InputID);
 	void AbilityInputReleased(EAbilityInputID InputID);
 
+    // =========================================================
+    // Ability Wheel
+    // =========================================================
+    /** Currently selected ability input ID from the radial ability wheel.
+     *  When set to a value other than None or PrimaryAttack, the left mouse button
+     *  will fire the selected ability instead of the weapon's basic attack.
+     *  This value is replicated to the owning client only so that the server has
+     *  authoritative knowledge of which ability should consume primary input.
+     */
+    UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputID, BlueprintReadOnly, Category="SpellRise|Abilities")
+    EAbilityInputID SelectedAbilityInputID = EAbilityInputID::None;
+
+    /** Called on clients when the selected ability input ID changes.  Can be used
+     *  for UI updates (e.g., highlight the selected slot).  */
+    UFUNCTION()
+    void OnRep_SelectedAbilityInputID();
+
+protected:
+    /** Server RPC to update the selected ability input ID.  Clients call this
+     *  function when selecting an ability in the radial menu.  */
+    UFUNCTION(Server, Reliable)
+    void ServerSetSelectedAbilityInputID(EAbilityInputID NewID);
+
+public:
+    /** Selects an ability slot by index (0-7).  Index 0 corresponds to Ability1,
+     *  index 7 corresponds to Ability8.  Passing a negative index or an index
+     *  outside the valid range will clear the selection.  */
+    UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+    void SelectAbilitySlot(int32 SlotIndex);
+
+    /** Clears any selected ability slot, returning to primary attack.  */
+    UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+    void ClearSelectedAbility();
+
+    // Replication override
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	void LI_PrimaryAttackPressed();
 	void LI_PrimaryAttackReleased();
 

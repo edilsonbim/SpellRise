@@ -31,6 +31,7 @@
 #include "SpellRise/Combat/Melee/Data/DA_MeleeWeaponData.h"
 
 #include "Animation/AnimInstance.h"
+#include "Net/UnrealNetwork.h"
 
 // ---------------------------------------------------------
 // Gameplay Tags
@@ -300,6 +301,87 @@ void ASpellRiseCharacterBase::Tick(float DeltaTime)
 }
 
 // ---------------------------------------------------------
+// Replication
+// ---------------------------------------------------------
+void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    // Selected ability is only relevant to the owning client; server should know for authoritative input
+    DOREPLIFETIME_CONDITION(ASpellRiseCharacterBase, SelectedAbilityInputID, COND_OwnerOnly);
+}
+
+void ASpellRiseCharacterBase::OnRep_SelectedAbilityInputID()
+{
+    // Placeholder for UI hooks; no logic needed on server
+}
+
+void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputID_Implementation(EAbilityInputID NewID)
+{
+    SelectedAbilityInputID = NewID;
+}
+
+void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
+{
+    // Map slot index to ability input ID (Ability1 = 1, Ability8 = 8)
+    EAbilityInputID NewID = EAbilityInputID::None;
+    if (SlotIndex >= 0 && SlotIndex < 8)
+    {
+        NewID = static_cast<EAbilityInputID>(static_cast<uint8>(EAbilityInputID::Ability1) + SlotIndex);
+    }
+
+    // Send to server if not authoritative
+    if (!HasAuthority())
+    {
+        ServerSetSelectedAbilityInputID(NewID);
+    }
+
+    // Set locally as well for immediate feedback
+    SelectedAbilityInputID = NewID;
+
+    // If we have an ability selected and it is configured to auto-activate, trigger it now
+    if (NewID != EAbilityInputID::None && NewID != EAbilityInputID::PrimaryAttack)
+    {
+        if (UAbilitySystemComponent* ASC = AbilitySystemComponent)
+        {
+            // Iterate over activatable abilities to find a matching input ID
+            for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+            {
+                if (Spec.Ability && static_cast<int32>(Spec.InputID) == static_cast<int32>(NewID))
+                {
+                    USpellRiseGameplayAbility* SRGA = Cast<USpellRiseGameplayAbility>(Spec.Ability);
+                    if (SRGA && SRGA->bActivateOnSelection)
+                    {
+                        // Simulate a quick press to trigger the ability.
+                        AbilityInputPressed(NewID);
+                        // For non‑channelled abilities, immediately simulate a release so
+                        // the cast flow will fire upon completion.  Channelled abilities
+                        // remain active until the player releases the input elsewhere.
+                        if (!SRGA->bChannelAbility)
+                        {
+                            AbilityInputReleased(NewID);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void ASpellRiseCharacterBase::ClearSelectedAbility()
+{
+    EAbilityInputID NewID = EAbilityInputID::None;
+
+    if (!HasAuthority())
+    {
+        ServerSetSelectedAbilityInputID(NewID);
+    }
+
+    SelectedAbilityInputID = NewID;
+}
+
+// ---------------------------------------------------------
 // ASC Input Wrappers
 // ---------------------------------------------------------
 void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
@@ -359,7 +441,14 @@ void ASpellRiseCharacterBase::LI_PrimaryAttackPressed()
 	UE_LOG(LogTemp, Warning, TEXT("[INPUT] LMB -> PrimaryAttack pressed | Char=%s | LC=%d"),
 		*GetNameSafe(this), IsLocallyControlled() ? 1 : 0);
 
-	AbilityInputPressed(EAbilityInputID::PrimaryAttack);
+	// Determine whether to fire a selected ability or the primary attack
+	EAbilityInputID InputToSend = EAbilityInputID::PrimaryAttack;
+	if (SelectedAbilityInputID != EAbilityInputID::None && SelectedAbilityInputID != EAbilityInputID::PrimaryAttack)
+	{
+		InputToSend = SelectedAbilityInputID;
+	}
+
+	AbilityInputPressed(InputToSend);
 }
 
 void ASpellRiseCharacterBase::LI_PrimaryAttackReleased()
@@ -367,7 +456,21 @@ void ASpellRiseCharacterBase::LI_PrimaryAttackReleased()
 	UE_LOG(LogTemp, Warning, TEXT("[INPUT] LMB -> PrimaryAttack released | Char=%s | LC=%d"),
 		*GetNameSafe(this), IsLocallyControlled() ? 1 : 0);
 
-	AbilityInputReleased(EAbilityInputID::PrimaryAttack);
+	EAbilityInputID InputToSend = EAbilityInputID::PrimaryAttack;
+	if (SelectedAbilityInputID != EAbilityInputID::None && SelectedAbilityInputID != EAbilityInputID::PrimaryAttack)
+	{
+		InputToSend = SelectedAbilityInputID;
+	}
+
+    AbilityInputReleased(InputToSend);
+
+    // If we fired a selected ability (not the default primary attack), clear the
+    // selection so subsequent clicks revert to the weapon's basic attack.  This
+    // prevents accidental repeated activations and follows design guidance.
+    if (SelectedAbilityInputID != EAbilityInputID::None && SelectedAbilityInputID != EAbilityInputID::PrimaryAttack)
+    {
+        ClearSelectedAbility();
+    }
 }
 
 void ASpellRiseCharacterBase::LI_SecondaryAttackPressed()  { AbilityInputPressed(EAbilityInputID::SecondaryAttack); }
