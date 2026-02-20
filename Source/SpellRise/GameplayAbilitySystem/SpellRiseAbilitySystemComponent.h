@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
+
+class USpellRiseGameplayAbility;
 #include "SpellRiseAbilitySystemComponent.generated.h"
 
 class UGameplayEffect;
@@ -55,6 +57,17 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_ClearAbilityInput();
+
+	// ---------------------------------------------------------
+	// Ability Wheel helpers
+	// ---------------------------------------------------------
+	/** Activate the first ability spec that matches the given InputID. */
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	bool SR_TryActivateAbilityByInputID(int32 InputID);
+
+	/** Returns the SpellRiseGameplayAbility CDO for the first spec matching InputID (may be null). */
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForInputID(int32 InputID) const;
 
 	// =========================================================
 	// Catalyst (único dono da mecânica)

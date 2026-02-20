@@ -1,18 +1,20 @@
+// SpellRiseCharacterBase.h
+
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
-#include "AbilitySystemComponent.h" // ✅ necessário para EGameplayEffectReplicationMode
+#include "AbilitySystemComponent.h"
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
 
-// ✅ Usa o enum central já existente (não redefinir!)
-#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h" // contém EAbilityInputID
+#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
+#include "InputActionValue.h"
 
-class UDA_MeleeWeaponData;
+class UInputMappingContext;
+class UInputAction;
 
-// Forward Declarations
 class USpellRiseAbilitySystemComponent;
 class UGameplayAbility;
 class UGameplayEffect;
@@ -23,11 +25,20 @@ class UResourceAttributeSet;
 class UCatalystAttributeSet;
 class UDerivedStatsAttributeSet;
 
-class USpellRiseWeaponComponent;
-class USpellRiseMeleeComponent;
 class UAbilitySystemComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
+
+UENUM(BlueprintType)
+enum class ESpellRiseArchetype : uint8
+{
+	None UMETA(DisplayName="None"),
+	Warrior UMETA(DisplayName="Warrior"),
+	Assassin UMETA(DisplayName="Assassin"),
+	Mage UMETA(DisplayName="Mage"),
+	Battlemage UMETA(DisplayName="Battlemage"),
+	Cleric UMETA(DisplayName="Cleric")
+};
 
 UCLASS()
 class SPELLRISE_API ASpellRiseCharacterBase
@@ -39,7 +50,6 @@ class SPELLRISE_API ASpellRiseCharacterBase
 public:
 	ASpellRiseCharacterBase();
 
-	// Engine
 	virtual void PostInitializeComponents() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void BeginPlay() override;
@@ -49,25 +59,14 @@ public:
 	virtual void OnRep_PlayerState() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
-	// IAbilitySystemInterface
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
-	// Weapon
-	UFUNCTION(BlueprintPure, Category = "SpellRise|Weapon")
-	FORCEINLINE USpellRiseWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
-
-	// Melee
-	UFUNCTION(BlueprintPure, Category = "SpellRise|Melee")
-	FORCEINLINE USpellRiseMeleeComponent* GetMeleeComponent() const { return MeleeComponent; }
-
-	// GAS Input bridge
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS|Input")
 	void SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused);
 
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS|Input")
 	void SR_ClearAbilityInput();
 
-	// GAS API
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantAbilities(
 		const TArray<TSubclassOf<UGameplayAbility>>& AbilitiesToGrant,
@@ -85,7 +84,6 @@ public:
 	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category = "SpellRise|GAS")
 	void MultiSendGameplayEventToActor(AActor* TargetActor, const FGameplayEventData& EventData);
 
-	// Death
 	UFUNCTION(BlueprintPure, Category = "SpellRise|Death")
 	FORCEINLINE bool IsDead() const { return bIsDead; }
 
@@ -98,7 +96,6 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MultiHandleDeath();
 
-	// Catalyst
 	UFUNCTION(BlueprintPure, Category = "SpellRise|Catalyst")
 	FORCEINLINE UCatalystAttributeSet* GetCatalystAttributeSet() const { return CatalystAttributeSet; }
 
@@ -108,32 +105,30 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "SpellRise|Catalyst")
 	void BP_OnCatalystProc(int32 CatalystTier);
 
-	// Damage Pop
 	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category = "SpellRise|UI")
 	void MultiShowDamagePop(float Damage, AActor* InstigatorActor, FGameplayTag DamageTypeTag, bool bIsCrit);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "SpellRise|UI")
 	void BP_ShowDamagePop(float Damage, AActor* InstigatorActor, FGameplayTag DamageTypeTag, bool bIsCrit);
 
+	UPROPERTY(ReplicatedUsing=OnRep_Archetype, BlueprintReadOnly, Category="SpellRise|Archetype")
+	ESpellRiseArchetype Archetype = ESpellRiseArchetype::None;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Archetype")
+	void SetArchetype(ESpellRiseArchetype NewArchetype);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetArchetype(ESpellRiseArchetype NewArchetype);
+
+	UFUNCTION()
+	void OnRep_Archetype();
+
+	void ApplyArchetypeToPrimaries_Server();
+
 protected:
-	// Movement
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|Movement")
 	float BaseWalkSpeed = 500.f;
 
-	// Components
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|Components", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<USpellRiseWeaponComponent> WeaponComponent = nullptr;
-
-	// Combat (melee runtime)
-	// Exists as a default subobject on the base Character so every BP child inherits it consistently.
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|Components", meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<USpellRiseMeleeComponent> MeleeComponent = nullptr;
-
-	// Default weapon data
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|Weapon|Startup")
-	TObjectPtr<UDA_MeleeWeaponData> DefaultMeleeWeaponData = nullptr;
-
-	// GAS: Core + AttributeSets
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
 
@@ -152,7 +147,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UDerivedStatsAttributeSet> DerivedStatsAttributeSet = nullptr;
 
-	// GAS config
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpellRise|GAS")
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Mixed;
 
@@ -171,67 +165,31 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|GAS|Regen")
 	TArray<TSubclassOf<UGameplayEffect>> GE_RegenEffects;
 
-	// Input (Legacy)
-	UPROPERTY(EditDefaultsOnly, Category = "SpellRise|Input|Legacy")
-	FName Action_PrimaryAttack = TEXT("PrimaryAttack");
-
-	UPROPERTY(EditDefaultsOnly, Category = "SpellRise|Input|Legacy")
-	FName Action_SecondaryAttack = TEXT("SecondaryAttack");
-
-	UPROPERTY(EditDefaultsOnly, Category = "SpellRise|Input|Legacy")
-	FName Action_Cancel = TEXT("Cancel");
-
-	// GAS input bridge (symbols must exist in .cpp)
 	void AbilityInputPressed(EAbilityInputID InputID);
 	void AbilityInputReleased(EAbilityInputID InputID);
 
-    // =========================================================
-    // Ability Wheel
-    // =========================================================
-    /** Currently selected ability input ID from the radial ability wheel.
-     *  When set to a value other than None or PrimaryAttack, the left mouse button
-     *  will fire the selected ability instead of the weapon's basic attack.
-     *  This value is replicated to the owning client only so that the server has
-     *  authoritative knowledge of which ability should consume primary input.
-     */
-    UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputID, BlueprintReadOnly, Category="SpellRise|Abilities")
-    EAbilityInputID SelectedAbilityInputID = EAbilityInputID::None;
+	UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputID, BlueprintReadOnly, Category="SpellRise|Abilities")
+	EAbilityInputID SelectedAbilityInputID = EAbilityInputID::None;
 
-    /** Called on clients when the selected ability input ID changes.  Can be used
-     *  for UI updates (e.g., highlight the selected slot).  */
-    UFUNCTION()
-    void OnRep_SelectedAbilityInputID();
+	UFUNCTION()
+	void OnRep_SelectedAbilityInputID();
 
-protected:
-    /** Server RPC to update the selected ability input ID.  Clients call this
-     *  function when selecting an ability in the radial menu.  */
-    UFUNCTION(Server, Reliable)
-    void ServerSetSelectedAbilityInputID(EAbilityInputID NewID);
+	UFUNCTION(Server, Reliable)
+	void ServerSetSelectedAbilityInputID(EAbilityInputID NewID);
 
 public:
-    /** Selects an ability slot by index (0-7).  Index 0 corresponds to Ability1,
-     *  index 7 corresponds to Ability8.  Passing a negative index or an index
-     *  outside the valid range will clear the selection.  */
-    UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
-    void SelectAbilitySlot(int32 SlotIndex);
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void SelectAbilitySlot(int32 SlotIndex);
 
-    /** Clears any selected ability slot, returning to primary attack.  */
-    UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
-    void ClearSelectedAbility();
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void ClearSelectedAbility();
 
-    // Replication override
-    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void AbilityWheelInputPressed(int32 SlotIndex);
 
-	void LI_PrimaryAttackPressed();
-	void LI_PrimaryAttackReleased();
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void AbilityWheelInputReleased(int32 SlotIndex);
 
-	void LI_SecondaryAttackPressed();
-	void LI_SecondaryAttackReleased();
-
-	void LI_CancelPressed();
-	void LI_CancelReleased();
-
-	// Death
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|Death")
 	FGameplayTag DeadStateTag;
 
@@ -244,15 +202,76 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|GAS")
 	bool bASCDelegatesBound = false;
 
-	// Internal helpers
+protected:
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
+
+	// Universal inputs
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Primary = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Secondary = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Interact = nullptr;
+
+	// Utility
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_ClearSelection = nullptr;
+
+	// Slots
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability1 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability2 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability3 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability4 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability5 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability6 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability7 = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input")
+	TObjectPtr<UInputAction> IA_Ability8 = nullptr;
+
+	UFUNCTION()
+	void Input_Primary_Pressed(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void Input_Primary_Released(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void Input_Secondary_Pressed(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void Input_Secondary_Released(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void Input_Interact_Pressed(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void Input_Interact_Released(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void Input_ClearSelection(const FInputActionValue& Value);
+
 	void InitASCActorInfo();
 	void ApplyStartupEffects();
 	void BindASCDelegates();
 	void RecalculateDerivedStats();
 	void ApplyDerivedStatsInfinite();
 	void LogDerivedDebug();
-	void ApplyMovementSpeedFromAttributes();
-	void OnMoveSpeedChanged(const FOnAttributeChangeData& Data);
 	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
 	void ApplyRegenStartupEffects();

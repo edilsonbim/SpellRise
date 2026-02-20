@@ -1,88 +1,172 @@
+// ExecCalc_Damage.cpp
+
 #include "ExecCalc_Damage.h"
 
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "GameplayTagContainer.h"
 #include "Math/UnrealMathUtility.h"
+#include "Engine/Engine.h"
 
-// ---------------------------------------------------------
-// Tags (lazy init)
-// ---------------------------------------------------------
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDamage, Log, All);
+
 namespace SpellRiseTags
 {
+	// -----------------------------
+	// SetByCaller Data
+	// -----------------------------
 	inline const FGameplayTag& Data_BaseWeaponDamage()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.BaseWeaponDamage"), false);
 		return Tag;
 	}
-
 	inline const FGameplayTag& Data_BaseSpellDamage()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.BaseSpellDamage"), false);
 		return Tag;
 	}
-
 	inline const FGameplayTag& Data_DamageScaling()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.DamageScaling"), false);
 		return Tag;
 	}
-
 	inline const FGameplayTag& Data_ForceCrit()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.ForceCrit"), false);
 		return Tag;
 	}
-
-	// Legacy fallbacks
 	inline const FGameplayTag& Data_BaseDamage_Legacy()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.BaseDamage"), false);
 		return Tag;
 	}
-
 	inline const FGameplayTag& Data_DamageMultiplier_Legacy()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.DamageMultiplier"), false);
 		return Tag;
 	}
 
-	// Damage types (prefer Spec dynamic asset tags)
+	// -----------------------------
+	// Damage Channels (define PowerMultiplier)
+	// -----------------------------
+	inline const FGameplayTag& DamageChannel_Melee()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageChannel.Melee"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageChannel_Bow()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageChannel.Bow"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageChannel_Spell()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageChannel.Spell"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageChannel_Environment()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageChannel.Environment"), false);
+		return Tag;
+	}
+
+	// -----------------------------
+	// Legacy / compatibility tags
+	// -----------------------------
 	inline const FGameplayTag& DamageType_Spell()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell"), false);
 		return Tag;
 	}
-
-	inline const FGameplayTag& DamageType_Melee()
+	inline const FGameplayTag& DamageType_Bow()
 	{
-		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Melee"), false);
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Bow"), false);
 		return Tag;
 	}
 
-	// Elements
-	inline const FGameplayTag& Damage_Element_Fire()
+	inline const FGameplayTag& DamageRule_TrueDamage()
 	{
-		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Damage.Element.Fire"), false);
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageRule.TrueDamage"), false);
 		return Tag;
 	}
-	inline const FGameplayTag& Damage_Element_Frost()
+
+	// -----------------------------
+	// Damage Types (define resist/drain)
+	// -----------------------------
+	inline const FGameplayTag& DamageType_Physical_Slashing()
 	{
-		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Damage.Element.Frost"), false);
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Physical.Slashing"), false);
 		return Tag;
 	}
-	inline const FGameplayTag& Damage_Element_Lightning()
+	inline const FGameplayTag& DamageType_Physical_Bashing()
 	{
-		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Damage.Element.Lightning"), false);
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Physical.Bashing"), false);
 		return Tag;
 	}
-	inline const FGameplayTag& Damage_Element_Elemental()
+	inline const FGameplayTag& DamageType_Physical_Piercing()
 	{
-		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Damage.Element.Elemental"), false);
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Physical.Piercing"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Physical_Impact()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Physical.Impact"), false);
+		return Tag;
+	}
+
+	inline const FGameplayTag& DamageType_Spell_Fire()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell.Fire"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Spell_Cold()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell.Cold"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Spell_Acid()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell.Acid"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Spell_Shock()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell.Shock"), false);
+		return Tag;
+	}
+
+	inline const FGameplayTag& DamageType_Divine()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Divine"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Curse()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Curse"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Almighty()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Almighty"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Generic()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Generic"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Bleed()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Bleed"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& DamageType_Poison()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Poison"), false);
 		return Tag;
 	}
 
@@ -112,18 +196,20 @@ namespace SpellRiseTags
 	}
 }
 
-// ---------------------------------------------------------
-// Captures
-// ---------------------------------------------------------
 UExecCalc_Damage::FCaptureDefs::FCaptureDefs()
 {
-	WeaponDamageMultiplierDef = FGameplayEffectAttributeCaptureDefinition(
-		UDerivedStatsAttributeSet::GetWeaponDamageMultiplierAttribute(),
+	MeleeDamageMultiplierDef = FGameplayEffectAttributeCaptureDefinition(
+		UDerivedStatsAttributeSet::GetMeleeDamageMultiplierAttribute(),
 		EGameplayEffectAttributeCaptureSource::Source,
 		false);
 
-	SpellPowerMultiplierDef = FGameplayEffectAttributeCaptureDefinition(
-		UDerivedStatsAttributeSet::GetSpellPowerMultiplierAttribute(),
+	BowDamageMultiplierDef = FGameplayEffectAttributeCaptureDefinition(
+		UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute(),
+		EGameplayEffectAttributeCaptureSource::Source,
+		false);
+
+	SpellDamageMultiplierDef = FGameplayEffectAttributeCaptureDefinition(
+		UDerivedStatsAttributeSet::GetSpellDamageMultiplierAttribute(),
 		EGameplayEffectAttributeCaptureSource::Source,
 		false);
 
@@ -142,43 +228,73 @@ UExecCalc_Damage::FCaptureDefs::FCaptureDefs()
 		EGameplayEffectAttributeCaptureSource::Source,
 		false);
 
-	ElementPenetrationDef = FGameplayEffectAttributeCaptureDefinition(
-		UDerivedStatsAttributeSet::GetElementPenetrationAttribute(),
-		EGameplayEffectAttributeCaptureSource::Source,
-		false);
-
-	PhysicalResistDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetPhysicalResistanceAttribute(),
+	SlashingResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetSlashingResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 
-	MagicResistDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetMagicResistanceAttribute(),
+	BashingResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetBashingResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 
-	ElementalResistDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetElementalResistanceAttribute(),
+	PiercingResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetPiercingResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 
-	FireResistDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetFireResistanceAttribute(),
+	ImpactResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetImpactResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 
-	FrostResistDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetFrostResistanceAttribute(),
+	FireResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetFireResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 
-	LightningResistDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetLightningResistanceAttribute(),
+	ColdResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetColdResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 
-	ArmorDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetArmorAttribute(),
+	AcidResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetAcidResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	ShockResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetShockResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	DivineResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetDivineResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	CurseResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetCurseResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	AlmightyResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetAlmightyResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	GenericResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetGenericResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	BleedResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetBleedResAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		false);
+
+	PoisonResDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetPoisonResAttribute(),
 		EGameplayEffectAttributeCaptureSource::Target,
 		false);
 }
@@ -193,31 +309,152 @@ UExecCalc_Damage::UExecCalc_Damage()
 {
 	const FCaptureDefs& C = Captures();
 
-	RelevantAttributesToCapture.Add(C.WeaponDamageMultiplierDef);
-	RelevantAttributesToCapture.Add(C.SpellPowerMultiplierDef);
+	RelevantAttributesToCapture.Add(C.MeleeDamageMultiplierDef);
+	RelevantAttributesToCapture.Add(C.BowDamageMultiplierDef);
+	RelevantAttributesToCapture.Add(C.SpellDamageMultiplierDef);
 
 	RelevantAttributesToCapture.Add(C.CritChanceDef);
 	RelevantAttributesToCapture.Add(C.CritDamageDef);
 	RelevantAttributesToCapture.Add(C.ArmorPenetrationDef);
-	RelevantAttributesToCapture.Add(C.ElementPenetrationDef);
 
-	RelevantAttributesToCapture.Add(C.PhysicalResistDef);
-	RelevantAttributesToCapture.Add(C.MagicResistDef);
-	RelevantAttributesToCapture.Add(C.ElementalResistDef);
-	RelevantAttributesToCapture.Add(C.FireResistDef);
-	RelevantAttributesToCapture.Add(C.FrostResistDef);
-	RelevantAttributesToCapture.Add(C.LightningResistDef);
-	RelevantAttributesToCapture.Add(C.ArmorDef);
+	RelevantAttributesToCapture.Add(C.SlashingResDef);
+	RelevantAttributesToCapture.Add(C.BashingResDef);
+	RelevantAttributesToCapture.Add(C.PiercingResDef);
+	RelevantAttributesToCapture.Add(C.ImpactResDef);
+
+	RelevantAttributesToCapture.Add(C.FireResDef);
+	RelevantAttributesToCapture.Add(C.ColdResDef);
+	RelevantAttributesToCapture.Add(C.AcidResDef);
+	RelevantAttributesToCapture.Add(C.ShockResDef);
+
+	RelevantAttributesToCapture.Add(C.DivineResDef);
+	RelevantAttributesToCapture.Add(C.CurseResDef);
+	RelevantAttributesToCapture.Add(C.AlmightyResDef);
+
+	RelevantAttributesToCapture.Add(C.GenericResDef);
+	RelevantAttributesToCapture.Add(C.BleedResDef);
+	RelevantAttributesToCapture.Add(C.PoisonResDef);
 }
 
-// ---------------------------------------------------------
-// Random (server-only roll is fine)
-// ---------------------------------------------------------
 static bool SR_RollChancePct(float ChancePct)
 {
 	ChancePct = FMath::Clamp(ChancePct, 0.f, 100.f);
 	const float Roll = FMath::FRandRange(0.f, 100.f);
 	return Roll <= ChancePct;
+}
+
+static void SR_GetDrainPercentsForDamageTypeTag(const FGameplayTagContainer& SpecDynTags, float& OutStaminaPct, float& OutManaPct)
+{
+	OutStaminaPct = 0.f;
+	OutManaPct = 0.f;
+
+	auto HasExact = [&](const FGameplayTag& T) -> bool
+	{
+		return T.IsValid() && SpecDynTags.HasTagExact(T);
+	};
+
+	if (HasExact(SpellRiseTags::DamageType_Physical_Slashing())) { OutStaminaPct = 15.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Physical_Bashing())) { OutStaminaPct = 20.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Physical_Piercing())) { OutStaminaPct = 20.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Spell_Fire())) { OutStaminaPct = 15.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Spell_Cold())) { OutStaminaPct = 30.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Spell_Acid())) { OutStaminaPct = 20.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Spell_Shock())) { OutStaminaPct = 25.f; return; }
+
+	if (HasExact(SpellRiseTags::DamageType_Divine())) { OutStaminaPct = 15.f; OutManaPct = 20.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Curse())) { OutStaminaPct = 20.f; OutManaPct = 15.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Almighty())) { OutStaminaPct = 0.f; OutManaPct = 0.f; return; }
+
+	if (HasExact(SpellRiseTags::DamageType_Generic())) { OutStaminaPct = 15.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Bleed())) { OutStaminaPct = 20.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Poison())) { OutStaminaPct = 20.f; return; }
+	if (HasExact(SpellRiseTags::DamageType_Physical_Impact())) { OutStaminaPct = 15.f; return; }
+
+	OutStaminaPct = 15.f;
+	OutManaPct = 0.f;
+}
+
+static bool SR_IsPhysicalDamageType(const FGameplayTagContainer& SpecDynTags)
+{
+	auto HasExact = [&](const FGameplayTag& T) -> bool
+	{
+		return T.IsValid() && SpecDynTags.HasTagExact(T);
+	};
+
+	return HasExact(SpellRiseTags::DamageType_Physical_Slashing())
+		|| HasExact(SpellRiseTags::DamageType_Physical_Bashing())
+		|| HasExact(SpellRiseTags::DamageType_Physical_Piercing())
+		|| HasExact(SpellRiseTags::DamageType_Physical_Impact());
+}
+
+static float SR_GetResistPctForDamageType(
+	const FGameplayTagContainer& SpecDynTags,
+	const UExecCalc_Damage::FCaptureDefs& C,
+	const FGameplayEffectCustomExecutionParameters& ExecutionParams,
+	const FAggregatorEvaluateParameters& Params)
+{
+	auto HasExact = [&](const FGameplayTag& T) -> bool
+	{
+		return T.IsValid() && SpecDynTags.HasTagExact(T);
+	};
+
+	float ResistPct = 0.f;
+
+	if (HasExact(SpellRiseTags::DamageType_Physical_Slashing()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.SlashingResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Physical_Bashing()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.BashingResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Physical_Piercing()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.PiercingResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Physical_Impact()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ImpactResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Spell_Fire()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.FireResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Spell_Cold()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ColdResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Spell_Acid()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.AcidResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Spell_Shock()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ShockResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Divine()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.DivineResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Curse()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CurseResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Almighty()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.AlmightyResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Bleed()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.BleedResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Poison()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.PoisonResDef, Params, ResistPct);
+	else if (HasExact(SpellRiseTags::DamageType_Generic()))
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.GenericResDef, Params, ResistPct);
+	else
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.GenericResDef, Params, ResistPct);
+
+	return FMath::Clamp(ResistPct, 0.f, 75.f);
+}
+
+static float SR_FixMultiplierOrDefault(float V, const TCHAR* Label)
+{
+	if (!FMath::IsFinite(V) || V <= 0.f)
+	{
+		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG FIX] %s was %.3f -> forcing 1.0 (DerivedStats missing?)"), Label, V);
+		return 1.f;
+	}
+	return V;
+}
+
+static const TCHAR* SR_ChannelToText(int32 Channel)
+{
+	// 0=Unknown, 1=Melee, 2=Bow, 3=Spell, 4=Environment
+	switch (Channel)
+	{
+	case 1: return TEXT("Melee");
+	case 2: return TEXT("Bow");
+	case 3: return TEXT("Spell");
+	case 4: return TEXT("Environment");
+	default: return TEXT("Unknown");
+	}
 }
 
 void UExecCalc_Damage::Execute_Implementation(
@@ -236,49 +473,79 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	const FGameplayTagContainer& SpecDynTags = Spec.GetDynamicAssetTags();
 
-	// Prefer spec dynamic tags for type
-	const bool bIsSpell = SpellRiseTags::DamageType_Spell().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Spell());
-	const bool bIsMelee = (!bIsSpell) && SpellRiseTags::DamageType_Melee().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Melee());
+	// Explicit channels
+	const bool bChanMelee = SpellRiseTags::DamageChannel_Melee().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Melee());
+	const bool bChanBow = SpellRiseTags::DamageChannel_Bow().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Bow());
+	const bool bChanSpell = SpellRiseTags::DamageChannel_Spell().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Spell());
+	const bool bChanEnv = SpellRiseTags::DamageChannel_Environment().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Environment());
 
-	const TCHAR* TypeStr =
-		bIsSpell ? TEXT("Spell") :
-		(bIsMelee ? TEXT("Melee") : TEXT("Weapon"));
+	// Legacy mapping
+	const bool bLegacySpell = SpellRiseTags::DamageType_Spell().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Spell());
+	const bool bLegacyBow = SpellRiseTags::DamageType_Bow().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Bow());
+
+	const bool bTrueDamage = SpellRiseTags::DamageRule_TrueDamage().IsValid()
+		&& SpecDynTags.HasTagExact(SpellRiseTags::DamageRule_TrueDamage());
+
+	int32 Channel = 0; // Unknown (safe)
+	if (bChanSpell) Channel = 3;
+	else if (bChanBow) Channel = 2;
+	else if (bChanMelee) Channel = 1;
+	else if (bChanEnv) Channel = 4;
+	else if (bLegacySpell) Channel = 3;
+	else if (bLegacyBow) Channel = 2;
 
 	FAggregatorEvaluateParameters Params;
 	Params.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
 	Params.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
 
-	// Captured source stats
-	float WeaponDamageMult = 1.f;
-	float SpellPowerMult = 1.f;
+	float MeleeMult = 1.f;
+	float BowMult = 1.f;
+	float SpellMult = 1.f;
 
-	float CritChance01 = 0.f;     // 0..1
-	float CritDamageMult = 1.5f;  // multiplier (1.5..2.0)
-	float ArmorPenPct = 0.f;      // percent 0..100
-	float ElemPenPct = 0.f;       // percent 0..100
+	float CritChance01 = 0.05f;
+	float CritDamageMult = 1.5f;
+	float ArmorPenPct = 0.f;
 
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WeaponDamageMultiplierDef, Params, WeaponDamageMult);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.SpellPowerMultiplierDef, Params, SpellPowerMult);
+	{
+		float Tmp = 0.f;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.MeleeDamageMultiplierDef, Params, Tmp)) MeleeMult = Tmp;
+		else UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG CAP FAIL] MeleeDamageMultiplier capture failed (keeping default 1.0)"));
 
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritChanceDef, Params, CritChance01);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, CritDamageMult);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, ArmorPenPct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ElementPenetrationDef, Params, ElemPenPct);
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.BowDamageMultiplierDef, Params, Tmp)) BowMult = Tmp;
+		else UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG CAP FAIL] BowDamageMultiplier capture failed (keeping default 1.0)"));
 
-	WeaponDamageMult = FMath::Clamp(WeaponDamageMult, 0.f, 10.f);
-	SpellPowerMult   = FMath::Clamp(SpellPowerMult, 0.f, 10.f);
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.SpellDamageMultiplierDef, Params, Tmp)) SpellMult = Tmp;
+		else UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG CAP FAIL] SpellDamageMultiplier capture failed (keeping default 1.0)"));
 
-	// DESIGN: soft cap 25% crit chance, 200% crit damage
-	CritChance01     = FMath::Clamp(CritChance01, 0.f, 0.25f);
-	CritDamageMult   = FMath::Clamp(CritDamageMult, 1.f, 2.0f);
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritChanceDef, Params, Tmp)) CritChance01 = Tmp;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, Tmp)) CritDamageMult = Tmp;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, Tmp)) ArmorPenPct = Tmp;
+	}
 
-	ArmorPenPct      = FMath::Clamp(ArmorPenPct, 0.f, 75.f);
-	ElemPenPct       = FMath::Clamp(ElemPenPct, 0.f, 75.f);
+	UE_LOG(LogSpellRiseDamage, Warning,
+		TEXT("[DMG CAP] Chan=%s | Melee=%.3f Bow=%.3f Spell=%.3f | CritChance=%.3f CritDmg=%.3f | ArmorPenPct=%.3f | TrueDmg=%d"),
+		SR_ChannelToText(Channel),
+		MeleeMult, BowMult, SpellMult, CritChance01, CritDamageMult, ArmorPenPct, bTrueDamage ? 1 : 0);
 
-	// Base + optional scaling
+	MeleeMult = SR_FixMultiplierOrDefault(MeleeMult, TEXT("MeleeMult"));
+	BowMult = SR_FixMultiplierOrDefault(BowMult, TEXT("BowMult"));
+	SpellMult = SR_FixMultiplierOrDefault(SpellMult, TEXT("SpellMult"));
+
+	MeleeMult = FMath::Clamp(MeleeMult, 0.f, 10.f);
+	BowMult = FMath::Clamp(BowMult, 0.f, 10.f);
+	SpellMult = FMath::Clamp(SpellMult, 0.f, 10.f);
+
+	CritChance01 = FMath::Clamp(CritChance01, 0.f, 0.25f);
+	CritDamageMult = FMath::Clamp(CritDamageMult, 1.f, 2.0f);
+
+	ArmorPenPct = FMath::Clamp(ArmorPenPct, 0.f, 30.f);
+	const float ArmorPen01 = FMath::Clamp(ArmorPenPct / 100.f, 0.f, 0.30f);
+
+	const bool bUseSpellBase = (Channel == 3);
+
 	const float BaseDamage = FMath::Max(
 		0.f,
-		bIsSpell
+		bUseSpellBase
 			? SpellRiseTags::GetSBC_WithFallback(Spec, SpellRiseTags::Data_BaseSpellDamage(), SpellRiseTags::Data_BaseDamage_Legacy(), false, 0.f)
 			: SpellRiseTags::GetSBC_WithFallback(Spec, SpellRiseTags::Data_BaseWeaponDamage(), SpellRiseTags::Data_BaseDamage_Legacy(), false, 0.f)
 	);
@@ -292,106 +559,103 @@ void UExecCalc_Damage::Execute_Implementation(
 		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_ForceCrit(), false, 0.f)
 		: 0.f;
 
-	const float PowerMultiplier = bIsSpell ? SpellPowerMult : WeaponDamageMult;
+	float PowerMultiplier = 1.f;
+	if (Channel == 3) PowerMultiplier = SpellMult;
+	else if (Channel == 2) PowerMultiplier = BowMult;
+	else if (Channel == 1) PowerMultiplier = MeleeMult;
+	else PowerMultiplier = 1.f; // Unknown/Environment safe
 
 	float FinalDamage = BaseDamage * PowerMultiplier * DamageScaling;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 
-	// Target defenses
-	float PhysicalResistPct = 0.f, MagicResistPct = 0.f, Armor = 0.f;
-	float ElementalResistBasePct = 0.f;
-	float FireResistPct = 0.f;
-	float FrostResistPct = 0.f;
-	float LightningResistPct = 0.f;
+	UE_LOG(LogSpellRiseDamage, Warning,
+		TEXT("[DMG] Chan=%s | Base=%.2f | Mult=%.3f | Scaling=%.2f | Raw=%.2f"),
+		SR_ChannelToText(Channel),
+		BaseDamage, PowerMultiplier, DamageScaling, FinalDamage);
 
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.PhysicalResistDef, Params, PhysicalResistPct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.MagicResistDef, Params, MagicResistPct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ElementalResistDef, Params, ElementalResistBasePct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.FireResistDef, Params, FireResistPct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.FrostResistDef, Params, FrostResistPct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.LightningResistDef, Params, LightningResistPct);
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorDef, Params, Armor);
-
-	PhysicalResistPct = FMath::Clamp(PhysicalResistPct, 0.f, 75.f);
-	MagicResistPct = FMath::Clamp(MagicResistPct, 0.f, 75.f);
-	ElementalResistBasePct = FMath::Clamp(ElementalResistBasePct, 0.f, 75.f);
-	FireResistPct = FMath::Clamp(FireResistPct, 0.f, 75.f);
-	FrostResistPct = FMath::Clamp(FrostResistPct, 0.f, 75.f);
-	LightningResistPct = FMath::Clamp(LightningResistPct, 0.f, 75.f);
-	Armor = FMath::Max(0.f, Armor);
-
-	const float ArmorPen01 = FMath::Clamp(ArmorPenPct / 100.f, 0.f, 0.75f);
-	const float ElemPen01  = FMath::Clamp(ElemPenPct  / 100.f, 0.f, 0.75f);
-
-	const float EffectiveArmor = Armor * (1.f - ArmorPen01);
-
-	// Mitigation
-	float Mitigation = 0.f;
-
-	if (bIsSpell)
+	if (FinalDamage <= 0.f)
 	{
-		float SelectedElemResistPct = -1.f;
-
-		if (SpellRiseTags::Damage_Element_Fire().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Fire()))
-			SelectedElemResistPct = FireResistPct;
-		else if (SpellRiseTags::Damage_Element_Frost().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Frost()))
-			SelectedElemResistPct = FrostResistPct;
-		else if (SpellRiseTags::Damage_Element_Lightning().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Lightning()))
-			SelectedElemResistPct = LightningResistPct;
-		else if (SpellRiseTags::Damage_Element_Elemental().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::Damage_Element_Elemental()))
-			SelectedElemResistPct = ElementalResistBasePct;
-
-		const float BasePct =
-			(SelectedElemResistPct >= 0.f) ? SelectedElemResistPct :
-			(ElementalResistBasePct > 0.f ? ElementalResistBasePct : MagicResistPct);
-
-		float SpellResist01 = FMath::Clamp(BasePct / 100.f, 0.f, 0.75f);
-		SpellResist01 *= (1.f - ElemPen01);
-		SpellResist01 = FMath::Clamp(SpellResist01, 0.f, 0.75f);
-
-		Mitigation = SpellResist01;
-	}
-	else
-	{
-		const float PhysicalResist01 = PhysicalResistPct / 100.f;
-
-		// Armor curve: Armor / (Armor + 200)
-		const float ArmorDenom = FMath::Max(1.f, EffectiveArmor + 200.f);
-		const float ArmorMitigation = EffectiveArmor / ArmorDenom;
-
-		Mitigation = (ArmorMitigation * 0.70f) + (PhysicalResist01 * 0.30f);
+		return;
 	}
 
-	Mitigation = FMath::Clamp(Mitigation, 0.f, 0.80f);
-	FinalDamage *= (1.f - Mitigation);
-
-	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
-
-	// Crit
-	bool bCrit = false;
-	float CritMult = 1.f;
-
-	if (FinalDamage > 0.f)
+	if (!bTrueDamage)
 	{
+		float ResistPct = SR_GetResistPctForDamageType(SpecDynTags, C, ExecutionParams, Params);
+		float Resist01 = FMath::Clamp(ResistPct / 100.f, 0.f, 0.75f);
+
+		if (SR_IsPhysicalDamageType(SpecDynTags))
+		{
+			Resist01 = Resist01 * (1.f - ArmorPen01);
+			Resist01 = FMath::Clamp(Resist01, 0.f, 0.75f);
+		}
+
+		UE_LOG(LogSpellRiseDamage, Warning,
+			TEXT("[DMG] ResistPct=%.2f | Resist01=%.3f | ArmorPenPct=%.2f"),
+			ResistPct, Resist01, ArmorPenPct);
+
+		FinalDamage *= (1.f - Resist01);
+		if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
+
+		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG] After Resist=%.2f"), FinalDamage);
+
+		if (FinalDamage <= 0.f)
+		{
+			return;
+		}
+	}
+
+	if (!bTrueDamage && FinalDamage > 0.f)
+	{
+		bool bCrit = false;
 		const float CritChancePct = CritChance01 * 100.f;
 		bCrit = (ForceCrit > 0.f) ? true : SR_RollChancePct(CritChancePct);
 
 		if (bCrit)
 		{
-			CritMult = CritDamageMult;
-			FinalDamage *= CritMult;
+			FinalDamage *= CritDamageMult;
 			if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 		}
+
+		UE_LOG(LogSpellRiseDamage, Warning,
+			TEXT("[DMG] Crit=%d | CritChancePct=%.2f | CritMult=%.2f | AfterCrit=%.2f | ForceCrit=%.2f"),
+			bCrit ? 1 : 0, CritChancePct, CritDamageMult, FinalDamage, ForceCrit);
 	}
 
-	if (FinalDamage > 0.f)
+	if (FinalDamage <= 0.f)
+	{
+		return;
+	}
+
+	UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG FINAL] Chan=%s | %.2f"), SR_ChannelToText(Channel), FinalDamage);
+
+	OutExecutionOutput.AddOutputModifier(
+		FGameplayModifierEvaluatedData(
+			UResourceAttributeSet::GetDamageAttribute(),
+			EGameplayModOp::Additive,
+			FinalDamage));
+
+	float StaminaDrainPct = 0.f;
+	float ManaDrainPct = 0.f;
+	SR_GetDrainPercentsForDamageTypeTag(SpecDynTags, StaminaDrainPct, ManaDrainPct);
+
+	const float StaminaDrain = (StaminaDrainPct > 0.f) ? (FinalDamage * (StaminaDrainPct / 100.f)) : 0.f;
+	const float ManaDrain = (ManaDrainPct > 0.f) ? (FinalDamage * (ManaDrainPct / 100.f)) : 0.f;
+
+	if (StaminaDrain > 0.f)
 	{
 		OutExecutionOutput.AddOutputModifier(
 			FGameplayModifierEvaluatedData(
-				UResourceAttributeSet::GetDamageAttribute(),
+				UResourceAttributeSet::GetStaminaAttribute(),
 				EGameplayModOp::Additive,
-				FinalDamage
-			)
-		);
+				-StaminaDrain));
+	}
+
+	if (ManaDrain > 0.f)
+	{
+		OutExecutionOutput.AddOutputModifier(
+			FGameplayModifierEvaluatedData(
+				UResourceAttributeSet::GetManaAttribute(),
+				EGameplayModOp::Additive,
+				-ManaDrain));
 	}
 }

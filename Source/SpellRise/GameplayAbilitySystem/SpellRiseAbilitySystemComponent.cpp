@@ -1,6 +1,7 @@
 ﻿#include "SpellRiseAbilitySystemComponent.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
+#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
@@ -76,6 +77,33 @@ void USpellRiseAbilitySystemComponent::SR_ClearAbilityInput()
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
 	InputHeldSpecHandles.Reset();
+}
+
+// ---------------------------------------------------------
+// Ability Wheel helpers
+// ---------------------------------------------------------
+bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputID(int32 InputID)
+{
+	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.Ability && Spec.InputID == InputID)
+		{
+			return TryActivateAbility(Spec.Handle);
+		}
+	}
+	return false;
+}
+
+USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSpellRiseAbilityForInputID(int32 InputID) const
+{
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.Ability && Spec.InputID == InputID)
+		{
+			return Cast<USpellRiseGameplayAbility>(Spec.Ability);
+		}
+	}
+	return nullptr;
 }
 
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)

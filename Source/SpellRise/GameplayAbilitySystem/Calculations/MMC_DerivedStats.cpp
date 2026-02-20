@@ -1,144 +1,185 @@
 ﻿#include "MMC_DerivedStats.h"
+
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
-#include "AbilitySystemComponent.h"
-#include "GameplayEffect.h"
 #include "GameplayEffectExtension.h"
 
-// --------------------------------------------------------------------
-// Base Class Implementation
-// --------------------------------------------------------------------
-USpellRiseDerivedStatMMC::USpellRiseDerivedStatMMC()
+namespace SR_Primary
 {
-    InitializeCaptureDefinitions();
+	constexpr float BASE = 20.f;
+	constexpr float EFFECTIVE_MAX = 120.f;
+	constexpr float BONUS_RANGE = 100.f;
+
+	static float ClampPrimary(float V)
+	{
+		return FMath::Clamp(V, BASE, EFFECTIVE_MAX);
+	}
+
+	static float Normalize01_FromBaseline(float V)
+	{
+		const float C = ClampPrimary(V);
+		const float Bonus = FMath::Clamp(C - BASE, 0.f, BONUS_RANGE);
+		return Bonus / BONUS_RANGE;
+	}
 }
 
-void USpellRiseDerivedStatMMC::InitializeCaptureDefinitions()
+UMMC_PrimaryBase::UMMC_PrimaryBase()
+	: StrengthDef(UCombatAttributeSet::GetStrengthAttribute(), EGameplayEffectAttributeCaptureSource::Source, true)
+	, AgilityDef(UCombatAttributeSet::GetAgilityAttribute(), EGameplayEffectAttributeCaptureSource::Source, true)
+	, IntelligenceDef(UCombatAttributeSet::GetIntelligenceAttribute(), EGameplayEffectAttributeCaptureSource::Source, true)
+	, WisdomDef(UCombatAttributeSet::GetWisdomAttribute(), EGameplayEffectAttributeCaptureSource::Source, true)
 {
-    // IMPORTANT: ALWAYS capture from TARGET (the character owning the stats)
-    // bSnapshot = false to use LIVE values, not snapshot at effect creation
-    
-    VigorDef = FGameplayEffectAttributeCaptureDefinition(
-        UCombatAttributeSet::GetVigorAttribute(),
-        EGameplayEffectAttributeCaptureSource::Target,
-        false);  // Live values!
-
-    AgilityDef = FGameplayEffectAttributeCaptureDefinition(
-        UCombatAttributeSet::GetAgilityAttribute(),
-        EGameplayEffectAttributeCaptureSource::Target,
-        false);
-
-    FocusDef = FGameplayEffectAttributeCaptureDefinition(
-        UCombatAttributeSet::GetFocusAttribute(),
-        EGameplayEffectAttributeCaptureSource::Target,
-        false);
-
-    WillpowerDef = FGameplayEffectAttributeCaptureDefinition(
-        UCombatAttributeSet::GetWillpowerAttribute(),
-        EGameplayEffectAttributeCaptureSource::Target,
-        false);
-
-    AttunementDef = FGameplayEffectAttributeCaptureDefinition(
-        UCombatAttributeSet::GetAttunementAttribute(),
-        EGameplayEffectAttributeCaptureSource::Target,
-        false);
-
-    // Add all to capture list
-    RelevantAttributesToCapture.Add(VigorDef);
-    RelevantAttributesToCapture.Add(AgilityDef);
-    RelevantAttributesToCapture.Add(FocusDef);
-    RelevantAttributesToCapture.Add(WillpowerDef);
-    RelevantAttributesToCapture.Add(AttunementDef);
+	RelevantAttributesToCapture.Add(StrengthDef);
+	RelevantAttributesToCapture.Add(AgilityDef);
+	RelevantAttributesToCapture.Add(IntelligenceDef);
+	RelevantAttributesToCapture.Add(WisdomDef);
 }
 
-float USpellRiseDerivedStatMMC::ClampPrimary(float Value)
+static void SR_BuildParams(const FGameplayEffectSpec& Spec, FAggregatorEvaluateParameters& OutParams)
 {
-    return FMath::Clamp(Value, 10.f, 60.f);
+	OutParams.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
+	OutParams.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
 }
 
-float USpellRiseDerivedStatMMC::Clamp10To60(float Value)
+float UMMC_PrimaryBase::GetStrength(const FGameplayEffectSpec& Spec) const
 {
-    return FMath::Clamp(Value, 10.f, 60.f);
+	FAggregatorEvaluateParameters Params;
+	SR_BuildParams(Spec, Params);
+
+	float Out = SR_Primary::BASE;
+	GetCapturedAttributeMagnitude(StrengthDef, Spec, Params, Out);
+	return Out;
 }
 
-float USpellRiseDerivedStatMMC::GetPrimaryClamped(
-    const FGameplayEffectSpec& Spec,
-    const FGameplayEffectAttributeCaptureDefinition& Def) const
+float UMMC_PrimaryBase::GetAgility(const FGameplayEffectSpec& Spec) const
 {
-    FAggregatorEvaluateParameters EvalParams;
-    EvalParams.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
-    EvalParams.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
+	FAggregatorEvaluateParameters Params;
+	SR_BuildParams(Spec, Params);
 
-    float Value = 0.f;
-    GetCapturedAttributeMagnitude(Def, Spec, EvalParams, Value);
-    
-    // Policy: baseline is 10. If capture fails, default to 10.
-    return Clamp10To60(Value);
+	float Out = SR_Primary::BASE;
+	GetCapturedAttributeMagnitude(AgilityDef, Spec, Params, Out);
+	return Out;
 }
 
-float USpellRiseDerivedStatMMC::GetDeltaFrom10(
-    const FGameplayEffectSpec& Spec,
-    const FGameplayEffectAttributeCaptureDefinition& Def) const
+float UMMC_PrimaryBase::GetIntelligence(const FGameplayEffectSpec& Spec) const
 {
-    const float Clamped = GetPrimaryClamped(Spec, Def);
-    return FMath::Max(0.f, Clamped - 10.f);
+	FAggregatorEvaluateParameters Params;
+	SR_BuildParams(Spec, Params);
+
+	float Out = SR_Primary::BASE;
+	GetCapturedAttributeMagnitude(IntelligenceDef, Spec, Params, Out);
+	return Out;
 }
 
-// --------------------------------------------------------------------
-// Individual MMC Implementations
-// --------------------------------------------------------------------
-
-float UMMC_WeaponDamageMultiplier::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+float UMMC_PrimaryBase::GetWisdom(const FGameplayEffectSpec& Spec) const
 {
-    const float DeltaVigor = GetDeltaFrom10(Spec, VigorDef);
-    // 1.0 base + 3.5% per point over 10
-    return 1.f + (DeltaVigor * 0.035f);
+	FAggregatorEvaluateParameters Params;
+	SR_BuildParams(Spec, Params);
+
+	float Out = SR_Primary::BASE;
+	GetCapturedAttributeMagnitude(WisdomDef, Spec, Params, Out);
+	return Out;
 }
 
-float UMMC_AttackSpeedMultiplier::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+float UMMC_PrimaryBase::Normalize01_FromBaseline(float PrimaryValue) const
 {
-    const float DeltaAgility = GetDeltaFrom10(Spec, AgilityDef);
-    // 1.0 base + 2.0% per point over 10
-    return 1.f + (DeltaAgility * 0.020f);
+	return SR_Primary::Normalize01_FromBaseline(PrimaryValue);
 }
 
-float UMMC_CritChance::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+UMMC_MeleeDamageMultiplier::UMMC_MeleeDamageMultiplier() = default;
+float UMMC_MeleeDamageMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-    const float DeltaFocus = GetDeltaFrom10(Spec, FocusDef);
-    // 0.75% per point, capped at 60%
-    return FMath::Min(DeltaFocus * 0.0075f, 0.60f);
+	const float T = Normalize01_FromBaseline(GetStrength(Spec));
+	return FMath::Clamp(1.f + (0.50f * T), 0.f, 10.f);
 }
 
-float UMMC_CritDamage::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+UMMC_BowDamageMultiplier::UMMC_BowDamageMultiplier() = default;
+float UMMC_BowDamageMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-    const float DeltaFocus = GetDeltaFrom10(Spec, FocusDef);
-    // 1.5 base + 1.5% per point, capped at 3.0
-    return FMath::Min(1.5f + (DeltaFocus * 0.015f), 3.0f);
+	const float T = Normalize01_FromBaseline(GetAgility(Spec));
+	return FMath::Clamp(1.f + (0.50f * T), 0.f, 10.f);
 }
 
-float UMMC_SpellPowerMultiplier::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+UMMC_SpellDamageMultiplier::UMMC_SpellDamageMultiplier() = default;
+float UMMC_SpellDamageMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-    const float DeltaAttunement = GetDeltaFrom10(Spec, AttunementDef);
-    // 1.0 base + 8.0% per point over 10
-    return 1.f + (DeltaAttunement * 0.080f);
+	const float T = Normalize01_FromBaseline(GetIntelligence(Spec));
+	return FMath::Clamp(1.f + (0.50f * T), 0.f, 10.f);
 }
 
-float UMMC_CastSpeedMultiplier::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+UMMC_HealingMultiplier::UMMC_HealingMultiplier() = default;
+float UMMC_HealingMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-    const float DeltaFocus = GetDeltaFrom10(Spec, FocusDef);
-    // 1.0 base + 0.5% per point over 10
-    return 1.f + (DeltaFocus * 0.005f);
+	const float T = Normalize01_FromBaseline(GetWisdom(Spec));
+	return FMath::Clamp(1.f + (0.40f * T), 0.f, 10.f);
 }
 
-float UMMC_ManaCostMultiplier::CalculateBaseMagnitude_Implementation(
-    const FGameplayEffectSpec& Spec) const
+UMMC_CastTimeReduction::UMMC_CastTimeReduction() = default;
+float UMMC_CastTimeReduction::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-    const float DeltaWillpower = GetDeltaFrom10(Spec, WillpowerDef);
-    // 1.0 base - 0.6% per point, floor at 0.5
-    return FMath::Max(1.f - (DeltaWillpower * 0.006f), 0.5f);
+	const float T = Normalize01_FromBaseline(GetIntelligence(Spec));
+	return FMath::Clamp(0.f + (0.096f * T), 0.f, 0.096f);
+}
+
+UMMC_CritChance::UMMC_CritChance() = default;
+float UMMC_CritChance::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float T = Normalize01_FromBaseline(GetAgility(Spec));
+	return FMath::Clamp(0.05f + (0.20f * T), 0.f, 0.25f);
+}
+
+UMMC_CritDamage::UMMC_CritDamage() = default;
+float UMMC_CritDamage::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float T = Normalize01_FromBaseline(GetWisdom(Spec));
+	return FMath::Clamp(1.5f + (0.50f * T), 1.f, 2.0f);
+}
+
+UMMC_ArmorPenetration::UMMC_ArmorPenetration() = default;
+float UMMC_ArmorPenetration::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float T = Normalize01_FromBaseline(GetStrength(Spec));
+	return FMath::Clamp(0.f + (0.30f * T), 0.f, 0.30f);
+}
+
+UMMC_ManaCostReduction::UMMC_ManaCostReduction() = default;
+float UMMC_ManaCostReduction::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float T = Normalize01_FromBaseline(GetWisdom(Spec));
+	return FMath::Clamp(0.f + (0.20f * T), 0.f, 0.20f);
+}
+
+UMMC_MaxHealthFromPrimaries::UMMC_MaxHealthFromPrimaries() = default;
+float UMMC_MaxHealthFromPrimaries::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float Str = SR_Primary::ClampPrimary(GetStrength(Spec));
+	const float Wis = SR_Primary::ClampPrimary(GetWisdom(Spec));
+
+	const float StrBonus = FMath::Clamp(Str - SR_Primary::BASE, 0.f, 100.f);
+	const float WisBonus = FMath::Clamp(Wis - SR_Primary::BASE, 0.f, 100.f);
+
+	return FMath::Max(1.f, 180.f + (StrBonus * 2.f) + (WisBonus * 1.f));
+}
+
+UMMC_MaxManaFromPrimaries::UMMC_MaxManaFromPrimaries() = default;
+float UMMC_MaxManaFromPrimaries::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float Int = SR_Primary::ClampPrimary(GetIntelligence(Spec));
+	const float Wis = SR_Primary::ClampPrimary(GetWisdom(Spec));
+
+	const float IntBonus = FMath::Clamp(Int - SR_Primary::BASE, 0.f, 100.f);
+	const float WisBonus = FMath::Clamp(Wis - SR_Primary::BASE, 0.f, 100.f);
+
+	return FMath::Max(1.f, 180.f + (IntBonus * 2.f) + (WisBonus * 1.f));
+}
+
+UMMC_MaxStaminaFromPrimaries::UMMC_MaxStaminaFromPrimaries() = default;
+float UMMC_MaxStaminaFromPrimaries::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	const float Str = SR_Primary::ClampPrimary(GetStrength(Spec));
+	const float Agi = SR_Primary::ClampPrimary(GetAgility(Spec));
+
+	const float StrBonus = FMath::Clamp(Str - SR_Primary::BASE, 0.f, 100.f);
+	const float AgiBonus = FMath::Clamp(Agi - SR_Primary::BASE, 0.f, 100.f);
+
+	return FMath::Max(1.f, 180.f + (StrBonus * 1.f) + (AgiBonus * 2.f));
 }

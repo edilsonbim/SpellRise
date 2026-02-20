@@ -6,11 +6,14 @@
 #include "GameplayEffectExtension.h"
 #include "CatalystAttributeSet.generated.h"
 
+// Define catalyst attribute accessor helpers only once to avoid duplicate macro definitions.
+#ifndef ATTRIBUTE_ACCESSORS
 #define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
-	GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
-	GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
-	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
-	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
+    GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
+#endif
 
 UCLASS(BlueprintType)
 class SPELLRISE_API UCatalystAttributeSet : public UAttributeSet

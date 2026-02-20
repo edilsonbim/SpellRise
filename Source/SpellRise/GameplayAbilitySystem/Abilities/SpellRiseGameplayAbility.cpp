@@ -7,55 +7,43 @@
 #include "TimerManager.h"
 #include "Engine/World.h"
 
-// ---------------------------------------------------------
-// Gameplay Tags (LAZY INIT - evita static init no load do módulo)
-// ---------------------------------------------------------
 namespace SpellRiseGA_Tags
 {
-	// Avoid ensure if tag does not exist yet
 	inline FGameplayTag GA_Active()
 	{
 		static FGameplayTag Tag =
-			FGameplayTag::RequestGameplayTag(FName("GameplayAbility.Active"), /*ErrorIfNotFound=*/false);
+			FGameplayTag::RequestGameplayTag(FName("GameplayAbility.Active"), false);
 		return Tag;
 	}
 
 	inline FGameplayTag State_Dead()
 	{
 		static FGameplayTag Tag =
-			FGameplayTag::RequestGameplayTag(FName("State.Dead"), /*ErrorIfNotFound=*/false);
+			FGameplayTag::RequestGameplayTag(FName("State.Dead"), false);
 		return Tag;
 	}
 
 	inline FGameplayTag State_Casting()
 	{
 		static FGameplayTag Tag =
-			FGameplayTag::RequestGameplayTag(FName("State.Casting"), /*ErrorIfNotFound=*/false);
+			FGameplayTag::RequestGameplayTag(FName("State.Casting"), false);
 		return Tag;
 	}
 }
 
-// ---------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------
 static bool SR_CanApplyDamage(AActor* Source, AActor* Target, bool bAllowSelfDamage, bool bAllowFriendlyFire)
 {
 	if (!Source || !Target) return false;
 
-	// Self
 	if (Source == Target)
 	{
 		return bAllowSelfDamage;
 	}
 
-	// Friendly fire: no seu caso, sempre true
 	if (bAllowFriendlyFire)
 	{
 		return true;
 	}
-
-	// Se no futuro você tiver TeamID:
-	// if (SR_AreAllies(Source, Target)) return false;
 
 	return true;
 }
@@ -64,7 +52,6 @@ USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 
-	// Safe tags
 	if (SpellRiseGA_Tags::GA_Active().IsValid())
 	{
 		ActivationOwnedTags.AddTag(SpellRiseGA_Tags::GA_Active());
@@ -74,13 +61,27 @@ USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 		ActivationBlockedTags.AddTag(SpellRiseGA_Tags::State_Dead());
 	}
 
-	// Default casting tag (may be invalid if tag not registered yet; that's OK)
 	CastingStateTag = SpellRiseGA_Tags::State_Casting();
 
-	// Design default
 	bCancelIfReleasedEarly = false;
 
+	bReplicateInputDirectly = true;
+
 	ResetRuntimeState();
+}
+
+void USpellRiseGameplayAbility::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
+
+	if (bChannelAbility)
+	{
+		AddCastingTag();
+	}
 }
 
 void USpellRiseGameplayAbility::SetAbilityLevel(int32 NewLevel)
@@ -154,7 +155,6 @@ void USpellRiseGameplayAbility::StartCastingFlow()
 		return;
 	}
 
-	// No cast => fire now
 	if (!bUseCasting || CastTime <= 0.f)
 	{
 		FireInternal();
@@ -166,26 +166,23 @@ void USpellRiseGameplayAbility::StartCastingFlow()
 	AddCastingTag();
 	BP_OnCastStart();
 
-	// Commit on start (optional)
 	if (CommitPolicy == ESpellRiseCommitPolicy::CommitOnStart)
 	{
 		if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
 		{
-			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, /*bReplicate*/true, /*bWasCancelled*/true);
+			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 			return;
 		}
 	}
 
-	// Wait for input release
 	ClearReleaseTask();
-	WaitReleaseTask = UAbilityTask_WaitInputRelease::WaitInputRelease(this, /*bTestAlreadyReleased=*/true);
+	WaitReleaseTask = UAbilityTask_WaitInputRelease::WaitInputRelease(this, true);
 	if (WaitReleaseTask)
 	{
 		WaitReleaseTask->OnRelease.AddDynamic(this, &USpellRiseGameplayAbility::OnInputReleased);
 		WaitReleaseTask->ReadyForActivation();
 	}
 
-	// Cast timer
 	ClearCastTimer();
 	if (UWorld* World = GetWorldSafe())
 	{
@@ -194,7 +191,7 @@ void USpellRiseGameplayAbility::StartCastingFlow()
 			this,
 			&USpellRiseGameplayAbility::OnCastComplete,
 			CastTime,
-			/*bLoop=*/false
+			false
 		);
 	}
 }
@@ -235,19 +232,16 @@ void USpellRiseGameplayAbility::OnInputReleased(float HeldTime)
 	bInputReleased = true;
 	TimeHeld = HeldTime;
 
-	// If cast completed, releasing fires immediately
 	if (bCastCompleted)
 	{
 		FireInternal();
 		return;
 	}
 
-	// Release early => cancel only if configured
 	if (bCancelIfReleasedEarly)
 	{
-		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, /*bReplicateCancelAbility=*/true);
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
 	}
-	// else: keep casting; OnCastComplete will decide.
 }
 
 void USpellRiseGameplayAbility::OnCastComplete()
@@ -260,9 +254,6 @@ void USpellRiseGameplayAbility::OnCastComplete()
 	bCastCompleted = true;
 	BP_OnCastCompleted();
 
-	// Design:
-	// - if already released => fire now
-	// - if still holding => wait release
 	if (bInputReleased)
 	{
 		FireInternal();
@@ -278,48 +269,41 @@ void USpellRiseGameplayAbility::FireInternal()
 
 	if (!BP_CanFire())
 	{
-		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, /*bReplicateCancelAbility=*/true);
+		CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
 		return;
 	}
 
-	// Reentrancy guard first
 	bHasFired = true;
 
-	// Normalize state BEFORE BP fire
 	ClearCastTimer();
 	ClearReleaseTask();
 	RemoveCastingTag();
 
-	// Commit on fire (default)
 	if (CommitPolicy == ESpellRiseCommitPolicy::CommitOnFire)
 	{
 		if (!CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
 		{
-			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, /*bReplicate*/true, /*bWasCancelled*/true);
+			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 			return;
 		}
 	}
 
 	BP_OnCastFired(GetChargeAlpha());
 
-	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, /*bReplicate*/true, /*bWasCancelled*/false);
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
 
 void USpellRiseGameplayAbility::InputReleased(
-    const FGameplayAbilitySpecHandle Handle,
-    const FGameplayAbilityActorInfo* ActorInfo,
-    const FGameplayAbilityActivationInfo ActivationInfo)
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
 {
-    // Call parent implementation to ensure casting flow receives release events
-    Super::InputReleased(Handle, ActorInfo, ActivationInfo);
+	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
 
-    // If this ability is channelled, cancel when input is released
-    // Only act on locally owned instances; the ability system will replicate the cancel
-    if (bChannelAbility && IsActive())
-    {
-        // End with replicate flag true; treat as cancelled
-        EndAbility(Handle, ActorInfo, ActivationInfo, /*bReplicateEndAbility=*/true, /*bWasCancelled=*/true);
-    }
+	if (bChannelAbility && IsActive())
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+	}
 }
 
 float USpellRiseGameplayAbility::GetChargeAlpha() const
@@ -344,7 +328,6 @@ void USpellRiseGameplayAbility::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
-	// Always cleanup
 	ClearReleaseTask();
 	ClearCastTimer();
 	RemoveCastingTag();
