@@ -31,23 +31,6 @@ namespace SpellRiseGA_Tags
 	}
 }
 
-static bool SR_CanApplyDamage(AActor* Source, AActor* Target, bool bAllowSelfDamage, bool bAllowFriendlyFire)
-{
-	if (!Source || !Target) return false;
-
-	if (Source == Target)
-	{
-		return bAllowSelfDamage;
-	}
-
-	if (bAllowFriendlyFire)
-	{
-		return true;
-	}
-
-	return true;
-}
-
 USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
