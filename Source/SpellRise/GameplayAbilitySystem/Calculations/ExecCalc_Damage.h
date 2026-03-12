@@ -12,7 +12,6 @@ class SPELLRISE_API UExecCalc_Damage : public UGameplayEffectExecutionCalculatio
 public:
 	UExecCalc_Damage();
 
-	// ✅ PRECISA SER PUBLIC porque o .cpp usa UExecCalc_Damage::FCaptureDefs
 	struct FCaptureDefs
 	{
 		FCaptureDefs();

@@ -5,6 +5,7 @@
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 
+#include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 namespace SpellRiseTags
@@ -191,12 +192,38 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 
 		ApplyCatalystChargeIfConfigured(TargetASC, Ctx, GE_Catalyst_AddCharge, TotalDamage * CatalystScalar);
 
+		AActor* InstigatorActor = nullptr;
 		if (UAbilitySystemComponent* SourceASC = Ctx.GetOriginalInstigatorAbilitySystemComponent())
 		{
 			if (SourceASC != TargetASC)
 			{
 				ApplyCatalystChargeIfConfigured(SourceASC, Ctx, GE_Catalyst_AddCharge, TotalDamage * CatalystScalar);
 			}
+
+			InstigatorActor = SourceASC->GetAvatarActor();
+		}
+
+		if (!InstigatorActor)
+		{
+			InstigatorActor = Ctx.GetEffectCauser();
+		}
+
+		ASpellRiseCharacterBase* SourceCharacter = Cast<ASpellRiseCharacterBase>(InstigatorActor);
+		ASpellRiseCharacterBase* TargetCharacter = Cast<ASpellRiseCharacterBase>(TargetASC->GetAvatarActor());
+
+		if (SourceCharacter && TargetCharacter)
+		{
+			SourceCharacter->MultiShowDamagePop(
+				TotalDamage,
+				TargetCharacter,
+				FGameplayTag(),
+				false
+			);
+
+			UE_LOG(LogTemp, Warning, TEXT("[POP][ResourceSet] Damage=%.1f Source=%s Target=%s"),
+				TotalDamage,
+				*GetNameSafe(SourceCharacter),
+				*GetNameSafe(TargetCharacter));
 		}
 
 		if (SpellRiseTags::Cue_DamageNumber().IsValid())
@@ -209,6 +236,7 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		return;
 	}
 }
+
 void UResourceAttributeSet::OnRep_CarryWeight(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UResourceAttributeSet, CarryWeight, OldValue);

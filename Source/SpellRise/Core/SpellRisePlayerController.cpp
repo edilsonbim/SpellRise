@@ -1,5 +1,3 @@
-// SpellRisePlayerController.cpp (corrigir erros de tipo)
-
 #include "SpellRisePlayerController.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -13,10 +11,14 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Actor.h"
 
+#include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
+#include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent.h"
 
 ASpellRisePlayerController::ASpellRisePlayerController()
 {
 	bShowMouseCursor = false;
+
+	NumberPopComponent = CreateDefaultSubobject<USpellRiseNumberPopComponent_NiagaraText>(TEXT("NumberPopComponent"));
 }
 
 void ASpellRisePlayerController::BeginPlay()
@@ -97,9 +99,7 @@ void ASpellRisePlayerController::OnAttackPressed()
 		return;
 	}
 
-	// ✅ Pawn é AActor. Só precisa incluir GameFramework/Pawn.h
 	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(P);
-
 	if (!ASC)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[SpellRise] AttackPressed: ASC is null on Pawn=%s"), *GetNameSafe(P));
@@ -118,8 +118,39 @@ void ASpellRisePlayerController::OnAttackPressed()
 		bActivated ? 1 : 0, *GetNameSafe(AttackAbilityClass.Get()));
 }
 
-
 void ASpellRisePlayerController::OnAttackReleased()
 {
 	// optional
+}
+
+void ASpellRisePlayerController::ShowDamageNumber(
+	float Damage,
+	const FVector& WorldLocation,
+	const FGameplayTagContainer& SourceTags,
+	const FGameplayTagContainer& TargetTags,
+	bool bIsCritical)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (!NumberPopComponent)
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[POP][PC] Damage=%.1f Loc=%s Local=%d Controller=%s"),
+	Damage,
+	*WorldLocation.ToString(),
+	IsLocalController() ? 1 : 0,
+	*GetNameSafe(this));
+
+	FSpellRiseNumberPopRequest Request;
+	Request.WorldLocation = WorldLocation;
+	Request.SourceTags = SourceTags;
+	Request.TargetTags = TargetTags;
+	Request.NumberToDisplay = FMath::RoundToInt(Damage);
+	Request.bIsCriticalDamage = bIsCritical;
+
+	NumberPopComponent->AddNumberPop(Request);
 }

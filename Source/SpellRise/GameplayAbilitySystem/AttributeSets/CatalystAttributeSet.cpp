@@ -3,9 +3,6 @@
 #include "Net/UnrealNetwork.h"
 #include "AbilitySystemComponent.h"
 
-// 🔥 para chamar o TryProcCatalystIfReady no seu ASC
-#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
-
 namespace SpellRiseCatalyst
 {
 	constexpr float CHARGE_MIN = 0.f;
@@ -21,7 +18,6 @@ UCatalystAttributeSet::UCatalystAttributeSet()
 	InitCatalystCharge(0.f);
 	InitCatalystXP(0.f);
 	InitCatalystLevel(SpellRiseCatalyst::LEVEL_MIN);
-
 	InitCatalystChargeDelta(0.f);
 }
 
@@ -98,6 +94,7 @@ void UCatalystAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 				SpellRiseCatalyst::CHARGE_MIN,
 				SpellRiseCatalyst::CHARGE_MAX
 			);
+
 			SetCatalystCharge(NewCharge);
 		}
 	}
@@ -107,23 +104,19 @@ void UCatalystAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 	// -----------------------------
 	if (Attr == GetCatalystChargeAttribute() || Attr == GetCatalystChargeDeltaAttribute())
 	{
-		const float Clamped = FMath::Clamp(GetCatalystCharge(), SpellRiseCatalyst::CHARGE_MIN, SpellRiseCatalyst::CHARGE_MAX);
+		const float Clamped = FMath::Clamp(
+			GetCatalystCharge(),
+			SpellRiseCatalyst::CHARGE_MIN,
+			SpellRiseCatalyst::CHARGE_MAX
+		);
+
 		if (!FMath::IsNearlyEqual(GetCatalystCharge(), Clamped))
 		{
 			SetCatalystCharge(Clamped);
 		}
 
-		// -----------------------------
-		// PROC (SERVER ONLY)
-		// quando chega em 100 -> pede pro ASC ativar GA
-		// -----------------------------
-		if (ASC->IsOwnerActorAuthoritative() && Clamped >= (SpellRiseCatalyst::CHARGE_MAX - KINDA_SMALL_NUMBER))
-		{
-			if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(ASC))
-			{
-				SRASC->TryProcCatalystIfReady();
-			}
-		}
+		// O proc/ativação da catalyst NÃO fica mais no ASC.
+		// Isso deve ser tratado pelo UCatalystComponent ouvindo mudança de carga.
 
 		return;
 	}
@@ -133,10 +126,17 @@ void UCatalystAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 	// -----------------------------
 	if (Attr == GetCatalystLevelAttribute())
 	{
-		SetCatalystLevel(FMath::Clamp(GetCatalystLevel(), SpellRiseCatalyst::LEVEL_MIN, SpellRiseCatalyst::LEVEL_MAX));
+		SetCatalystLevel(FMath::Clamp(
+			GetCatalystLevel(),
+			SpellRiseCatalyst::LEVEL_MIN,
+			SpellRiseCatalyst::LEVEL_MAX
+		));
 	}
 	else if (Attr == GetCatalystXPAttribute())
 	{
-		SetCatalystXP(FMath::Max(SpellRiseCatalyst::XP_MIN, GetCatalystXP()));
+		SetCatalystXP(FMath::Max(
+			SpellRiseCatalyst::XP_MIN,
+			GetCatalystXP()
+		));
 	}
 }

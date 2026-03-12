@@ -20,6 +20,7 @@
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 
+#include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
@@ -27,6 +28,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
+#include "SpellRise/Components/CatalystComponent.h"
 
 #include "Animation/AnimInstance.h"
 #include "Net/UnrealNetwork.h"
@@ -80,6 +82,73 @@ namespace SpellRiseTags
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.CarryWeight"));
 		return Tag;
 	}
+
+	static FGameplayTag Input_Primary()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Primary"));
+		return Tag;
+	}
+
+	static FGameplayTag Input_Secondary()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Secondary"));
+		return Tag;
+	}
+
+	static FGameplayTag Input_Interact()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Utility.Interact"));
+		return Tag;
+	}
+
+	static FGameplayTag Input_AbilitySlot(int32 SlotIndex)
+	{
+		switch (SlotIndex)
+		{
+		case 0:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill1"));
+			return Tag;
+		}
+		case 1:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill2"));
+			return Tag;
+		}
+		case 2:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill3"));
+			return Tag;
+		}
+		case 3:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill4"));
+			return Tag;
+		}
+		case 4:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill5"));
+			return Tag;
+		}
+		case 5:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill6"));
+			return Tag;
+		}
+		case 6:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill7"));
+			return Tag;
+		}
+		case 7:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill8"));
+			return Tag;
+		}
+		default:
+			return FGameplayTag();
+		}
+	}
 }
 
 ASpellRiseCharacterBase::ASpellRiseCharacterBase()
@@ -89,19 +158,28 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	AbilitySystemComponent = CreateDefaultSubobject<USpellRiseAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
 
-	BasicAttributeSet    = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));
-	CombatAttributeSet   = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributeSet"));
+	BasicAttributeSet = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));
+	CombatAttributeSet = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributeSet"));
 	ResourceAttributeSet = CreateDefaultSubobject<UResourceAttributeSet>(TEXT("ResourceAttributeSet"));
 	CatalystAttributeSet = CreateDefaultSubobject<UCatalystAttributeSet>(TEXT("CatalystAttributeSet"));
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
+
+	// Create the catalyst component and assign enabled status based on the bEnableCatalyst property.
+	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
+	if (CatalystComponent)
+	{
+		CatalystComponent->bCatalystEnabled = bEnableCatalyst;
+	}
+
+	FallDamageComponent = CreateDefaultSubobject<UFallDamageComponent>(TEXT("FallDamageComponent"));
 
 	DeadStateTag = SpellRiseTags::State_Dead();
 
 	GetCapsuleComponent()->InitCapsuleSize(35.0f, 90.0f);
 
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw   = false;
-	bUseControllerRotationRoll  = false;
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.f, 500.f, 0.f);
@@ -147,23 +225,23 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 	// Universal inputs
 	if (IA_Primary)
 	{
-		EIC->BindAction(IA_Primary, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::Input_Primary_Pressed);
+		EIC->BindAction(IA_Primary, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::Input_Primary_Pressed);
 		EIC->BindAction(IA_Primary, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::Input_Primary_Released);
-		EIC->BindAction(IA_Primary, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::Input_Primary_Released);
+		EIC->BindAction(IA_Primary, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::Input_Primary_Released);
 	}
 
 	if (IA_Secondary)
 	{
-		EIC->BindAction(IA_Secondary, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::Input_Secondary_Pressed);
+		EIC->BindAction(IA_Secondary, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::Input_Secondary_Pressed);
 		EIC->BindAction(IA_Secondary, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::Input_Secondary_Released);
-		EIC->BindAction(IA_Secondary, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::Input_Secondary_Released);
+		EIC->BindAction(IA_Secondary, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::Input_Secondary_Released);
 	}
 
 	if (IA_Interact)
 	{
-		EIC->BindAction(IA_Interact, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::Input_Interact_Pressed);
+		EIC->BindAction(IA_Interact, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::Input_Interact_Pressed);
 		EIC->BindAction(IA_Interact, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::Input_Interact_Released);
-		EIC->BindAction(IA_Interact, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::Input_Interact_Released);
+		EIC->BindAction(IA_Interact, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::Input_Interact_Released);
 	}
 
 	// Utility
@@ -175,58 +253,58 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 	// Slots 1..8
 	if (IA_Ability1)
 	{
-		EIC->BindAction(IA_Ability1, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability1);
-		EIC->BindAction(IA_Ability1, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability1);
-		EIC->BindAction(IA_Ability1, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability1);
+		EIC->BindAction(IA_Ability1, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(0));
+		EIC->BindAction(IA_Ability1, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(0));
+		EIC->BindAction(IA_Ability1, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(0));
 	}
 
 	if (IA_Ability2)
 	{
-		EIC->BindAction(IA_Ability2, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability2);
-		EIC->BindAction(IA_Ability2, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability2);
-		EIC->BindAction(IA_Ability2, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability2);
+		EIC->BindAction(IA_Ability2, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(1));
+		EIC->BindAction(IA_Ability2, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(1));
+		EIC->BindAction(IA_Ability2, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(1));
 	}
 
 	if (IA_Ability3)
 	{
-		EIC->BindAction(IA_Ability3, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability3);
-		EIC->BindAction(IA_Ability3, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability3);
-		EIC->BindAction(IA_Ability3, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability3);
+		EIC->BindAction(IA_Ability3, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(2));
+		EIC->BindAction(IA_Ability3, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(2));
+		EIC->BindAction(IA_Ability3, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(2));
 	}
 
 	if (IA_Ability4)
 	{
-		EIC->BindAction(IA_Ability4, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability4);
-		EIC->BindAction(IA_Ability4, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability4);
-		EIC->BindAction(IA_Ability4, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability4);
+		EIC->BindAction(IA_Ability4, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(3));
+		EIC->BindAction(IA_Ability4, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(3));
+		EIC->BindAction(IA_Ability4, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(3));
 	}
 
 	if (IA_Ability5)
 	{
-		EIC->BindAction(IA_Ability5, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability5);
-		EIC->BindAction(IA_Ability5, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability5);
-		EIC->BindAction(IA_Ability5, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability5);
+		EIC->BindAction(IA_Ability5, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(4));
+		EIC->BindAction(IA_Ability5, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(4));
+		EIC->BindAction(IA_Ability5, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(4));
 	}
 
 	if (IA_Ability6)
 	{
-		EIC->BindAction(IA_Ability6, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability6);
-		EIC->BindAction(IA_Ability6, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability6);
-		EIC->BindAction(IA_Ability6, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability6);
+		EIC->BindAction(IA_Ability6, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(5));
+		EIC->BindAction(IA_Ability6, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(5));
+		EIC->BindAction(IA_Ability6, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(5));
 	}
 
 	if (IA_Ability7)
 	{
-		EIC->BindAction(IA_Ability7, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability7);
-		EIC->BindAction(IA_Ability7, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability7);
-		EIC->BindAction(IA_Ability7, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability7);
+		EIC->BindAction(IA_Ability7, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(6));
+		EIC->BindAction(IA_Ability7, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(6));
+		EIC->BindAction(IA_Ability7, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(6));
 	}
 
 	if (IA_Ability8)
 	{
-		EIC->BindAction(IA_Ability8, ETriggerEvent::Started,   this, &ASpellRiseCharacterBase::AbilityInputPressed,  EAbilityInputID::Ability8);
-		EIC->BindAction(IA_Ability8, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability8);
-		EIC->BindAction(IA_Ability8, ETriggerEvent::Canceled,  this, &ASpellRiseCharacterBase::AbilityInputReleased, EAbilityInputID::Ability8);
+		EIC->BindAction(IA_Ability8, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(7));
+		EIC->BindAction(IA_Ability8, ETriggerEvent::Completed, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(7));
+		EIC->BindAction(IA_Ability8, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::AbilityInputTagReleased, SpellRiseTags::Input_AbilitySlot(7));
 	}
 }
 
@@ -237,7 +315,7 @@ void ASpellRiseCharacterBase::Input_Primary_Pressed(const FInputActionValue& Val
 		return;
 	}
 
-	AbilitySystemComponent->AbilityLocalInputPressed(static_cast<int32>(EAbilityInputID::Primary));
+	AbilitySystemComponent->SR_AbilityInputTagPressed(SpellRiseTags::Input_Primary());
 }
 
 void ASpellRiseCharacterBase::Input_Primary_Released(const FInputActionValue& Value)
@@ -247,7 +325,7 @@ void ASpellRiseCharacterBase::Input_Primary_Released(const FInputActionValue& Va
 		return;
 	}
 
-	AbilitySystemComponent->AbilityLocalInputReleased(static_cast<int32>(EAbilityInputID::Primary));
+	AbilitySystemComponent->SR_AbilityInputTagReleased(SpellRiseTags::Input_Primary());
 }
 
 void ASpellRiseCharacterBase::Input_Secondary_Pressed(const FInputActionValue& Value)
@@ -257,7 +335,7 @@ void ASpellRiseCharacterBase::Input_Secondary_Pressed(const FInputActionValue& V
 		return;
 	}
 
-	AbilitySystemComponent->AbilityLocalInputPressed(static_cast<int32>(EAbilityInputID::Secondary));
+	AbilitySystemComponent->SR_AbilityInputTagPressed(SpellRiseTags::Input_Secondary());
 }
 
 void ASpellRiseCharacterBase::Input_Secondary_Released(const FInputActionValue& Value)
@@ -267,7 +345,7 @@ void ASpellRiseCharacterBase::Input_Secondary_Released(const FInputActionValue& 
 		return;
 	}
 
-	AbilitySystemComponent->AbilityLocalInputReleased(static_cast<int32>(EAbilityInputID::Secondary));
+	AbilitySystemComponent->SR_AbilityInputTagReleased(SpellRiseTags::Input_Secondary());
 }
 
 void ASpellRiseCharacterBase::Input_Interact_Pressed(const FInputActionValue& Value)
@@ -277,7 +355,7 @@ void ASpellRiseCharacterBase::Input_Interact_Pressed(const FInputActionValue& Va
 		return;
 	}
 
-	AbilitySystemComponent->AbilityLocalInputPressed(static_cast<int32>(EAbilityInputID::Interact));
+	AbilitySystemComponent->SR_AbilityInputTagPressed(SpellRiseTags::Input_Interact());
 }
 
 void ASpellRiseCharacterBase::Input_Interact_Released(const FInputActionValue& Value)
@@ -287,7 +365,7 @@ void ASpellRiseCharacterBase::Input_Interact_Released(const FInputActionValue& V
 		return;
 	}
 
-	AbilitySystemComponent->AbilityLocalInputReleased(static_cast<int32>(EAbilityInputID::Interact));
+	AbilitySystemComponent->SR_AbilityInputTagReleased(SpellRiseTags::Input_Interact());
 }
 
 void ASpellRiseCharacterBase::Input_ClearSelection(const FInputActionValue& Value)
@@ -300,48 +378,42 @@ void ASpellRiseCharacterBase::Input_ClearSelection(const FInputActionValue& Valu
 	ClearSelectedAbility();
 }
 
-void ASpellRiseCharacterBase::AbilityInputPressed(EAbilityInputID InputID)
+void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
 {
-	if (!IsLocallyControlled())
+	if (!IsLocallyControlled() || !AbilitySystemComponent || !InputTag.IsValid())
 	{
 		return;
 	}
 
-	if (!AbilitySystemComponent)
+	for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
 	{
-		return;
+		if (InputTag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
+		{
+			AbilityWheelInputPressed(SlotIndex);
+			return;
+		}
 	}
 
-	if (InputID >= EAbilityInputID::Ability1 && InputID <= EAbilityInputID::Ability8)
-	{
-		const int32 SlotIndex = static_cast<int32>(InputID) - static_cast<int32>(EAbilityInputID::Ability1);
-		AbilityWheelInputPressed(SlotIndex);
-		return;
-	}
-
-	AbilitySystemComponent->AbilityLocalInputPressed(static_cast<int32>(InputID));
+	AbilitySystemComponent->SR_AbilityInputTagPressed(InputTag);
 }
 
-void ASpellRiseCharacterBase::AbilityInputReleased(EAbilityInputID InputID)
+void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
 {
-	if (!IsLocallyControlled())
+	if (!IsLocallyControlled() || !AbilitySystemComponent || !InputTag.IsValid())
 	{
 		return;
 	}
 
-	if (!AbilitySystemComponent)
+	for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
 	{
-		return;
+		if (InputTag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
+		{
+			AbilityWheelInputReleased(SlotIndex);
+			return;
+		}
 	}
 
-	if (InputID >= EAbilityInputID::Ability1 && InputID <= EAbilityInputID::Ability8)
-	{
-		const int32 SlotIndex = static_cast<int32>(InputID) - static_cast<int32>(EAbilityInputID::Ability1);
-		AbilityWheelInputReleased(SlotIndex);
-		return;
-	}
-
-	AbilitySystemComponent->AbilityLocalInputReleased(static_cast<int32>(InputID));
+	AbilitySystemComponent->SR_AbilityInputTagReleased(InputTag);
 }
 
 void ASpellRiseCharacterBase::ForceServerAnimTick()
@@ -376,6 +448,14 @@ void ASpellRiseCharacterBase::PostInitializeComponents()
 void ASpellRiseCharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Propagate the bEnableCatalyst property to the catalyst component on begin play.  This allows
+	// designers to disable the catalyst system per-character instance in the editor.  Without this,
+	// the value set in the Blueprint wouldn't reflect on the component until later.
+	if (CatalystComponent)
+	{
+		CatalystComponent->bCatalystEnabled = bEnableCatalyst;
+	}
 
 	if (AbilitySystemComponent)
 	{
@@ -430,11 +510,11 @@ void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION(ASpellRiseCharacterBase, SelectedAbilityInputID, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ASpellRiseCharacterBase, SelectedAbilityInputTag, COND_OwnerOnly);
 	DOREPLIFETIME(ASpellRiseCharacterBase, Archetype);
 }
 
-void ASpellRiseCharacterBase::OnRep_SelectedAbilityInputID()
+void ASpellRiseCharacterBase::OnRep_SelectedAbilityInputTag()
 {
 }
 
@@ -468,9 +548,6 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		return;
 	}
 
-	// New primaries baseline:
-	// - Base 20..100 (100 distribuíveis)
-	// - Catalyst pode empurrar até 120
 	constexpr float Baseline = 20.f;
 
 	float dSTR = 0.f;
@@ -500,35 +577,36 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		break;
 	}
 
-	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(),     Baseline + dSTR);
-	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(),      Baseline + dAGI);
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), Baseline + dSTR);
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), Baseline + dAGI);
 	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), Baseline + dINT);
-	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(),       Baseline + dWIS);
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(), Baseline + dWIS);
 
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
 	LogDerivedDebug();
 }
 
-void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputID_Implementation(EAbilityInputID NewID)
+void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FGameplayTag NewTag)
 {
-	SelectedAbilityInputID = NewID;
+	SelectedAbilityInputTag = NewTag;
 }
 
 void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 {
-	EAbilityInputID NewID = EAbilityInputID::None;
+	FGameplayTag NewTag;
+
 	if (SlotIndex >= 0 && SlotIndex < 8)
 	{
-		NewID = static_cast<EAbilityInputID>(static_cast<uint8>(EAbilityInputID::Ability1) + SlotIndex);
+		NewTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
 	}
 
 	if (!HasAuthority())
 	{
-		ServerSetSelectedAbilityInputID(NewID);
+		ServerSetSelectedAbilityInputTag(NewTag);
 	}
 
-	SelectedAbilityInputID = NewID;
+	SelectedAbilityInputTag = NewTag;
 }
 
 void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
@@ -545,21 +623,15 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 		return;
 	}
 
-	const int32 InputID = static_cast<int32>(EAbilityInputID::Ability1) + SlotIndex;
-	USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(AbilitySystemComponent);
-	if (!SRASC)
+	const FGameplayTag InputTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
+	if (!InputTag.IsValid())
 	{
 		return;
 	}
 
-	SRASC->SR_TryActivateAbilityByInputID(InputID);
-
-	if (USpellRiseGameplayAbility* SRGA = SRASC->SR_GetSpellRiseAbilityForInputID(InputID))
+	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(AbilitySystemComponent))
 	{
-		if (SRGA->bActivateOnSelection)
-		{
-			AbilitySystemComponent->AbilityLocalInputPressed(InputID);
-		}
+		SRASC->SR_AbilityInputTagPressed(InputTag);
 	}
 }
 
@@ -575,33 +647,29 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 		return;
 	}
 
-	const int32 InputID = static_cast<int32>(EAbilityInputID::Ability1) + SlotIndex;
-	USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(AbilitySystemComponent);
-	if (!SRASC)
+	const FGameplayTag InputTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
+	if (!InputTag.IsValid())
 	{
 		return;
 	}
 
-	if (USpellRiseGameplayAbility* SRGA = SRASC->SR_GetSpellRiseAbilityForInputID(InputID))
+	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(AbilitySystemComponent))
 	{
-		if (SRGA->bActivateOnSelection)
-		{
-			AbilitySystemComponent->AbilityLocalInputReleased(InputID);
-			ClearSelectedAbility();
-		}
+		SRASC->SR_AbilityInputTagReleased(InputTag);
+		ClearSelectedAbility();
 	}
 }
 
 void ASpellRiseCharacterBase::ClearSelectedAbility()
 {
-	EAbilityInputID NewID = EAbilityInputID::None;
+	FGameplayTag NewTag;
 
 	if (!HasAuthority())
 	{
-		ServerSetSelectedAbilityInputID(NewID);
+		ServerSetSelectedAbilityInputTag(NewTag);
 	}
 
-	SelectedAbilityInputID = NewID;
+	SelectedAbilityInputTag = NewTag;
 }
 
 void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
@@ -710,7 +778,6 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetHealthAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnHealthChanged);
 
-	// Primaries (new)
 	AbilitySystemComponent
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetStrengthAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
@@ -851,14 +918,14 @@ void ASpellRiseCharacterBase::LogDerivedDebug()
 		STR, AGI, INT, WIS);
 
 	const float MeleeMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetMeleeDamageMultiplierAttribute());
-	const float BowMult   = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute());
+	const float BowMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute());
 	const float SpellMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetSpellDamageMultiplierAttribute());
-	const float HealMult  = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetHealingMultiplierAttribute());
+	const float HealMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetHealingMultiplierAttribute());
 
 	const float CTR = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCastTimeReductionAttribute());
-	const float CC  = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritChanceAttribute());
-	const float CD  = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritDamageAttribute());
-	const float AP  = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetArmorPenetrationAttribute());
+	const float CC = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritChanceAttribute());
+	const float CD = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritDamageAttribute());
+	const float AP = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetArmorPenetrationAttribute());
 	const float MCR = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetManaCostReductionAttribute());
 
 	UE_LOG(LogTemp, Warning, TEXT("[DER]  Melee=%.3f Bow=%.3f Spell=%.3f Heal=%.3f CTR=%.3f CC=%.3f CD=%.3f AP=%.3f MCR=%.3f"),
@@ -910,14 +977,11 @@ void ASpellRiseCharacterBase::RecalculateDerivedStats()
 		return;
 	}
 
-	// Agora o cálculo de MaxHealth/MaxMana/MaxStamina/CarryWeight deve vir do próprio GE_RecalculateResources
-	// via MMCs (MaxHealthFromPrimaries/MaxManaFromPrimaries/MaxStaminaFromPrimaries/CarryWeightFromPrimaries).
 	ApplyOrRefreshEffect(GE_RecalculateResources);
 }
 
 TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(
-	const TArray<TSubclassOf<UGameplayAbility>>& AbilitiesToGrant,
-	const int32 Level)
+	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
 {
 	if (!AbilitySystemComponent || !HasAuthority())
 	{
@@ -927,36 +991,31 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(
 	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
 	AbilityHandles.Reserve(AbilitiesToGrant.Num());
 
-	for (TSubclassOf<UGameplayAbility> AbilityClass : AbilitiesToGrant)
+	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
 	{
-		if (!AbilityClass)
+		if (!Grant.Ability)
 		{
 			continue;
 		}
 
-		int32 InputID = INDEX_NONE;
-		bool bAutoActivate = false;
+		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
 
-		if (const USpellRiseGameplayAbility* CDO = Cast<USpellRiseGameplayAbility>(AbilityClass->GetDefaultObject()))
+		FGameplayAbilitySpec Spec(Grant.Ability, FinalLevel, INDEX_NONE, this);
+
+		if (Grant.InputTag.IsValid())
 		{
-			InputID = static_cast<int32>(CDO->AbilityInputID);
-			bAutoActivate = CDO->AutoActivateWhenGranted;
+			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
 		}
 
-		FGameplayAbilitySpec Spec(AbilityClass, Level, InputID, this);
 		const FGameplayAbilitySpecHandle Handle = AbilitySystemComponent->GiveAbility(Spec);
 		AbilityHandles.Add(Handle);
 
-		const bool bHasInputBinding =
-			(InputID != INDEX_NONE) &&
-			(InputID != static_cast<int32>(EAbilityInputID::None));
-
-		if (bAutoActivate && !bHasInputBinding)
+		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
 		{
 			const bool bActivated = AbilitySystemComponent->TryActivateAbility(Handle);
 			if (!bActivated)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[GAS] AutoActivate FAILED: %s"), *GetNameSafe(AbilityClass));
+				UE_LOG(LogTemp, Warning, TEXT("[GAS] AutoActivate FAILED: %s"), *GetNameSafe(Grant.Ability));
 			}
 		}
 	}
@@ -1107,5 +1166,59 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 		return;
 	}
 
-	BP_ShowDamagePop(Damage, InstigatorActor, DamageTypeTag, bIsCrit);
+	ASpellRisePlayerController* PC = Cast<ASpellRisePlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	FGameplayTagContainer SourceTags;
+	FGameplayTagContainer TargetTags;
+
+	if (DamageTypeTag.IsValid())
+	{
+		TargetTags.AddTag(DamageTypeTag);
+	}
+
+	const FVector PopLocation =
+		(InstigatorActor ? InstigatorActor->GetActorLocation() : GetActorLocation()) + FVector(0.f, 0.f, 90.f);
+
+	PC->ShowDamageNumber(
+		Damage,
+		PopLocation,
+		SourceTags,
+		TargetTags,
+		bIsCrit
+	);
+
+	UE_LOG(LogTemp, Warning, TEXT("[POP][Character] Damage=%.1f Crit=%d Type=%s Char=%s Controller=%s"),
+		Damage,
+		bIsCrit ? 1 : 0,
+		*DamageTypeTag.ToString(),
+		*GetNameSafe(this),
+		*GetNameSafe(GetController()));
+}
+
+void ASpellRiseCharacterBase::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+
+	if (!FallDamageComponent)
+	{
+		return;
+	}
+
+	FallDamageComponent->OnMovementModeChanged();
+}
+
+void ASpellRiseCharacterBase::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	if (!FallDamageComponent)
+	{
+		return;
+	}
+
+	FallDamageComponent->OnLanded(Hit);
 }

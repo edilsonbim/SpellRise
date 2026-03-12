@@ -8,8 +8,7 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
-
-#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
+#include "SpellRise/Components/FallDamageComponent.h"
 #include "InputActionValue.h"
 
 class UInputMappingContext;
@@ -23,6 +22,7 @@ class UBasicAttributeSet;
 class UCombatAttributeSet;
 class UResourceAttributeSet;
 class UCatalystAttributeSet;
+class UCatalystComponent;
 class UDerivedStatsAttributeSet;
 
 class UAbilitySystemComponent;
@@ -38,6 +38,24 @@ enum class ESpellRiseArchetype : uint8
 	Mage UMETA(DisplayName="Mage"),
 	Battlemage UMETA(DisplayName="Battlemage"),
 	Cleric UMETA(DisplayName="Cleric")
+};
+
+USTRUCT(BlueprintType)
+struct FSpellRiseGrantedAbility
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant")
+	TSubclassOf<UGameplayAbility> Ability = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
+	int32 AbilityLevel = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
+	FGameplayTag InputTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant")
+	bool bAutoActivateIfNoInputTag = false;
 };
 
 UCLASS()
@@ -59,6 +77,11 @@ public:
 	virtual void OnRep_PlayerState() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
+	// Fall damage hook no Character.
+	// O cálculo/validação fica no UFallDamageComponent.
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
+	virtual void Landed(const FHitResult& Hit) override;
+
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS|Input")
@@ -69,8 +92,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantAbilities(
-		const TArray<TSubclassOf<UGameplayAbility>>& AbilitiesToGrant,
-		int32 Level = 1);
+		const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant);
 
 	UFUNCTION(BlueprintCallable, Category = "SpellRise|GAS")
 	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
@@ -126,6 +148,9 @@ public:
 	void ApplyArchetypeToPrimaries_Server();
 
 protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<UFallDamageComponent> FallDamageComponent = nullptr;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|Movement")
 	float BaseWalkSpeed = 500.f;
 
@@ -147,11 +172,21 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SpellRise|GAS", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UDerivedStatsAttributeSet> DerivedStatsAttributeSet = nullptr;
 
+	/** Component that encapsulates the catalyst system.  It can be enabled or disabled on a per
+	 * instance basis via the bEnableCatalyst property. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UCatalystComponent> CatalystComponent = nullptr;
+
+	/** Whether this character should use the catalyst component.  When false, the catalyst component
+	 * will not accumulate charges or proc abilities.  Designers can toggle this in the editor. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpellRise|Catalyst")
+	bool bEnableCatalyst = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpellRise|GAS")
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Mixed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpellRise|GAS|Startup")
-	TArray<TSubclassOf<UGameplayAbility>> StartingAbilities;
+	TArray<FSpellRiseGrantedAbility> StartingAbilities;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|GAS|Startup")
 	TSubclassOf<UGameplayEffect> GE_RecalculateResources;
@@ -165,17 +200,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "SpellRise|GAS|Regen")
 	TArray<TSubclassOf<UGameplayEffect>> GE_RegenEffects;
 
-	void AbilityInputPressed(EAbilityInputID InputID);
-	void AbilityInputReleased(EAbilityInputID InputID);
+	void AbilityInputTagPressed(FGameplayTag InputTag);
+	void AbilityInputTagReleased(FGameplayTag InputTag);
 
-	UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputID, BlueprintReadOnly, Category="SpellRise|Abilities")
-	EAbilityInputID SelectedAbilityInputID = EAbilityInputID::None;
+	UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputTag, BlueprintReadOnly, Category="SpellRise|Abilities")
+	FGameplayTag SelectedAbilityInputTag;
 
 	UFUNCTION()
-	void OnRep_SelectedAbilityInputID();
+	void OnRep_SelectedAbilityInputTag();
 
 	UFUNCTION(Server, Reliable)
-	void ServerSetSelectedAbilityInputID(EAbilityInputID NewID);
+	void ServerSetSelectedAbilityInputTag(FGameplayTag NewTag);
 
 public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")

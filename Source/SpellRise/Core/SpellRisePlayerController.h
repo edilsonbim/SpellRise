@@ -1,22 +1,20 @@
-// SpellRisePlayerController.h
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "GameplayTagContainer.h"
 #include "SpellRisePlayerController.generated.h"
 
 class UInputMappingContext;
 class UInputAction;
 class UGameplayAbility;
+class USpellRiseNumberPopComponent_NiagaraText;
 
 /**
- * PlayerController (Enhanced Input):
+ * PlayerController (Enhanced Input + Combat Feedback):
  * - Applies DefaultMappingContext on local controller
- * - Binds IA_Attack (Pressed) and forwards to GAS:
- *   - ASC->TryActivateAbilityByClass(AttackAbilityClass)
- *
- * This fixes: "sem input para atacar" even if you are not using InputID binding yet.
+ * - Binds IA_Attack and forwards to GAS
+ * - Owns the NumberPopComponent (Lyra-style) for local damage feedback
  */
 UCLASS()
 class SPELLRISE_API ASpellRisePlayerController : public APlayerController
@@ -25,6 +23,15 @@ class SPELLRISE_API ASpellRisePlayerController : public APlayerController
 
 public:
 	ASpellRisePlayerController();
+
+	/** Local-only visual feedback for combat damage numbers */
+	void ShowDamageNumber(
+		float Damage,
+		const FVector& WorldLocation,
+		const FGameplayTagContainer& SourceTags,
+		const FGameplayTagContainer& TargetTags,
+		bool bIsCritical
+	);
 
 protected:
 	virtual void BeginPlay() override;
@@ -46,6 +53,12 @@ protected:
 	// Which ability should be activated on attack pressed (set in BP: GA_Weapon_MeleeLight)
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TSubclassOf<UGameplayAbility> AttackAbilityClass;
+
+	// -------------------------
+	// Combat Feedback
+	// -------------------------
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Feedback", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseNumberPopComponent_NiagaraText> NumberPopComponent = nullptr;
 
 	void SetupEnhancedInput();
 

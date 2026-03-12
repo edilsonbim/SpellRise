@@ -9,10 +9,10 @@
 // Define catalyst attribute accessor helpers only once to avoid duplicate macro definitions.
 #ifndef ATTRIBUTE_ACCESSORS
 #define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
-    GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
-    GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
-    GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
-    GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
+	GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
+	GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
+	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 #endif
 
 UCLASS(BlueprintType)
@@ -46,12 +46,15 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
-	// OnRep
-	UFUNCTION() void OnRep_CatalystCharge(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_CatalystXP(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_CatalystLevel(const FGameplayAttributeData& OldValue);
+	UFUNCTION()
+	void OnRep_CatalystCharge(const FGameplayAttributeData& OldValue);
 
-	// clamps + proc trigger
+	UFUNCTION()
+	void OnRep_CatalystXP(const FGameplayAttributeData& OldValue);
+
+	UFUNCTION()
+	void OnRep_CatalystLevel(const FGameplayAttributeData& OldValue);
+
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 };

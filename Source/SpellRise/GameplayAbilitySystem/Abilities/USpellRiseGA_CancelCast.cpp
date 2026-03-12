@@ -6,8 +6,7 @@ USpellRiseGA_CancelCast::USpellRiseGA_CancelCast()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
-	// Cancel cast precisa ser instantâneo e não entrar no seu fluxo de cast
-	bUseCasting = false; // assumindo que existe no USpellRiseGameplayAbility (pelo seu sistema)
+	ActivationPolicy = ESpellRiseAbilityActivationPolicy::OnInputTriggered;
 }
 
 void USpellRiseGA_CancelCast::ActivateAbility(

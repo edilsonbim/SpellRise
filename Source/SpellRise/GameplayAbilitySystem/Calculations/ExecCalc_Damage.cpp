@@ -16,9 +16,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDamage, Log, All);
 
 namespace SpellRiseTags
 {
-	// -----------------------------
-	// SetByCaller Data
-	// -----------------------------
 	inline const FGameplayTag& Data_BaseWeaponDamage()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.BaseWeaponDamage"), false);
@@ -50,9 +47,22 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
-	// -----------------------------
-	// Damage Channels (define PowerMultiplier)
-	// -----------------------------
+	inline const FGameplayTag& Data_Damage()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.Damage"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& Data_FallSeverity()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.FallSeverity"), false);
+		return Tag;
+	}
+	inline const FGameplayTag& Data_DamageType_Fall()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.DamageType.Fall"), false);
+		return Tag;
+	}
+
 	inline const FGameplayTag& DamageChannel_Melee()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageChannel.Melee"), false);
@@ -74,9 +84,6 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
-	// -----------------------------
-	// Legacy / compatibility tags
-	// -----------------------------
 	inline const FGameplayTag& DamageType_Spell()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Spell"), false);
@@ -94,9 +101,6 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
-	// -----------------------------
-	// Damage Types (define resist/drain)
-	// -----------------------------
 	inline const FGameplayTag& DamageType_Physical_Slashing()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("DamageType.Physical.Slashing"), false);
@@ -434,11 +438,21 @@ static float SR_GetResistPctForDamageType(
 	return FMath::Clamp(ResistPct, 0.f, 75.f);
 }
 
+static float SR_GetFallResistPct(
+	const UExecCalc_Damage::FCaptureDefs& C,
+	const FGameplayEffectCustomExecutionParameters& ExecutionParams,
+	const FAggregatorEvaluateParameters& Params)
+{
+	float ResistPct = 0.f;
+	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ImpactResDef, Params, ResistPct);
+	return FMath::Clamp(ResistPct, 0.f, 75.f);
+}
+
 static float SR_FixMultiplierOrDefault(float V, const TCHAR* Label)
 {
 	if (!FMath::IsFinite(V) || V <= 0.f)
 	{
-		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG FIX] %s was %.3f -> forcing 1.0 (DerivedStats missing?)"), Label, V);
+		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG FIX] %s was %.3f -> forcing 1.0"), Label, V);
 		return 1.f;
 	}
 	return V;
@@ -446,7 +460,6 @@ static float SR_FixMultiplierOrDefault(float V, const TCHAR* Label)
 
 static const TCHAR* SR_ChannelToText(int32 Channel)
 {
-	// 0=Unknown, 1=Melee, 2=Bow, 3=Spell, 4=Environment
 	switch (Channel)
 	{
 	case 1: return TEXT("Melee");
@@ -473,21 +486,38 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	const FGameplayTagContainer& SpecDynTags = Spec.GetDynamicAssetTags();
 
-	// Explicit channels
+	const float FallTagMagnitude = SpellRiseTags::Data_DamageType_Fall().IsValid()
+		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_DamageType_Fall(), false, -1.f)
+		: -1.f;
+
+	const float FallSeverity = SpellRiseTags::Data_FallSeverity().IsValid()
+		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_FallSeverity(), false, -1.f)
+		: -1.f;
+
+	const float FallBaseDamage = SpellRiseTags::Data_Damage().IsValid()
+		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_Damage(), false, -1.f)
+		: -1.f;
+
+	UE_LOG(LogSpellRiseDamage, Warning,
+		TEXT("[FALL EXEC READ] FallTag=%.2f Severity=%.3f Damage=%.2f"),
+		FallTagMagnitude, FallSeverity, FallBaseDamage);
+
+	const bool bIsFallDamage = FallTagMagnitude > 0.f;
+
 	const bool bChanMelee = SpellRiseTags::DamageChannel_Melee().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Melee());
 	const bool bChanBow = SpellRiseTags::DamageChannel_Bow().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Bow());
 	const bool bChanSpell = SpellRiseTags::DamageChannel_Spell().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Spell());
 	const bool bChanEnv = SpellRiseTags::DamageChannel_Environment().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Environment());
 
-	// Legacy mapping
 	const bool bLegacySpell = SpellRiseTags::DamageType_Spell().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Spell());
 	const bool bLegacyBow = SpellRiseTags::DamageType_Bow().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageType_Bow());
 
 	const bool bTrueDamage = SpellRiseTags::DamageRule_TrueDamage().IsValid()
 		&& SpecDynTags.HasTagExact(SpellRiseTags::DamageRule_TrueDamage());
 
-	int32 Channel = 0; // Unknown (safe)
-	if (bChanSpell) Channel = 3;
+	int32 Channel = 0;
+	if (bIsFallDamage) Channel = 4;
+	else if (bChanSpell) Channel = 3;
 	else if (bChanBow) Channel = 2;
 	else if (bChanMelee) Channel = 1;
 	else if (bChanEnv) Channel = 4;
@@ -509,23 +539,22 @@ void UExecCalc_Damage::Execute_Implementation(
 	{
 		float Tmp = 0.f;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.MeleeDamageMultiplierDef, Params, Tmp)) MeleeMult = Tmp;
-		else UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG CAP FAIL] MeleeDamageMultiplier capture failed (keeping default 1.0)"));
-
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.BowDamageMultiplierDef, Params, Tmp)) BowMult = Tmp;
-		else UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG CAP FAIL] BowDamageMultiplier capture failed (keeping default 1.0)"));
-
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.SpellDamageMultiplierDef, Params, Tmp)) SpellMult = Tmp;
-		else UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG CAP FAIL] SpellDamageMultiplier capture failed (keeping default 1.0)"));
-
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritChanceDef, Params, Tmp)) CritChance01 = Tmp;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, Tmp)) CritDamageMult = Tmp;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, Tmp)) ArmorPenPct = Tmp;
 	}
 
 	UE_LOG(LogSpellRiseDamage, Warning,
-		TEXT("[DMG CAP] Chan=%s | Melee=%.3f Bow=%.3f Spell=%.3f | CritChance=%.3f CritDmg=%.3f | ArmorPenPct=%.3f | TrueDmg=%d"),
+		TEXT("[DMG CAP] Chan=%s | Melee=%.3f Bow=%.3f Spell=%.3f | CritChance=%.3f CritDmg=%.3f | ArmorPenPct=%.3f | TrueDmg=%d | IsFall=%d | FallSeverity=%.3f | FallBase=%.2f"),
 		SR_ChannelToText(Channel),
-		MeleeMult, BowMult, SpellMult, CritChance01, CritDamageMult, ArmorPenPct, bTrueDamage ? 1 : 0);
+		MeleeMult, BowMult, SpellMult,
+		CritChance01, CritDamageMult, ArmorPenPct,
+		bTrueDamage ? 1 : 0,
+		bIsFallDamage ? 1 : 0,
+		FallSeverity,
+		FallBaseDamage);
 
 	MeleeMult = SR_FixMultiplierOrDefault(MeleeMult, TEXT("MeleeMult"));
 	BowMult = SR_FixMultiplierOrDefault(BowMult, TEXT("BowMult"));
@@ -541,16 +570,63 @@ void UExecCalc_Damage::Execute_Implementation(
 	ArmorPenPct = FMath::Clamp(ArmorPenPct, 0.f, 30.f);
 	const float ArmorPen01 = FMath::Clamp(ArmorPenPct / 100.f, 0.f, 0.30f);
 
+	float BaseDamage = 0.f;
+	float DamageScaling = 1.f;
+	float PowerMultiplier = 1.f;
+	float FinalDamage = 0.f;
+
+	if (bIsFallDamage)
+	{
+		BaseDamage = FMath::Max(0.f, FallBaseDamage);
+		FinalDamage = BaseDamage;
+
+		UE_LOG(LogSpellRiseDamage, Warning,
+			TEXT("[FALL DMG] Base=%.2f | Severity=%.3f | Raw=%.2f"),
+			BaseDamage, FallSeverity, FinalDamage);
+
+		if (FinalDamage <= 0.f)
+		{
+			return;
+		}
+
+		float ResistPct = SR_GetFallResistPct(C, ExecutionParams, Params);
+		float Resist01 = FMath::Clamp(ResistPct / 100.f, 0.f, 0.75f);
+
+		FinalDamage *= (1.f - Resist01);
+		if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f)
+		{
+			FinalDamage = 0.f;
+		}
+
+		UE_LOG(LogSpellRiseDamage, Warning,
+			TEXT("[FALL DMG] ImpactResPct=%.2f | AfterResist=%.2f"),
+			ResistPct, FinalDamage);
+
+		if (FinalDamage <= 0.f)
+		{
+			return;
+		}
+
+		OutExecutionOutput.AddOutputModifier(
+			FGameplayModifierEvaluatedData(
+				UResourceAttributeSet::GetDamageAttribute(),
+				EGameplayModOp::Additive,
+				FinalDamage));
+
+		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[FALL DMG FINAL] %.2f"), FinalDamage);
+		return;
+	}
+
 	const bool bUseSpellBase = (Channel == 3);
 
-	const float BaseDamage = FMath::Max(
+	BaseDamage = FMath::Max(
 		0.f,
 		bUseSpellBase
 			? SpellRiseTags::GetSBC_WithFallback(Spec, SpellRiseTags::Data_BaseSpellDamage(), SpellRiseTags::Data_BaseDamage_Legacy(), false, 0.f)
 			: SpellRiseTags::GetSBC_WithFallback(Spec, SpellRiseTags::Data_BaseWeaponDamage(), SpellRiseTags::Data_BaseDamage_Legacy(), false, 0.f)
 	);
 
-	const float DamageScaling = FMath::Max(
+	DamageScaling = FMath::Max(
 		0.f,
 		SpellRiseTags::GetSBC_WithFallback(Spec, SpellRiseTags::Data_DamageScaling(), SpellRiseTags::Data_DamageMultiplier_Legacy(), false, 1.f)
 	);
@@ -559,13 +635,12 @@ void UExecCalc_Damage::Execute_Implementation(
 		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_ForceCrit(), false, 0.f)
 		: 0.f;
 
-	float PowerMultiplier = 1.f;
 	if (Channel == 3) PowerMultiplier = SpellMult;
 	else if (Channel == 2) PowerMultiplier = BowMult;
 	else if (Channel == 1) PowerMultiplier = MeleeMult;
-	else PowerMultiplier = 1.f; // Unknown/Environment safe
+	else PowerMultiplier = 1.f;
 
-	float FinalDamage = BaseDamage * PowerMultiplier * DamageScaling;
+	FinalDamage = BaseDamage * PowerMultiplier * DamageScaling;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 
 	UE_LOG(LogSpellRiseDamage, Warning,
@@ -589,14 +664,8 @@ void UExecCalc_Damage::Execute_Implementation(
 			Resist01 = FMath::Clamp(Resist01, 0.f, 0.75f);
 		}
 
-		UE_LOG(LogSpellRiseDamage, Warning,
-			TEXT("[DMG] ResistPct=%.2f | Resist01=%.3f | ArmorPenPct=%.2f"),
-			ResistPct, Resist01, ArmorPenPct);
-
 		FinalDamage *= (1.f - Resist01);
 		if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
-
-		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG] After Resist=%.2f"), FinalDamage);
 
 		if (FinalDamage <= 0.f)
 		{
@@ -615,18 +684,12 @@ void UExecCalc_Damage::Execute_Implementation(
 			FinalDamage *= CritDamageMult;
 			if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 		}
-
-		UE_LOG(LogSpellRiseDamage, Warning,
-			TEXT("[DMG] Crit=%d | CritChancePct=%.2f | CritMult=%.2f | AfterCrit=%.2f | ForceCrit=%.2f"),
-			bCrit ? 1 : 0, CritChancePct, CritDamageMult, FinalDamage, ForceCrit);
 	}
 
 	if (FinalDamage <= 0.f)
 	{
 		return;
 	}
-
-	UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG FINAL] Chan=%s | %.2f"), SR_ChannelToText(Channel), FinalDamage);
 
 	OutExecutionOutput.AddOutputModifier(
 		FGameplayModifierEvaluatedData(

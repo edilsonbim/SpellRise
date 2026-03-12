@@ -2,12 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
-
-class USpellRiseGameplayAbility;
+#include "GameplayTagContainer.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityTagRelationshipMapping.h"
 #include "SpellRiseAbilitySystemComponent.generated.h"
 
 class UGameplayEffect;
 class UGameplayAbility;
+class USpellRiseGameplayAbility;
+class USpellRiseAbilityTagRelationshipMapping;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class SPELLRISE_API USpellRiseAbilitySystemComponent : public UAbilitySystemComponent
@@ -20,7 +22,7 @@ protected:
 	TArray<FGameplayAbilitySpec> LastActivatableAbilities;
 
 	// =========================================================
-	// Input pipeline (custom, like Lyra)
+	// Input pipeline por Gameplay Tag (custom, estilo Lyra)
 	// =========================================================
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
@@ -38,7 +40,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void OnRep_ActivateAbilities() override;
 
-	// Hooks chamados por AbilityLocalInputPressed/Released internamente
+	// Hooks chamados internamente
 	virtual void AbilitySpecInputPressed(FGameplayAbilitySpec& Spec) override;
 	virtual void AbilitySpecInputReleased(FGameplayAbilitySpec& Spec) override;
 
@@ -47,10 +49,10 @@ public:
 	// Input public API
 	// =========================================================
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
-	void SR_AbilityInputPressed(int32 InputID);
+	void SR_AbilityInputTagPressed(FGameplayTag InputTag);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
-	void SR_AbilityInputReleased(int32 InputID);
+	void SR_AbilityInputTagReleased(FGameplayTag InputTag);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused);
@@ -61,48 +63,48 @@ public:
 	// ---------------------------------------------------------
 	// Ability Wheel helpers
 	// ---------------------------------------------------------
-	/** Activate the first ability spec that matches the given InputID. */
+	/** Activate a primeira ability spec que combinar com o InputTag. */
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
-	bool SR_TryActivateAbilityByInputID(int32 InputID);
+	bool SR_TryActivateAbilityByInputTag(FGameplayTag InputTag);
 
-	/** Returns the SpellRiseGameplayAbility CDO for the first spec matching InputID (may be null). */
+	/** Retorna a SpellRiseGameplayAbility CDO da primeira spec que combinar com o InputTag. */
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
-	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForInputID(int32 InputID) const;
+	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForInputTag(FGameplayTag InputTag) const;
 
 	// =========================================================
-	// Catalyst (único dono da mecânica)
+	// Tag relationship mapping
 	// =========================================================
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Catalyst")
-	TSubclassOf<UGameplayEffect> GE_CatalystAddCharge;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Tags")
+	TObjectPtr<USpellRiseAbilityTagRelationshipMapping> TagRelationshipMapping;
 
-	/** Habilidade que faz o proc (deve aplicar State.Catalyst.Active e consumir charge). */
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Catalyst")
-	TSubclassOf<UGameplayAbility> CatalystProcAbilityClass;
+	/** Sets the current tag relationship mapping. Passing nullptr clears it. */
+	void SetTagRelationshipMapping(USpellRiseAbilityTagRelationshipMapping* NewMapping);
 
-	FORCEINLINE TSubclassOf<UGameplayAbility> GetCatalystProcAbilityClass() const
-	{
-		return CatalystProcAbilityClass;
-	}
+	/**
+	 * Given a set of ability tags, append additional required and blocked activation tags
+	 * based on the tag relationship mapping.
+	 */
+	void GetAdditionalActivationTagRequirements(
+		const FGameplayTagContainer& AbilityTags,
+		FGameplayTagContainer& OutActivationRequired,
+		FGameplayTagContainer& OutActivationBlocked) const;
 
-	/** Adiciona charge quando o hit for válido. (SERVER ONLY) (para o agressor) */
-	UFUNCTION(BlueprintCallable, Category="SpellRise|Catalyst")
-	bool TryAddCatalystCharge_OnValidHit(AActor* TargetActor);
+protected:
+	/**
+	 * Override of UAbilitySystemComponent::ApplyAbilityBlockAndCancelTags to apply tag relationship
+	 * rules before applying the incoming block and cancel tags.
+	 */
+	virtual void ApplyAbilityBlockAndCancelTags(
+		const FGameplayTagContainer& AbilityTags,
+		UGameplayAbility* RequestingAbility,
+		bool bEnableBlockTags,
+		const FGameplayTagContainer& BlockTags,
+		bool bExecuteCancelTags,
+		const FGameplayTagContainer& CancelTags) override;
 
-	/** Adiciona charge quando toma dano real. (SERVER ONLY) (para a vítima) */
-	UFUNCTION(BlueprintCallable, Category="SpellRise|Catalyst")
-	bool TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorActor);
+	bool AbilitySpecMatchesInputTag(const FGameplayAbilitySpec& Spec, const FGameplayTag& InputTag) const;
+	void GetAbilitySpecsFromInputTag(const FGameplayTag& InputTag, TArray<FGameplayAbilitySpecHandle>& OutSpecHandles) const;
 
-	/** Tenta proc se estiver pronto. (SERVER ONLY) */
-	UFUNCTION(BlueprintCallable, Category="SpellRise|Catalyst")
-	void TryProcCatalystIfReady();
-
-private:
-	// Garantia de bind do listener, mesmo quando BeginPlay ocorrer antes do ActorInfo estar pronto.
-	void EnsureCatalystChargeListenerBound_Server();
-
-	void BindCatalystChargeListener_Server();
-	void OnCatalystChargeChanged(const struct FOnAttributeChangeData& Data);
-
-private:
-	bool bCatalystListenerBound = false;
+	void MarkSpecInputPressed(FGameplayAbilitySpec& Spec);
+	void MarkSpecInputReleased(FGameplayAbilitySpec& Spec);
 };
