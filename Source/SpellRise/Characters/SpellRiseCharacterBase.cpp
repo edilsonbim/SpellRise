@@ -1,107 +1,72 @@
-// SpellRiseCharacterBase.cpp
-
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
-#include "InputCoreTypes.h"
-
-#include "Components/CapsuleComponent.h"
-#include "Components/InputComponent.h"
-#include "Components/ChildActorComponent.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "InputMappingContext.h"
-#include "InputAction.h"
-#include "GameFramework/PlayerController.h"
-#include "Engine/LocalPlayer.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
-#include "GameplayEffect.h"
-#include "GameplayTagContainer.h"
-
-#include "SpellRise/Core/SpellRisePlayerController.h"
-#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
-#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
-#include "SpellRise/Components/CatalystComponent.h"
-
 #include "Animation/AnimInstance.h"
+#include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/ChildActorComponent.h"
+#include "Components/InputComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "GameplayEffect.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+
+#include "SpellRise/Components/CatalystComponent.h"
+#include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 namespace SpellRiseTags
 {
-	static FGameplayTag State_Dead()
+	static const FGameplayTag& State_Dead()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"));
 		return Tag;
 	}
 
-	static FGameplayTag State_DerivedStats_Active()
+	static const FGameplayTag& State_DerivedStats_Active()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.DerivedStats.Active"));
 		return Tag;
 	}
 
-	static FGameplayTag Event_Abilities_Changed()
+	static const FGameplayTag& Event_Abilities_Changed()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Event.Abilities.Changed"));
 		return Tag;
 	}
 
-	static FGameplayTag Data_MaxHealth()
-	{
-		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth"));
-		return Tag;
-	}
-
-	static FGameplayTag Data_MaxMana()
-	{
-		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxMana"));
-		return Tag;
-	}
-
-	static FGameplayTag Data_MaxStamina()
-	{
-		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxStamina"));
-		return Tag;
-	}
-
-	static FGameplayTag Data_MaxShield()
-	{
-		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.MaxShield"));
-		return Tag;
-	}
-
-	static FGameplayTag Data_CarryWeight()
-	{
-		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.CarryWeight"));
-		return Tag;
-	}
-
-	static FGameplayTag Input_Primary()
+	static const FGameplayTag& Input_Primary()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Primary"));
 		return Tag;
 	}
 
-	static FGameplayTag Input_Secondary()
+	static const FGameplayTag& Input_Secondary()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Secondary"));
 		return Tag;
 	}
 
-	static FGameplayTag Input_Interact()
+	static const FGameplayTag& Input_Interact()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Utility.Interact"));
 		return Tag;
 	}
 
-	static FGameplayTag Input_AbilitySlot(int32 SlotIndex)
+	static const FGameplayTag& Input_AbilitySlot(int32 SlotIndex)
 	{
 		switch (SlotIndex)
 		{
@@ -146,7 +111,10 @@ namespace SpellRiseTags
 			return Tag;
 		}
 		default:
-			return FGameplayTag();
+		{
+			static FGameplayTag InvalidTag;
+			return InvalidTag;
+		}
 		}
 	}
 }
@@ -164,7 +132,6 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	CatalystAttributeSet = CreateDefaultSubobject<UCatalystAttributeSet>(TEXT("CatalystAttributeSet"));
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
 
-	// Create the catalyst component and assign enabled status based on the bEnableCatalyst property.
 	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
 	if (CatalystComponent)
 	{
@@ -191,6 +158,65 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.f;
 
 	ForceServerAnimTick();
+}
+
+void ASpellRiseCharacterBase::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	ForceServerAnimTick();
+	EnsureAnimInstanceInitialized();
+}
+
+void ASpellRiseCharacterBase::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (CatalystComponent)
+	{
+		CatalystComponent->bCatalystEnabled = bEnableCatalyst;
+	}
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->SetReplicationMode(AscReplicationMode);
+	}
+
+	ForceServerAnimTick();
+	EnsureAnimInstanceInitialized();
+
+	InitASCActorInfo();
+	BindASCDelegates();
+
+	if (HasAuthority())
+	{
+		USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
+		UCameraComponent* AimCamera = GetActiveAimCameraComponent();
+
+		UE_LOG(LogTemp, Warning, TEXT("[Anim][Server] Char=%s Mesh=%s AnimClass=%s AnimInstance=%s TickOption=%d AimCamera=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(VisualMesh),
+			VisualMesh ? *GetNameSafe(VisualMesh->AnimClass) : TEXT("NULL"),
+			VisualMesh ? *GetNameSafe(VisualMesh->GetAnimInstance()) : TEXT("NULL"),
+			VisualMesh ? static_cast<int32>(VisualMesh->VisibilityBasedAnimTickOption) : -1,
+			*GetNameSafe(AimCamera));
+	}
+}
+
+void ASpellRiseCharacterBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!IsLocallyControlled())
+	{
+		if (!HasAuthority() && AbilitySystemComponent)
+		{
+			AbilitySystemComponent->SR_ClearAbilityInput();
+		}
+		return;
+	}
+
+	SR_ProcessAbilityInput(DeltaTime, false);
 }
 
 void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -222,7 +248,6 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 		return;
 	}
 
-	// Universal inputs
 	if (IA_Primary)
 	{
 		EIC->BindAction(IA_Primary, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::Input_Primary_Pressed);
@@ -244,13 +269,11 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 		EIC->BindAction(IA_Interact, ETriggerEvent::Canceled, this, &ASpellRiseCharacterBase::Input_Interact_Released);
 	}
 
-	// Utility
 	if (IA_ClearSelection)
 	{
 		EIC->BindAction(IA_ClearSelection, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::Input_ClearSelection);
 	}
 
-	// Slots 1..8
 	if (IA_Ability1)
 	{
 		EIC->BindAction(IA_Ability1, ETriggerEvent::Started, this, &ASpellRiseCharacterBase::AbilityInputTagPressed, SpellRiseTags::Input_AbilitySlot(0));
@@ -418,8 +441,16 @@ void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
 
 void ASpellRiseCharacterBase::ForceServerAnimTick()
 {
-	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	TArray<USkeletalMeshComponent*> SkeletalMeshes;
+	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+
+	for (USkeletalMeshComponent* MeshComp : SkeletalMeshes)
 	{
+		if (!IsValid(MeshComp))
+		{
+			continue;
+		}
+
 		MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 		MeshComp->bEnableUpdateRateOptimizations = false;
 		MeshComp->SetComponentTickEnabled(true);
@@ -428,8 +459,16 @@ void ASpellRiseCharacterBase::ForceServerAnimTick()
 
 void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
 {
-	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	TArray<USkeletalMeshComponent*> SkeletalMeshes;
+	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+
+	for (USkeletalMeshComponent* MeshComp : SkeletalMeshes)
 	{
+		if (!IsValid(MeshComp))
+		{
+			continue;
+		}
+
 		if (MeshComp->AnimClass && !MeshComp->GetAnimInstance())
 		{
 			MeshComp->InitAnim(true);
@@ -437,73 +476,105 @@ void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
 	}
 }
 
-void ASpellRiseCharacterBase::PostInitializeComponents()
+USkeletalMeshComponent* ASpellRiseCharacterBase::FindCharacterSkeletalMeshComponentByName(FName ComponentName) const
 {
-	Super::PostInitializeComponents();
-
-	ForceServerAnimTick();
-	EnsureAnimInstanceInitialized();
-}
-
-void ASpellRiseCharacterBase::BeginPlay()
-{
-	Super::BeginPlay();
-
-	// Propagate the bEnableCatalyst property to the catalyst component on begin play.  This allows
-	// designers to disable the catalyst system per-character instance in the editor.  Without this,
-	// the value set in the Blueprint wouldn't reflect on the component until later.
-	if (CatalystComponent)
+	if (ComponentName.IsNone())
 	{
-		CatalystComponent->bCatalystEnabled = bEnableCatalyst;
+		return nullptr;
 	}
 
-	if (AbilitySystemComponent)
+	TArray<USkeletalMeshComponent*> SkeletalMeshes;
+	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+
+	for (USkeletalMeshComponent* MeshComp : SkeletalMeshes)
 	{
-		AbilitySystemComponent->SetReplicationMode(AscReplicationMode);
-	}
-
-	ForceServerAnimTick();
-	EnsureAnimInstanceInitialized();
-
-	InitASCActorInfo();
-	BindASCDelegates();
-
-	if (HasAuthority())
-	{
-		USkeletalMeshComponent* MeshComp = GetMesh();
-		UE_LOG(LogTemp, Warning, TEXT("[Anim][Server] Char=%s Mesh=%s AnimClass=%s AnimInstance=%s TickOption=%d"),
-			*GetNameSafe(this),
-			*GetNameSafe(MeshComp),
-			MeshComp ? *GetNameSafe(MeshComp->AnimClass) : TEXT("NULL"),
-			MeshComp ? *GetNameSafe(MeshComp->GetAnimInstance()) : TEXT("NULL"),
-			MeshComp ? (int32)MeshComp->VisibilityBasedAnimTickOption : -1);
-	}
-}
-
-void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
-}
-
-void ASpellRiseCharacterBase::Destroyed()
-{
-	Super::Destroyed();
-}
-
-void ASpellRiseCharacterBase::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-	if (!IsLocallyControlled())
-	{
-		if (!HasAuthority() && AbilitySystemComponent)
+		if (!IsValid(MeshComp))
 		{
-			AbilitySystemComponent->SR_ClearAbilityInput();
+			continue;
 		}
-		return;
+
+		if (MeshComp->GetFName() == ComponentName)
+		{
+			return MeshComp;
+		}
 	}
 
-	SR_ProcessAbilityInput(DeltaTime, false);
+	return nullptr;
+}
+
+UCameraComponent* ASpellRiseCharacterBase::FindCharacterCameraComponentByName(FName ComponentName) const
+{
+	if (ComponentName.IsNone())
+	{
+		return nullptr;
+	}
+
+	TArray<UCameraComponent*> CameraComponents;
+	GetComponents<UCameraComponent>(CameraComponents);
+
+	for (UCameraComponent* CameraComp : CameraComponents)
+	{
+		if (!IsValid(CameraComp))
+		{
+			continue;
+		}
+
+		if (CameraComp->GetFName() == ComponentName)
+		{
+			return CameraComp;
+		}
+	}
+
+	return nullptr;
+}
+
+USkeletalMeshComponent* ASpellRiseCharacterBase::GetVisualMeshComponent() const
+{
+	if (USkeletalMeshComponent* VisualMesh = FindCharacterSkeletalMeshComponentByName(VisualMeshComponentName))
+	{
+		return VisualMesh;
+	}
+
+	return GetMesh();
+}
+
+USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent() const
+{
+	if (USkeletalMeshComponent* AttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
+	{
+		return AttachMesh;
+	}
+
+	return GetVisualMeshComponent();
+}
+
+UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
+{
+	if (UCameraComponent* NamedCamera = FindCharacterCameraComponentByName(AimCameraComponentName))
+	{
+		return NamedCamera;
+	}
+
+	TArray<UCameraComponent*> CameraComponents;
+	GetComponents<UCameraComponent>(CameraComponents);
+
+	for (UCameraComponent* CameraComp : CameraComponents)
+	{
+		if (IsValid(CameraComp) && CameraComp->IsActive())
+		{
+			return CameraComp;
+		}
+	}
+
+	for (UCameraComponent* CameraComp : CameraComponents)
+	{
+		if (IsValid(CameraComp))
+		{
+			return CameraComp;
+		}
+	}
+
+	return nullptr;
 }
 
 void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -512,14 +583,6 @@ void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 
 	DOREPLIFETIME_CONDITION(ASpellRiseCharacterBase, SelectedAbilityInputTag, COND_OwnerOnly);
 	DOREPLIFETIME(ASpellRiseCharacterBase, Archetype);
-}
-
-void ASpellRiseCharacterBase::OnRep_SelectedAbilityInputTag()
-{
-}
-
-void ASpellRiseCharacterBase::OnRep_Archetype()
-{
 }
 
 void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
@@ -532,7 +595,6 @@ void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
 	}
 
 	ServerSetArchetype(NewArchetype);
-	Archetype = NewArchetype;
 }
 
 void ASpellRiseCharacterBase::ServerSetArchetype_Implementation(ESpellRiseArchetype NewArchetype)
@@ -558,19 +620,27 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 	switch (Archetype)
 	{
 	case ESpellRiseArchetype::Warrior:
-		dSTR = 20.f; dAGI = 20.f;
+		dSTR = 20.f;
+		dAGI = 20.f;
 		break;
 	case ESpellRiseArchetype::Assassin:
-		dAGI = 20.f; dSTR = 10.f; dWIS = 10.f;
+		dAGI = 20.f;
+		dSTR = 10.f;
+		dWIS = 10.f;
 		break;
 	case ESpellRiseArchetype::Mage:
-		dINT = 20.f; dWIS = 20.f;
+		dINT = 20.f;
+		dWIS = 20.f;
 		break;
 	case ESpellRiseArchetype::Battlemage:
-		dSTR = 10.f; dAGI = 10.f; dINT = 10.f; dWIS = 10.f;
+		dSTR = 10.f;
+		dAGI = 10.f;
+		dINT = 10.f;
+		dWIS = 10.f;
 		break;
 	case ESpellRiseArchetype::Cleric:
-		dWIS = 30.f; dSTR = 10.f;
+		dWIS = 30.f;
+		dSTR = 10.f;
 		break;
 	case ESpellRiseArchetype::None:
 	default:
@@ -765,6 +835,7 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 	{
 		return;
 	}
+
 	bASCDelegatesBound = true;
 
 	if (DeadStateTag.IsValid())
@@ -902,8 +973,7 @@ void ASpellRiseCharacterBase::LogDerivedDebug()
 		return;
 	}
 
-	const bool bTagActive =
-		AbilitySystemComponent->HasMatchingGameplayTag(SpellRiseTags::State_DerivedStats_Active());
+	const bool bTagActive = AbilitySystemComponent->HasMatchingGameplayTag(SpellRiseTags::State_DerivedStats_Active());
 
 	UE_LOG(LogTemp, Warning, TEXT("[DERIVED] GE=%s TagActive=%d"),
 		*GetNameSafe(GE_DerivedStatsInfinite),
@@ -914,14 +984,12 @@ void ASpellRiseCharacterBase::LogDerivedDebug()
 	const float INT = AbilitySystemComponent->GetNumericAttribute(UCombatAttributeSet::GetIntelligenceAttribute());
 	const float WIS = AbilitySystemComponent->GetNumericAttribute(UCombatAttributeSet::GetWisdomAttribute());
 
-	UE_LOG(LogTemp, Warning, TEXT("[PRIM] STR=%.1f AGI=%.1f INT=%.1f WIS=%.1f"),
-		STR, AGI, INT, WIS);
+	UE_LOG(LogTemp, Warning, TEXT("[PRIM] STR=%.1f AGI=%.1f INT=%.1f WIS=%.1f"), STR, AGI, INT, WIS);
 
 	const float MeleeMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetMeleeDamageMultiplierAttribute());
 	const float BowMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute());
 	const float SpellMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetSpellDamageMultiplierAttribute());
 	const float HealMult = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetHealingMultiplierAttribute());
-
 	const float CTR = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCastTimeReductionAttribute());
 	const float CC = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritChanceAttribute());
 	const float CD = AbilitySystemComponent->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritDamageAttribute());
@@ -980,8 +1048,7 @@ void ASpellRiseCharacterBase::RecalculateDerivedStats()
 	ApplyOrRefreshEffect(GE_RecalculateResources);
 }
 
-TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(
-	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
+TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
 {
 	if (!AbilitySystemComponent || !HasAuthority())
 	{
@@ -999,7 +1066,6 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(
 		}
 
 		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
-
 		FGameplayAbilitySpec Spec(Grant.Ability, FinalLevel, INDEX_NONE, this);
 
 		if (Grant.InputTag.IsValid())
@@ -1022,6 +1088,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(
 
 	AbilitySystemComponent->RefreshAbilityActorInfo();
 	SendAbilitiesChangedEvent();
+
 	return AbilityHandles;
 }
 
@@ -1055,16 +1122,6 @@ void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, EventData.EventTag, EventData);
 }
 
-void ASpellRiseCharacterBase::MultiSendGameplayEventToActor_Implementation(AActor* TargetActor, const FGameplayEventData& EventData)
-{
-	if (!TargetActor || !EventData.EventTag.IsValid())
-	{
-		return;
-	}
-
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, EventData.EventTag, EventData);
-}
-
 void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const FGameplayEventData& EventData)
 {
 	if (!EventData.EventTag.IsValid())
@@ -1092,6 +1149,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 		{
 			HandleDeath();
 		}
+
 		return;
 	}
 
@@ -1110,48 +1168,50 @@ void ASpellRiseCharacterBase::MultiHandleDeath_Implementation()
 
 void ASpellRiseCharacterBase::HandleDeath_Implementation()
 {
-	if (!GetMesh() || !GetCapsuleComponent() || !GetCharacterMovement())
+	USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
+	if (!VisualMesh || !GetCapsuleComponent() || !GetCharacterMovement())
 	{
 		return;
 	}
 
-	if (GetMesh()->IsSimulatingPhysics())
+	if (VisualMesh->IsSimulatingPhysics())
 	{
 		return;
 	}
 
+	if (HasAuthority())
 	{
 		TArray<UChildActorComponent*> ChildActorComps;
 		GetComponents<UChildActorComponent>(ChildActorComps);
+
 		for (UChildActorComponent* CAC : ChildActorComps)
 		{
-			if (!CAC) continue;
-			CAC->DestroyChildActor();
+			if (CAC)
+			{
+				CAC->DestroyChildActor();
+			}
 		}
-	}
 
-	{
 		TArray<AActor*> AttachedActors;
 		GetAttachedActors(AttachedActors);
+
 		for (AActor* Attached : AttachedActors)
 		{
-			if (!Attached) continue;
-
-			if (Attached->GetOwner() == this)
+			if (Attached && Attached->GetOwner() == this)
 			{
 				Attached->Destroy();
 			}
 		}
 	}
 
-	GetMesh()->SetSimulatePhysics(true);
-	GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	VisualMesh->SetSimulatePhysics(true);
+	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetCharacterMovement()->DisableMovement();
 
 	FVector Impulse = GetActorForwardVector() * -20000.f;
 	Impulse.Z = 15000.f;
-	GetMesh()->AddImpulseAtLocation(Impulse, GetActorLocation());
+	VisualMesh->AddImpulseAtLocation(Impulse, GetActorLocation());
 }
 
 void ASpellRiseCharacterBase::MultiOnCatalystProc_Implementation(int32 CatalystTier)
@@ -1166,7 +1226,8 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 		return;
 	}
 
-	ASpellRisePlayerController* PC = Cast<ASpellRisePlayerController>(GetController());
+	APlayerController* LocalPlayerController = UGameplayStatics::GetPlayerController(this, 0);
+	ASpellRisePlayerController* PC = Cast<ASpellRisePlayerController>(LocalPlayerController);
 	if (!PC)
 	{
 		return;
@@ -1181,7 +1242,7 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 	}
 
 	const FVector PopLocation =
-		(InstigatorActor ? InstigatorActor->GetActorLocation() : GetActorLocation()) + FVector(0.f, 0.f, 90.f);
+	(InstigatorActor ? InstigatorActor->GetActorLocation() : GetActorLocation()) + FVector(0.f, 0.f, 90.f);
 
 	PC->ShowDamageNumber(
 		Damage,
@@ -1191,12 +1252,14 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 		bIsCrit
 	);
 
-	UE_LOG(LogTemp, Warning, TEXT("[POP][Character] Damage=%.1f Crit=%d Type=%s Char=%s Controller=%s"),
+	BP_ShowDamagePop(Damage, InstigatorActor, DamageTypeTag, bIsCrit);
+
+	UE_LOG(LogTemp, Warning, TEXT("[POP][Character] Damage=%.1f Crit=%d Type=%s Target=%s ViewerPC=%s"),
 		Damage,
 		bIsCrit ? 1 : 0,
 		*DamageTypeTag.ToString(),
 		*GetNameSafe(this),
-		*GetNameSafe(GetController()));
+		*GetNameSafe(PC));
 }
 
 void ASpellRiseCharacterBase::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)

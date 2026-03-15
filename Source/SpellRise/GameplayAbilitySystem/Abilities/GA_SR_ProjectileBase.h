@@ -11,7 +11,7 @@ class UProjectileMovementComponent;
 class AActor;
 class APawn;
 
-UCLASS(Blueprintable)
+UCLASS()
 class SPELLRISE_API UGA_SR_ProjectileBase : public USpellRiseGameplayAbility
 {
 	GENERATED_BODY()
@@ -20,7 +20,24 @@ public:
 	UGA_SR_ProjectileBase();
 
 protected:
-	/* ---------------- VISUAL / ANIM ---------------- */
+	UPROPERTY(Transient)
+	bool bHasCachedClientTargetData = false;
+
+	UPROPERTY(Transient)
+	FVector CachedClientTargetLocation = FVector::ZeroVector;
+
+	UPROPERTY(Transient)
+	FHitResult CachedClientAimHitResult;
+
+	UFUNCTION()
+	void OnReplicatedTargetDataReceived(const FGameplayAbilityTargetDataHandle& DataHandle, FGameplayTag ActivationTag);
+
+	UFUNCTION()
+	void OnReplicatedTargetDataCancelled();
+
+	void SendCurrentAimTargetDataToServer();
+	void ConsumeClientTargetData();
+	bool BuildClientTargetDataHandle(FGameplayAbilityTargetDataHandle& OutTargetDataHandle) const;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile|Animation")
 	TObjectPtr<UAnimMontage> CastMontage = nullptr;

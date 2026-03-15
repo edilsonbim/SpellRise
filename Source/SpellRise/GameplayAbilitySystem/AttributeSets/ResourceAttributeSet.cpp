@@ -209,6 +209,17 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		}
 
 		ASpellRiseCharacterBase* SourceCharacter = Cast<ASpellRiseCharacterBase>(InstigatorActor);
+
+		if (!SourceCharacter && Ctx.GetEffectCauser())
+		{
+			SourceCharacter = Cast<ASpellRiseCharacterBase>(Ctx.GetEffectCauser()->GetInstigator());
+		}
+
+		if (!SourceCharacter && Ctx.GetOriginalInstigator())
+		{
+			SourceCharacter = Cast<ASpellRiseCharacterBase>(Ctx.GetOriginalInstigator());
+		}
+
 		ASpellRiseCharacterBase* TargetCharacter = Cast<ASpellRiseCharacterBase>(TargetASC->GetAvatarActor());
 
 		if (SourceCharacter && TargetCharacter)
@@ -220,10 +231,11 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 				false
 			);
 
-			UE_LOG(LogTemp, Warning, TEXT("[POP][ResourceSet] Damage=%.1f Source=%s Target=%s"),
+			UE_LOG(LogTemp, Warning, TEXT("[POP][ResourceSet] Damage=%.1f Source=%s Target=%s Causer=%s"),
 				TotalDamage,
 				*GetNameSafe(SourceCharacter),
-				*GetNameSafe(TargetCharacter));
+				*GetNameSafe(TargetCharacter),
+				*GetNameSafe(Ctx.GetEffectCauser()));
 		}
 
 		if (SpellRiseTags::Cue_DamageNumber().IsValid())

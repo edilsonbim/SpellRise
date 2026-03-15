@@ -7,6 +7,7 @@
 
 class AController;
 class ASpellRiseCharacterBase;
+class UAbilitySystemComponent;
 class USpellRiseAbilitySystemComponent;
 
 UENUM(BlueprintType)
@@ -33,6 +34,7 @@ class SPELLRISE_API USpellRiseGameplayAbility : public UGameplayAbility
 public:
 	USpellRiseGameplayAbility();
 
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	bool ShouldShowInAbilityBar = false;
 
@@ -61,11 +63,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input", meta=(Categories="InputTag"))
 	FGameplayTag AbilityInputTag;
 
+public:
+	/** Server authoritative: altera o nível apenas no servidor e marca o spec dirty para replicação. */
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
 	void SetAbilityLevel(int32 NewLevel);
 
-	UFUNCTION(BlueprintPure, Category="SpellRise|Ability")
-	bool IsAbilityInputPressed() const { return bIsAbilityInputPressed; }
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|State")
+	bool IsAbilityInputPressed() const
+	{
+		return bIsAbilityInputPressed;
+	}
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
+	bool HasServerAuthority() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
+	bool IsLocallyControlledAbility() const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
 	USpellRiseAbilitySystemComponent* GetSpellRiseAbilitySystemComponentFromActorInfo() const;
@@ -76,20 +89,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
 	AController* GetControllerFromActorInfo() const;
 
+public:
 	virtual void InputPressed(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo
-	) override;
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	virtual void InputReleased(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo
-	) override;
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 protected:
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
+
+	virtual void OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 
 	virtual bool CanActivateAbility(
 		const FGameplayAbilitySpecHandle Handle,
@@ -111,10 +125,35 @@ protected:
 		bool bReplicateEndAbility,
 		bool bWasCancelled) override;
 
-	virtual void NativeOnAbilityInputPressed(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);
-	virtual void NativeOnAbilityInputReleased(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);
+protected:
+	/** Hook nativo para subclasses C++. Não executa gameplay sensível na base. */
+	virtual void NativeOnAbilityInputPressed(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo);
+
+	/** Hook nativo para subclasses C++. Não executa gameplay sensível na base. */
+	virtual void NativeOnAbilityInputReleased(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo);
+
+	/** Hook nativo para UX local. */
 	virtual void NativeOnAbilityFailedToActivate(const FGameplayTagContainer& FailureTags);
 
+protected:
+	/** Base limpa: decide apenas se deve tentar auto-activate; não implementa cast/channel/charge. */
+	bool ShouldAutoActivateOnGrantOrSpawn() const;
+
+	/** Filtra auto-activate por papel de rede e NetExecutionPolicy. */
+	void TryActivateAbilityOnGrantOrSpawn(
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilitySpec& Spec) const;
+
+	/** Failure UX só no lado local relevante. */
+	bool ShouldBroadcastAbilityFailure(const FGameplayAbilityActorInfo* ActorInfo) const;
+
+protected:
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnAbilityInputPressed")
 	void K2_OnAbilityInputPressed();
 
@@ -125,6 +164,7 @@ protected:
 	void K2_OnAbilityFailedToActivate(const FGameplayTagContainer& FailureTags);
 
 protected:
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Ability|State")
+	/** Estado local/transiente de input da spec ativa. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bIsAbilityInputPressed = false;
 };

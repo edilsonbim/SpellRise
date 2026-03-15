@@ -1,23 +1,51 @@
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 
+#include "AbilitySystemComponent.h"
 #include "GameFramework/Controller.h"
-#include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-	bReplicateInputDirectly = true;
+
+	// Importante:
+	// A base NÃO deve replicar input diretamente quando o projeto usa pipeline custom por Input Tag no ASC.
+	// Isso reduz risco de fluxo duplicado/confuso entre ASC custom, InputPressed/InputReleased e prediction.
+	bReplicateInputDirectly = false;
 }
 
 void USpellRiseGameplayAbility::SetAbilityLevel(int32 NewLevel)
 {
-	if (FGameplayAbilitySpec* AbilitySpec = GetCurrentAbilitySpec())
+	if (!HasServerAuthority())
 	{
-		AbilitySpec->Level = NewLevel;
+		return;
 	}
+
+	FGameplayAbilitySpec* AbilitySpec = GetCurrentAbilitySpec();
+	if (!AbilitySpec)
+	{
+		return;
+	}
+
+	AbilitySpec->Level = NewLevel;
+
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+	{
+		ASC->MarkAbilitySpecDirty(*AbilitySpec);
+	}
+}
+
+bool USpellRiseGameplayAbility::HasServerAuthority() const
+{
+	return CurrentActorInfo && CurrentActorInfo->IsNetAuthority();
+}
+
+bool USpellRiseGameplayAbility::IsLocallyControlledAbility() const
+{
+	return CurrentActorInfo && CurrentActorInfo->IsLocallyControlled();
 }
 
 USpellRiseAbilitySystemComponent* USpellRiseGameplayAbility::GetSpellRiseAbilitySystemComponentFromActorInfo() const
@@ -37,14 +65,36 @@ AController* USpellRiseGameplayAbility::GetControllerFromActorInfo() const
 		return nullptr;
 	}
 
-	if (APlayerController* PC = CurrentActorInfo->PlayerController.Get())
+	if (AController* Controller = CurrentActorInfo->PlayerController.Get())
 	{
-		return PC;
+		return Controller;
 	}
 
-	if (APawn* AvatarPawn = Cast<APawn>(GetAvatarActorFromActorInfo()))
+	if (APawn* AvatarPawn = Cast<APawn>(CurrentActorInfo->AvatarActor.Get()))
 	{
-		return AvatarPawn->GetController();
+		if (AController* Controller = AvatarPawn->GetController())
+		{
+			return Controller;
+		}
+	}
+
+	AActor* TestActor = CurrentActorInfo->OwnerActor.Get();
+	while (TestActor)
+	{
+		if (AController* Controller = Cast<AController>(TestActor))
+		{
+			return Controller;
+		}
+
+		if (APawn* Pawn = Cast<APawn>(TestActor))
+		{
+			if (AController* Controller = Pawn->GetController())
+			{
+				return Controller;
+			}
+		}
+
+		TestActor = TestActor->GetOwner();
 	}
 
 	return nullptr;
@@ -54,18 +104,14 @@ void USpellRiseGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* A
 {
 	Super::OnGiveAbility(ActorInfo, Spec);
 
-	const bool bShouldAutoActivate = bActivateAbilityOnGranted || AutoActivateWhenGranted || ActivationPolicy == ESpellRiseAbilityActivationPolicy::OnSpawn;
-	if (!bShouldAutoActivate || !ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid() || !ActorInfo->AvatarActor.IsValid())
-	{
-		return;
-	}
+	TryActivateAbilityOnGrantOrSpawn(ActorInfo, Spec);
+}
 
-	if (Spec.IsActive())
-	{
-		return;
-	}
+void USpellRiseGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
+{
+	Super::OnAvatarSet(ActorInfo, Spec);
 
-	ActorInfo->AbilitySystemComponent->TryActivateAbility(Spec.Handle);
+	TryActivateAbilityOnGrantOrSpawn(ActorInfo, Spec);
 }
 
 bool USpellRiseGameplayAbility::CanActivateAbility(
@@ -75,11 +121,17 @@ bool USpellRiseGameplayAbility::CanActivateAbility(
 	const FGameplayTagContainer* TargetTags,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
-	const bool bCanActivate = Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	const bool bCanActivate = Super::CanActivateAbility(
+		Handle,
+		ActorInfo,
+		SourceTags,
+		TargetTags,
+		OptionalRelevantTags);
 
-	if (!bCanActivate && OptionalRelevantTags)
+	if (!bCanActivate && ShouldBroadcastAbilityFailure(ActorInfo))
 	{
-		const_cast<USpellRiseGameplayAbility*>(this)->NativeOnAbilityFailedToActivate(*OptionalRelevantTags);
+		const FGameplayTagContainer FailureTags = OptionalRelevantTags ? *OptionalRelevantTags : FGameplayTagContainer();
+		const_cast<USpellRiseGameplayAbility*>(this)->NativeOnAbilityFailedToActivate(FailureTags);
 	}
 
 	return bCanActivate;
@@ -94,9 +146,10 @@ void USpellRiseGameplayAbility::ActivateAbility(
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
 	bIsAbilityInputPressed = false;
-	if (const FGameplayAbilitySpec* Spec = GetCurrentAbilitySpec())
+
+	if (const FGameplayAbilitySpec* AbilitySpec = GetCurrentAbilitySpec())
 	{
-		bIsAbilityInputPressed = Spec->InputPressed;
+		bIsAbilityInputPressed = AbilitySpec->InputPressed;
 	}
 }
 
@@ -108,6 +161,7 @@ void USpellRiseGameplayAbility::EndAbility(
 	bool bWasCancelled)
 {
 	bIsAbilityInputPressed = false;
+
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
 
@@ -119,6 +173,7 @@ void USpellRiseGameplayAbility::InputPressed(
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = true;
+
 	NativeOnAbilityInputPressed(Handle, ActorInfo, ActivationInfo);
 	K2_OnAbilityInputPressed();
 }
@@ -131,19 +186,88 @@ void USpellRiseGameplayAbility::InputReleased(
 	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = false;
+
 	NativeOnAbilityInputReleased(Handle, ActorInfo, ActivationInfo);
 	K2_OnAbilityInputReleased();
 }
 
-void USpellRiseGameplayAbility::NativeOnAbilityInputPressed(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
+void USpellRiseGameplayAbility::NativeOnAbilityInputPressed(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
 {
 }
 
-void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
+void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
 {
 }
 
 void USpellRiseGameplayAbility::NativeOnAbilityFailedToActivate(const FGameplayTagContainer& FailureTags)
 {
 	K2_OnAbilityFailedToActivate(FailureTags);
+}
+
+bool USpellRiseGameplayAbility::ShouldAutoActivateOnGrantOrSpawn() const
+{
+	return bActivateAbilityOnGranted
+		|| AutoActivateWhenGranted
+		|| ActivationPolicy == ESpellRiseAbilityActivationPolicy::OnSpawn;
+}
+
+void USpellRiseGameplayAbility::TryActivateAbilityOnGrantOrSpawn(
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilitySpec& Spec) const
+{
+	if (!ShouldAutoActivateOnGrantOrSpawn())
+	{
+		return;
+	}
+
+	if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid() || !ActorInfo->AvatarActor.IsValid())
+	{
+		return;
+	}
+
+	if (Spec.IsActive())
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+	const AActor* AvatarActor = ActorInfo->AvatarActor.Get();
+
+	if (!ASC || !AvatarActor)
+	{
+		return;
+	}
+
+	// Evita ativar em avatar inválido/transitório.
+	if (AvatarActor->GetTearOff() || AvatarActor->GetLifeSpan() > 0.0f)
+	{
+		return;
+	}
+
+	const bool bIsLocalExecution =
+		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted) ||
+		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalOnly);
+
+	const bool bIsServerExecution =
+		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerOnly) ||
+		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerInitiated);
+
+	const bool bClientShouldActivate = ActorInfo->IsLocallyControlled() && bIsLocalExecution;
+	const bool bServerShouldActivate = ActorInfo->IsNetAuthority() && bIsServerExecution;
+
+	if (bClientShouldActivate || bServerShouldActivate)
+	{
+		ASC->TryActivateAbility(Spec.Handle);
+	}
+}
+
+bool USpellRiseGameplayAbility::ShouldBroadcastAbilityFailure(const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	return ActorInfo && ActorInfo->IsLocallyControlled();
 }

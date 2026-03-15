@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineTypes.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagContainer.h"
 #include "SpellRisePlayerController.generated.h"
@@ -10,12 +11,30 @@ class UInputAction;
 class UGameplayAbility;
 class USpellRiseNumberPopComponent_NiagaraText;
 
-/**
- * PlayerController (Enhanced Input + Combat Feedback):
- * - Applies DefaultMappingContext on local controller
- * - Binds IA_Attack and forwards to GAS
- * - Owns the NumberPopComponent (Lyra-style) for local damage feedback
- */
+USTRUCT(BlueprintType)
+struct FSpellRiseAimTraceResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
+	bool bHit = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
+	FHitResult HitResult;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
+	FVector TraceStart = FVector::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
+	FVector TraceEnd = FVector::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
+	FVector AimDirection = FVector::ForwardVector;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
+	FVector TargetPoint = FVector::ZeroVector;
+};
+
 UCLASS()
 class SPELLRISE_API ASpellRisePlayerController : public APlayerController
 {
@@ -24,7 +43,6 @@ class SPELLRISE_API ASpellRisePlayerController : public APlayerController
 public:
 	ASpellRisePlayerController();
 
-	/** Local-only visual feedback for combat damage numbers */
 	void ShowDamageNumber(
 		float Damage,
 		const FVector& WorldLocation,
@@ -33,38 +51,51 @@ public:
 		bool bIsCritical
 	);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Aim")
+	bool GetCurrentAimTraceResult(FSpellRiseAimTraceResult& OutResult) const;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 
-	// -------------------------
-	// Enhanced Input
-	// -------------------------
 	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced", meta=(ClampMin="0"))
 	int32 DefaultMappingPriority = 0;
 
-	// Attack input action (set this in BP: IA_Attack)
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TObjectPtr<UInputAction> IA_Attack = nullptr;
 
-	// Which ability should be activated on attack pressed (set in BP: GA_Weapon_MeleeLight)
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TSubclassOf<UGameplayAbility> AttackAbilityClass;
 
-	// -------------------------
-	// Combat Feedback
-	// -------------------------
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Feedback", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USpellRiseNumberPopComponent_NiagaraText> NumberPopComponent = nullptr;
 
-	void SetupEnhancedInput();
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim", meta=(ClampMin="1.0"))
+	float DefaultAimTraceDistance = 10000.f;
 
-	// -------------------------
-	// Input handlers
-	// -------------------------
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim", meta=(ClampMin="0.0"))
+	float DefaultAimTraceRadius = 10.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim")
+	TEnumAsByte<ECollisionChannel> DefaultAimTraceChannel = ECC_Visibility;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim")
+	bool bDefaultAimTraceComplex = false;
+
+	void SetupEnhancedInput();
 	void OnAttackPressed();
 	void OnAttackReleased();
+
+private:
+	bool BuildAimTraceResult(
+		FSpellRiseAimTraceResult& OutResult,
+		float TraceDistance,
+		float TraceRadius,
+		ECollisionChannel TraceChannel,
+		bool bTraceComplex) const;
+
+	void CollectAimIgnoredActors(TArray<AActor*>& OutActorsToIgnore) const;
 };
