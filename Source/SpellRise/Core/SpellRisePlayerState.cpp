@@ -13,6 +13,8 @@
 ASpellRisePlayerState::ASpellRisePlayerState()
 {
 	bReplicates = true;
+	NetUpdateFrequency = 30.f;
+	MinNetUpdateFrequency = 10.f;
 
 	AbilitySystemComponent = CreateDefaultSubobject<USpellRiseAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);

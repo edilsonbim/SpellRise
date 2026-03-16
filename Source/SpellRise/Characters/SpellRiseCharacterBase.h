@@ -23,6 +23,7 @@ class UCatalystAttributeSet;
 class UCatalystComponent;
 class UDerivedStatsAttributeSet;
 class UAbilitySystemComponent;
+class ASpellRisePlayerState;
 
 #include "SpellRiseCharacterBase.generated.h"
 
@@ -233,6 +234,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS")
 	bool bASCDelegatesBound = false;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
@@ -295,6 +299,7 @@ protected:
 	void Input_ClearSelection(const FInputActionValue& Value);
 
 	void InitASCActorInfo();
+	bool InitializeAbilitySystemFromPlayerState();
 	void ApplyStartupEffects();
 	void BindASCDelegates();
 	void RecalculateDerivedStats();

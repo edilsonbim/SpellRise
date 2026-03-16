@@ -21,6 +21,7 @@
 
 #include "SpellRise/Components/CatalystComponent.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
@@ -175,11 +176,6 @@ void ASpellRiseCharacterBase::BeginPlay()
 	if (CatalystComponent)
 	{
 		CatalystComponent->bCatalystEnabled = bEnableCatalyst;
-	}
-
-	if (AbilitySystemComponent)
-	{
-		AbilitySystemComponent->SetReplicationMode(AscReplicationMode);
 	}
 
 	ForceServerAnimTick();
@@ -765,12 +761,36 @@ UAbilitySystemComponent* ASpellRiseCharacterBase::GetAbilitySystemComponent() co
 
 void ASpellRiseCharacterBase::InitASCActorInfo()
 {
+	USpellRiseAbilitySystemComponent* PreviousASC = AbilitySystemComponent;
+
+	InitializeAbilitySystemFromPlayerState();
+
 	if (!AbilitySystemComponent)
 	{
 		return;
 	}
 
-	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	if (PreviousASC && PreviousASC != AbilitySystemComponent)
+	{
+		PreviousASC->RegisterGameplayTagEvent(DeadStateTag, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetHealthAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetStrengthAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetAgilityAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetIntelligenceAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute()).RemoveAll(this);
+
+		bASCDelegatesBound = false;
+		ASCDelegatesBoundSource = nullptr;
+	}
+
+	AActor* OwnerActor = this;
+	if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		OwnerActor = SRPlayerState;
+	}
+
+	AbilitySystemComponent->SetReplicationMode(AscReplicationMode);
+	AbilitySystemComponent->InitAbilityActorInfo(OwnerActor, this);
 	AbilitySystemComponent->RefreshAbilityActorInfo();
 }
 
@@ -781,13 +801,13 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	ForceServerAnimTick();
 	EnsureAnimInstanceInitialized();
 
+	InitASCActorInfo();
+	BindASCDelegates();
+
 	if (!AbilitySystemComponent)
 	{
 		return;
 	}
-
-	InitASCActorInfo();
-	BindASCDelegates();
 
 	if (!HasAuthority())
 	{
@@ -820,18 +840,24 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 	ForceServerAnimTick();
 	EnsureAnimInstanceInitialized();
 
-	if (!AbilitySystemComponent)
-	{
-		return;
-	}
-
 	InitASCActorInfo();
 	BindASCDelegates();
 }
 
 void ASpellRiseCharacterBase::BindASCDelegates()
 {
-	if (!AbilitySystemComponent || bASCDelegatesBound)
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	if (ASCDelegatesBoundSource != AbilitySystemComponent)
+	{
+		bASCDelegatesBound = false;
+		ASCDelegatesBoundSource = AbilitySystemComponent;
+	}
+
+	if (bASCDelegatesBound)
 	{
 		return;
 	}
@@ -864,6 +890,30 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 	AbilitySystemComponent
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
+}
+
+bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
+{
+	ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
+	if (!SRPlayerState)
+	{
+		return false;
+	}
+
+	USpellRiseAbilitySystemComponent* PlayerStateASC = SRPlayerState->GetSpellRiseASC();
+	if (!PlayerStateASC)
+	{
+		return false;
+	}
+
+	AbilitySystemComponent = PlayerStateASC;
+	BasicAttributeSet = SRPlayerState->GetBasicAttributeSet();
+	CombatAttributeSet = SRPlayerState->GetCombatAttributeSet();
+	ResourceAttributeSet = SRPlayerState->GetResourceAttributeSet();
+	CatalystAttributeSet = SRPlayerState->GetCatalystAttributeSet();
+	DerivedStatsAttributeSet = SRPlayerState->GetDerivedStatsAttributeSet();
+
+	return true;
 }
 
 void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Data)
