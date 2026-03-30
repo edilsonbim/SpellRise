@@ -23,6 +23,12 @@
   - Standardized code path on Data.CatalystChargeDelta with legacy fallback for compatibility.
 
 ## High
+- [ ] Corrigir overflow de replicação no PlayerController (`BUG-2026-03-30-033`)
+  - Sintoma: `FBitReader::SetOverflowed` + `ReadFieldHeaderAndPayload` em `BP_SpellRisePlayerController_C` durante init/runtime multiplayer.
+  - Escopo: hardening completo de fluxo local (HUD/câmera), revisão de payloads RPC client/server do controller, validação de paridade build/cook client/server.
+  - Owner: Multiplayer/Core
+  - Target date: 2026-04-03
+  - Exit criteria: zero ocorrência de overflow em Standalone, Listen e DS+2 (normal + lag/loss), com sessão estável > 5 min por rodada.
 - [ ] Security hardening for Server RPC entrypoints
   - [x] Validate and rate-limit gameplay event forwarding (`ServerSendGameplayEventToSelf`).
   - [x] Validate replicated projectile target data on server (range/cone/context).

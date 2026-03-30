@@ -195,9 +195,6 @@ protected:
 	TObjectPtr<UInputAction> IA_Ability8 = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_PauseMenu = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TSubclassOf<UGameplayAbility> AttackAbilityClass;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Feedback", meta=(AllowPrivateAccess="true"))
@@ -247,10 +244,10 @@ protected:
 	void OnAbility7Released();
 	void OnAbility8Pressed();
 	void OnAbility8Released();
-	void OnPauseMenuPressed();
 
 private:
 	bool CanRunLocalHUDFlow(FString* OutSkipReason = nullptr) const;
+	bool CanRunLocalPawnRuntime(APawn* CandidatePawn, FString* OutSkipReason = nullptr) const;
 	void LogASCBindSkipReason(const FString& SkipReason);
 	void HandlePawnChangedRuntime(APawn* NewPawn, const TCHAR* SourceLabel);
 	void EnsureCombatHUDCreated();
@@ -337,6 +334,4 @@ private:
 	FString LastASCBindSkipReason;
 
 protected:
-	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|UI")
-	void BP_OnPauseMenuInput();
 };
