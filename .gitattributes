@@ -1,0 +1,15 @@
+# Text defaults
+* text=auto
+
+# Source/config
+*.h text
+*.hpp text
+*.c text
+*.cpp text
+*.cs text
+*.ini text
+*.uproject text
+*.uplugin text
+*.md text
+*.ps1 text
+*.bat text

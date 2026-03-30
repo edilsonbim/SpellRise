@@ -1,0 +1,45 @@
+#include "MMC_MaxMana.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
+
+UMMC_MaxMana::UMMC_MaxMana()
+{
+	IntelligenceDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetIntelligenceAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target, // <- recomendado
+		true
+	);
+	WisdomDef = FGameplayEffectAttributeCaptureDefinition(
+		UCombatAttributeSet::GetWisdomAttribute(),
+		EGameplayEffectAttributeCaptureSource::Target,
+		true
+	);
+
+	RelevantAttributesToCapture.Add(IntelligenceDef);
+	RelevantAttributesToCapture.Add(WisdomDef);
+}
+
+float UMMC_MaxMana::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
+{
+	FAggregatorEvaluateParameters Params;
+	Params.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
+	Params.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
+
+	float Intelligence = 0.f;
+	float Wisdom = 0.f;
+	if (!GetCapturedAttributeMagnitude(IntelligenceDef, Spec, Params, Intelligence))
+	{
+		Intelligence = 20.f; // fallback seguro
+	}
+	if (!GetCapturedAttributeMagnitude(WisdomDef, Spec, Params, Wisdom))
+	{
+		Wisdom = 20.f;
+	}
+
+	const float ClampedIntelligence = FMath::Clamp(Intelligence, 20.f, 120.f);
+	const float ClampedWisdom = FMath::Clamp(Wisdom, 20.f, 120.f);
+	const float IntelligenceBonus = FMath::Clamp(ClampedIntelligence - 20.f, 0.f, 100.f);
+	const float WisdomBonus = FMath::Clamp(ClampedWisdom - 20.f, 0.f, 100.f);
+
+	// Canonical primary pipeline alignment.
+	return FMath::Max(1.f, 180.f + (IntelligenceBonus * 2.f) + (WisdomBonus * 1.f));
+}

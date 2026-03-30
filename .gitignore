@@ -1,0 +1,55 @@
+# Source-only GitHub mirror (assets/builds outside GitHub)
+
+# Unreal generated
+Binaries/
+Build/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+.idea/
+.vscode/
+
+# Packaged/distribution artifacts
+Windows/
+WindowsClient/
+WindowsServer/
+Linux/
+Mac/
+Android/
+IOS/
+BuildArtifacts/
+Client/
+Server/
+*.zip
+*.7z
+*.rar
+
+# Large project assets kept outside GitHub
+Content/
+Images/
+Plugins/*/Content/
+
+# Local/runtime data
+Database/
+steam_appid.txt
+
+# Visual Studio project noise
+*.suo
+*.user
+*.userprefs
+*.VC.db
+*.VC.opendb
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.opensdf
+*.sdf
+*.tmp
+*.log
+*.dmp
+*.mdmp
+
+# Local tool folders
+.codex/
+.cursor/
