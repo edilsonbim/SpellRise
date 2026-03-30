@@ -467,6 +467,10 @@ USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSpellRiseAbil
 
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)
 {
+	// SpellRise does not support gameplay pause; keep processing input even if a caller
+	// passes a paused state from legacy call sites.
+	(void)bGamePaused;
+
 	const FGameplayTag ComboAbilityTag = FGameplayTag::RequestGameplayTag(TEXT("GameplayAbility.MeleeAttack.Combo"), false);
 	const auto GetSpecPredictionKey = [](const FGameplayAbilitySpec* Spec) -> FPredictionKey
 	{
@@ -504,12 +508,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 	APawn* AvatarPawn = Cast<APawn>(Avatar);
 
 	if (!AvatarPawn || !AvatarPawn->IsLocallyControlled())
-	{
-		SR_ClearAbilityInput();
-		return;
-	}
-
-	if (bGamePaused)
 	{
 		SR_ClearAbilityInput();
 		return;

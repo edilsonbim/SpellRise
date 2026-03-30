@@ -181,9 +181,6 @@ protected:
 	float BaseWalkSpeed = 500.f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<USpellRiseAbilitySystemComponent> CachedASCFromPlayerState = nullptr;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
@@ -327,13 +324,14 @@ public:
 	bool bASCDelegatesBound = false;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
+	TObjectPtr<USpellRiseAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
 
 	void InitASCActorInfo();
+	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	bool InitializeAbilitySystemFromPlayerState();
 	void ApplyStartupEffects();
 	void BindASCDelegates();

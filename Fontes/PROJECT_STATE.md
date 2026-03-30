@@ -1,12 +1,12 @@
-# Spell Rise - Project State (2026-03-25)
+# Spell Rise - Project State (2026-03-30)
 
 ## Engine / Build
 - Engine association: UE 5.7
 - Build/Test Policy (fixed): all builds and all tests must run only with Unreal Source at `C:\UnrealSource\UnrealEngine`.
 - Targets present: Game, Client, Server, Editor
 - GAS-based combat architecture
-- Latest validation (2026-03-25): Build `SpellRiseEditor Win64 Development` succeeded via `Build.bat` without compile errors.
-- Latest networking smoke baseline remains the validated cycle from 2026-03-20 (Standalone, Listen, DS+2 and DS+2 lag/loss).
+- Latest validation (2026-03-30): clean package Client/Server via Unreal Source succeeded to `Desktop\SpellRise_TestBuild`.
+- Latest networking status (2026-03-30): multiplayer instability still reproduces with replication/serialization errors (`FBitReader::SetOverflowed`) in `BP_SpellRisePlayerController_C` payload processing path.
 
 ## Narrative Plugins Reference (Official)
 - Official docs for Narrative plugins (source of truth for plugin-level changes): https://docs.narrativetools.io/
@@ -59,6 +59,13 @@
 - Modo de construção isolado em componente dedicado no PlayerController (`USpellRiseConstructionModeComponent`) com gate de input no fluxo de gameplay.
 - `NarrativeInventory` com dependência explícita de `CommonUI` no `.uplugin` (warning de build removido em 2026-03-25).
 - Atualização de compatibilidade UE 5.7 em `FString::LeftInline` no `GameMode` (remoção de warning C4996 em 2026-03-25).
+- Hardening parcial do `ASpellRisePlayerController` em andamento (2026-03-30):
+  - gate local adicional `CanRunLocalPawnRuntime` aplicado no fluxo BeginPlay/Tick/PawnChanged/HUD bind;
+  - bloqueios extras para caminho local de HUD/câmera sem `Pawn + PlayerState + ASC`;
+  - auditoria de RPC documentada em `Docs/RPC_AUDIT_SpellRisePlayerController.md`.
+- Scripts operacionais adicionados para testes:
+  - `Scripts/Set-SteamAuthProfile.ps1` e `.bat` (troca rápida `prod/test`);
+  - `Scripts/Run-Load-NoSteam.ps1` e `Scripts/Run-Load-NoSteam-Scale.ps1` (carga local sem Steam com relatório).
 
 ## Current Combat Formula Snapshot
 - Melee multiplier: 1.00 + 0.50 * T(STR)

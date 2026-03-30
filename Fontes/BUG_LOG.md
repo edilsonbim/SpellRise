@@ -24,6 +24,23 @@
 - Owner:
 
 ## Open Issues
+### BUG-2026-03-30-033
+- Date: 2026-03-30
+- Severity: Critical
+- Status: Open
+- Area: Networking / Replication / PlayerController
+- Issue: Cliente desconecta com erro de serialização de payload (`FBitReader::SetOverflowed`) durante tráfego replicado do `BP_SpellRisePlayerController_C`.
+- Reproduction: Conectar cliente(s) em DS e observar `ReadFieldHeaderAndPayload: Error reading payload` com campos como `ClientSetHUD`, `ClientRestart`, `ClientSetCameraMode`, seguido de queda de conexão.
+- Expected: Cliente deve processar payload replicado do PlayerController sem overflow/ensure e permanecer conectado.
+- Actual: O cliente entra em ensure de BitReader e o fluxo de rede degrada com fechamento da conexão.
+- Root Cause: Pendente; forte indício de incompatibilidade/overflow de payload replicado em caminho de init/runtime do PlayerController.
+- Fix: Em andamento (hardening de fluxo local no `ASpellRisePlayerController` e auditoria de RPC).
+- Tested On: DS AWS e testes locais no-Steam (2026-03-30).
+- Standalone: Pendente
+- Listen Server: Pendente
+- Dedicated Server: Verificado
+- Owner: Multiplayer/Core
+
 ### BUG-2026-03-28-032
 - Date: 2026-03-28
 - Severity: Critical

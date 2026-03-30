@@ -284,9 +284,9 @@ void ASpellRiseCharacterBase::Tick(float DeltaTime)
 
 	if (!IsLocallyControlled())
 	{
-		if (!HasAuthority() && CachedASCFromPlayerState)
+		if (!HasAuthority() && GetSpellRiseASC())
 		{
-			CachedASCFromPlayerState->SR_ClearAbilityInput();
+			GetSpellRiseASC()->SR_ClearAbilityInput();
 		}
 		return;
 	}
@@ -295,9 +295,9 @@ void ASpellRiseCharacterBase::Tick(float DeltaTime)
 	{
 		if (SRPC->IsConstructionModeActive())
 		{
-			if (AbilitySystemComponent)
+			if (GetSpellRiseASC())
 			{
-				AbilitySystemComponent->SR_ClearAbilityInput();
+				GetSpellRiseASC()->SR_ClearAbilityInput();
 			}
 			return;
 		}
@@ -335,7 +335,7 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 
 void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
 {
-	if (!IsLocallyControlled() || !CachedASCFromPlayerState || !InputTag.IsValid())
+	if (!IsLocallyControlled() || !GetSpellRiseASC() || !InputTag.IsValid())
 	{
 		return;
 	}
@@ -349,12 +349,12 @@ void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
 		}
 	}
 
-	CachedASCFromPlayerState->SR_AbilityInputTagPressed(InputTag);
+	GetSpellRiseASC()->SR_AbilityInputTagPressed(InputTag);
 }
 
 void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
 {
-	if (!IsLocallyControlled() || !CachedASCFromPlayerState || !InputTag.IsValid())
+	if (!IsLocallyControlled() || !GetSpellRiseASC() || !InputTag.IsValid())
 	{
 		return;
 	}
@@ -368,7 +368,7 @@ void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
 		}
 	}
 
-	CachedASCFromPlayerState->SR_AbilityInputTagReleased(InputTag);
+	GetSpellRiseASC()->SR_AbilityInputTagReleased(InputTag);
 }
 
 void ASpellRiseCharacterBase::ForceServerAnimTick()
@@ -576,7 +576,7 @@ void ASpellRiseCharacterBase::ServerSetArchetype_Implementation(ESpellRiseArchet
 
 void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 {
-	if (!HasAuthority() || !CachedASCFromPlayerState)
+	if (!HasAuthority() || !GetSpellRiseASC())
 	{
 		return;
 	}
@@ -618,10 +618,10 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		break;
 	}
 
-	CachedASCFromPlayerState->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), Baseline + dSTR);
-	CachedASCFromPlayerState->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), Baseline + dAGI);
-	CachedASCFromPlayerState->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), Baseline + dINT);
-	CachedASCFromPlayerState->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(), Baseline + dWIS);
+	GetSpellRiseASC()->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), Baseline + dSTR);
+	GetSpellRiseASC()->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), Baseline + dAGI);
+	GetSpellRiseASC()->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), Baseline + dINT);
+	GetSpellRiseASC()->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(), Baseline + dWIS);
 
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
@@ -660,7 +660,7 @@ void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FG
 		return;
 	}
 
-	if (!CachedASCFromPlayerState)
+	if (!GetSpellRiseASC())
 	{
 		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), TEXT("missing_asc_context"));
 		return;
@@ -699,7 +699,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 {
 	SelectAbilitySlot(SlotIndex);
 
-	if (!IsLocallyControlled() || !CachedASCFromPlayerState)
+	if (!IsLocallyControlled() || !GetSpellRiseASC())
 	{
 		return;
 	}
@@ -715,7 +715,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 		return;
 	}
 
-	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(CachedASCFromPlayerState))
+	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(GetSpellRiseASC()))
 	{
 		SRASC->SR_AbilityInputTagPressed(InputTag);
 	}
@@ -723,7 +723,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 
 void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 {
-	if (!IsLocallyControlled() || !CachedASCFromPlayerState)
+	if (!IsLocallyControlled() || !GetSpellRiseASC())
 	{
 		return;
 	}
@@ -739,7 +739,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 		return;
 	}
 
-	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(CachedASCFromPlayerState))
+	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(GetSpellRiseASC()))
 	{
 		SRASC->SR_AbilityInputTagReleased(InputTag);
 		ClearSelectedAbility();
@@ -782,50 +782,46 @@ void ASpellRiseCharacterBase::HandleSelectedAbilityInputTagChanged(const FGamepl
 
 void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
 {
-	if (CachedASCFromPlayerState)
+	if (GetSpellRiseASC())
 	{
-		CachedASCFromPlayerState->SR_ProcessAbilityInput(DeltaSeconds, bGamePaused);
+		GetSpellRiseASC()->SR_ProcessAbilityInput(DeltaSeconds, bGamePaused);
 	}
 }
 
 void ASpellRiseCharacterBase::SR_ClearAbilityInput()
 {
-	if (CachedASCFromPlayerState)
+	if (GetSpellRiseASC())
 	{
-		CachedASCFromPlayerState->SR_ClearAbilityInput();
+		GetSpellRiseASC()->SR_ClearAbilityInput();
 	}
 }
 
 UAbilitySystemComponent* ASpellRiseCharacterBase::GetAbilitySystemComponent() const
 {
-	if (const ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
-	{
-		return SRPlayerState->GetAbilitySystemComponent();
-	}
+	return GetSpellRiseASC();
+}
 
-	if (CachedASCFromPlayerState)
-	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] Character %s usando fallback CachedASCFromPlayerState (PlayerState indisponivel no momento)."), *GetNameSafe(this));
-	}
-
-	return CachedASCFromPlayerState;
+USpellRiseAbilitySystemComponent* ASpellRiseCharacterBase::GetSpellRiseASC() const
+{
+	const ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
+	return SRPlayerState ? SRPlayerState->GetSpellRiseASC() : nullptr;
 }
 
 void ASpellRiseCharacterBase::InitASCActorInfo()
 {
-	USpellRiseAbilitySystemComponent* PreviousASC = CachedASCFromPlayerState;
+	USpellRiseAbilitySystemComponent* PreviousASC = GetSpellRiseASC();
 
 	if (!InitializeAbilitySystemFromPlayerState())
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] InitASCActorInfo falhou em %s: PlayerState/ASC ainda nao disponivel."), *GetNameSafe(this));
 	}
 
-	if (!CachedASCFromPlayerState)
+	if (!GetSpellRiseASC())
 	{
 		return;
 	}
 
-	if (PreviousASC && PreviousASC != CachedASCFromPlayerState)
+	if (PreviousASC && PreviousASC != GetSpellRiseASC())
 	{
 		PreviousASC->RegisterGameplayTagEvent(DeadStateTag, EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetHealthAttribute()).RemoveAll(this);
@@ -844,9 +840,9 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 		OwnerActor = SRPlayerState;
 	}
 
-	CachedASCFromPlayerState->SetReplicationMode(AscReplicationMode);
-	CachedASCFromPlayerState->InitAbilityActorInfo(OwnerActor, this);
-	CachedASCFromPlayerState->RefreshAbilityActorInfo();
+	GetSpellRiseASC()->SetReplicationMode(AscReplicationMode);
+	GetSpellRiseASC()->InitAbilityActorInfo(OwnerActor, this);
+	GetSpellRiseASC()->RefreshAbilityActorInfo();
 }
 
 void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
@@ -861,7 +857,7 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(!bIsDead);
 
-	if (!CachedASCFromPlayerState)
+	if (!GetSpellRiseASC())
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] PossessedBy sem ASC cacheado em %s (OwnerController=%s)."), *GetNameSafe(this), *GetNameSafe(NewController));
 		return;
@@ -911,7 +907,7 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(!bIsDead);
 
-	if (!CachedASCFromPlayerState)
+	if (!GetSpellRiseASC())
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] OnRep_PlayerState sem ASC cacheado em %s."), *GetNameSafe(this));
 	}
@@ -919,15 +915,15 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 
 void ASpellRiseCharacterBase::BindASCDelegates()
 {
-	if (!CachedASCFromPlayerState)
+	if (!GetSpellRiseASC())
 	{
 		return;
 	}
 
-	if (ASCDelegatesBoundSource != CachedASCFromPlayerState)
+	if (ASCDelegatesBoundSource != GetSpellRiseASC())
 	{
 		bASCDelegatesBound = false;
-		ASCDelegatesBoundSource = CachedASCFromPlayerState;
+		ASCDelegatesBoundSource = GetSpellRiseASC();
 	}
 
 	if (bASCDelegatesBound)
@@ -937,23 +933,23 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 
 	if (DeadStateTag.IsValid())
 	{
-		AbilitySystemComponent
+		GetSpellRiseASC()
 			->RegisterGameplayTagEvent(DeadStateTag, EGameplayTagEventType::NewOrRemoved)
 			.RemoveAll(this);
 	}
-	AbilitySystemComponent
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetHealthAttribute())
 		.RemoveAll(this);
-	AbilitySystemComponent
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetStrengthAttribute())
 		.RemoveAll(this);
-	AbilitySystemComponent
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetAgilityAttribute())
 		.RemoveAll(this);
-	AbilitySystemComponent
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetIntelligenceAttribute())
 		.RemoveAll(this);
-	AbilitySystemComponent
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
 		.RemoveAll(this);
 
@@ -961,28 +957,28 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 
 	if (DeadStateTag.IsValid())
 	{
-		CachedASCFromPlayerState
+		GetSpellRiseASC()
 			->RegisterGameplayTagEvent(DeadStateTag, EGameplayTagEventType::NewOrRemoved)
 			.AddUObject(this, &ASpellRiseCharacterBase::OnDeadTagChanged);
 	}
 
-	CachedASCFromPlayerState
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetHealthAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnHealthChanged);
 
-	CachedASCFromPlayerState
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetStrengthAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
 
-	CachedASCFromPlayerState
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetAgilityAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
 
-	CachedASCFromPlayerState
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetIntelligenceAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
 
-	CachedASCFromPlayerState
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
 }
@@ -992,18 +988,14 @@ bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
 	ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
 	if (!SRPlayerState)
 	{
-		CachedASCFromPlayerState = nullptr;
 		return false;
 	}
 
 	USpellRiseAbilitySystemComponent* PlayerStateASC = SRPlayerState->GetSpellRiseASC();
 	if (!PlayerStateASC)
 	{
-		CachedASCFromPlayerState = nullptr;
 		return false;
 	}
-
-	CachedASCFromPlayerState = PlayerStateASC;
 	BasicAttributeSet = SRPlayerState->GetBasicAttributeSet();
 	CombatAttributeSet = SRPlayerState->GetCombatAttributeSet();
 	ResourceAttributeSet = SRPlayerState->GetResourceAttributeSet();
@@ -1015,7 +1007,7 @@ bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
 
 void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Data)
 {
-	if (!HasAuthority() || !CachedASCFromPlayerState)
+	if (!HasAuthority() || !GetSpellRiseASC())
 	{
 		return;
 	}
@@ -1027,15 +1019,15 @@ void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Dat
 
 void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data)
 {
-	if (!AbilitySystemComponent || AbilitySystemComponent->GetAvatarActor() != this)
+	if (!GetSpellRiseASC() || GetSpellRiseASC()->GetAvatarActor() != this)
 	{
 		UE_LOG(
 			LogSpellRiseCharacterRuntime,
 			Warning,
 			TEXT("[FullLoot][Death] OnHealthChanged ignorado por AvatarContext mismatch. Char=%s ASC=%s Avatar=%s"),
 			*GetNameSafe(this),
-			*GetNameSafe(AbilitySystemComponent),
-			*GetNameSafe(AbilitySystemComponent ? AbilitySystemComponent->GetAvatarActor() : nullptr));
+			*GetNameSafe(GetSpellRiseASC()),
+			*GetNameSafe(GetSpellRiseASC() ? GetSpellRiseASC()->GetAvatarActor() : nullptr));
 		return;
 	}
 
@@ -1064,7 +1056,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 		return;
 	}
 
-	if (!HasAuthority() || !CachedASCFromPlayerState)
+	if (!HasAuthority() || !GetSpellRiseASC())
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] OnHealthChanged sem authority/ASC. Char=%s Health=%.2f"), *GetNameSafe(this), NewHealth);
 		return;
@@ -1101,31 +1093,31 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	if (GE_Death)
 	{
-		FGameplayEffectContextHandle Context = CachedASCFromPlayerState->MakeEffectContext();
+		FGameplayEffectContextHandle Context = GetSpellRiseASC()->MakeEffectContext();
 		Context.AddSourceObject(this);
 
-		FGameplayEffectSpecHandle SpecHandle = CachedASCFromPlayerState->MakeOutgoingSpec(GE_Death, 1.f, Context);
+		FGameplayEffectSpecHandle SpecHandle = GetSpellRiseASC()->MakeOutgoingSpec(GE_Death, 1.f, Context);
 		if (SpecHandle.IsValid() && SpecHandle.Data.IsValid())
 		{
-			CachedASCFromPlayerState->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+			GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 		}
 		else if (DeadStateTag.IsValid())
 		{
-			CachedASCFromPlayerState->AddLooseGameplayTag(DeadStateTag);
+			GetSpellRiseASC()->AddLooseGameplayTag(DeadStateTag);
 		}
 	}
 	else if (DeadStateTag.IsValid())
 	{
-		CachedASCFromPlayerState->AddLooseGameplayTag(DeadStateTag);
+		GetSpellRiseASC()->AddLooseGameplayTag(DeadStateTag);
 	}
 
-	CachedASCFromPlayerState->CancelAllAbilities();
+	GetSpellRiseASC()->CancelAllAbilities();
 	ScheduleRespawn_Server();
 }
 
 void ASpellRiseCharacterBase::ApplyStartupEffects()
 {
-	if (!CachedASCFromPlayerState || !HasAuthority())
+	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return;
 	}
@@ -1143,7 +1135,7 @@ void ASpellRiseCharacterBase::ApplyStartupEffects()
 
 void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 {
-	if (!CachedASCFromPlayerState || !HasAuthority())
+	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return;
 	}
@@ -1154,49 +1146,49 @@ void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 		return;
 	}
 
-	CachedASCFromPlayerState->RemoveActiveGameplayEffectBySourceEffect(GE_DerivedStatsInfinite, CachedASCFromPlayerState);
+	GetSpellRiseASC()->RemoveActiveGameplayEffectBySourceEffect(GE_DerivedStatsInfinite, GetSpellRiseASC());
 
-	FGameplayEffectContextHandle Context = CachedASCFromPlayerState->MakeEffectContext();
+	FGameplayEffectContextHandle Context = GetSpellRiseASC()->MakeEffectContext();
 	Context.AddSourceObject(this);
 
-	FGameplayEffectSpecHandle SpecHandle = CachedASCFromPlayerState->MakeOutgoingSpec(GE_DerivedStatsInfinite, 1.f, Context);
+	FGameplayEffectSpecHandle SpecHandle = GetSpellRiseASC()->MakeOutgoingSpec(GE_DerivedStatsInfinite, 1.f, Context);
 	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
 	{
 		return;
 	}
 
-	CachedASCFromPlayerState->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
 void ASpellRiseCharacterBase::LogDerivedDebug()
 {
-	if (!CachedASCFromPlayerState)
+	if (!GetSpellRiseASC())
 	{
 		return;
 	}
 
-	const bool bTagActive = CachedASCFromPlayerState->HasMatchingGameplayTag(SpellRiseTags::State_DerivedStats_Active());
+	const bool bTagActive = GetSpellRiseASC()->HasMatchingGameplayTag(SpellRiseTags::State_DerivedStats_Active());
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[DERIVED] GE=%s TagActive=%d"),
 		*GetNameSafe(GE_DerivedStatsInfinite),
 		bTagActive ? 1 : 0);
 
-	const float STR = CachedASCFromPlayerState->GetNumericAttribute(UCombatAttributeSet::GetStrengthAttribute());
-	const float AGI = CachedASCFromPlayerState->GetNumericAttribute(UCombatAttributeSet::GetAgilityAttribute());
-	const float INT = CachedASCFromPlayerState->GetNumericAttribute(UCombatAttributeSet::GetIntelligenceAttribute());
-	const float WIS = CachedASCFromPlayerState->GetNumericAttribute(UCombatAttributeSet::GetWisdomAttribute());
+	const float STR = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetStrengthAttribute());
+	const float AGI = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetAgilityAttribute());
+	const float INT = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetIntelligenceAttribute());
+	const float WIS = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetWisdomAttribute());
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[PRIM] STR=%.1f AGI=%.1f INT=%.1f WIS=%.1f"), STR, AGI, INT, WIS);
 
-	const float MeleeMult = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetMeleeDamageMultiplierAttribute());
-	const float BowMult = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute());
-	const float SpellMult = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetSpellDamageMultiplierAttribute());
-	const float HealMult = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetHealingMultiplierAttribute());
-	const float CTR = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetCastTimeReductionAttribute());
-	const float CC = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritChanceAttribute());
-	const float CD = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritDamageAttribute());
-	const float AP = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetArmorPenetrationAttribute());
-	const float MCR = CachedASCFromPlayerState->GetNumericAttribute(UDerivedStatsAttributeSet::GetManaCostReductionAttribute());
+	const float MeleeMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetMeleeDamageMultiplierAttribute());
+	const float BowMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute());
+	const float SpellMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetSpellDamageMultiplierAttribute());
+	const float HealMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetHealingMultiplierAttribute());
+	const float CTR = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetCastTimeReductionAttribute());
+	const float CC = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritChanceAttribute());
+	const float CD = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritDamageAttribute());
+	const float AP = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetArmorPenetrationAttribute());
+	const float MCR = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetManaCostReductionAttribute());
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[DER]  Melee=%.3f Bow=%.3f Spell=%.3f Heal=%.3f CTR=%.3f CC=%.3f CD=%.3f AP=%.3f MCR=%.3f"),
 		MeleeMult, BowMult, SpellMult, HealMult, CTR, CC, CD, AP, MCR);
@@ -1204,21 +1196,21 @@ void ASpellRiseCharacterBase::LogDerivedDebug()
 
 void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass)
 {
-	if (!CachedASCFromPlayerState || !HasAuthority() || !EffectClass)
+	if (!GetSpellRiseASC() || !HasAuthority() || !EffectClass)
 	{
 		return;
 	}
 
-	FGameplayEffectContextHandle Context = CachedASCFromPlayerState->MakeEffectContext();
+	FGameplayEffectContextHandle Context = GetSpellRiseASC()->MakeEffectContext();
 	Context.AddSourceObject(this);
 
-	FGameplayEffectSpecHandle SpecHandle = CachedASCFromPlayerState->MakeOutgoingSpec(EffectClass, 1.f, Context);
+	FGameplayEffectSpecHandle SpecHandle = GetSpellRiseASC()->MakeOutgoingSpec(EffectClass, 1.f, Context);
 	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
 	{
 		return;
 	}
 
-	CachedASCFromPlayerState->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
 void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
@@ -1248,9 +1240,9 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 	}
 
 	SR_ClearAbilityInput();
-	if (CachedASCFromPlayerState)
+	if (GetSpellRiseASC())
 	{
-		CachedASCFromPlayerState->SR_ClearAbilityInput();
+		GetSpellRiseASC()->SR_ClearAbilityInput();
 	}
 
 	DisableInput(PC);
@@ -1264,7 +1256,7 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 
 void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
 {
-	if (!CachedASCFromPlayerState || !HasAuthority())
+	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return;
 	}
@@ -1283,7 +1275,7 @@ void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
 
 void ASpellRiseCharacterBase::RecalculateDerivedStats()
 {
-	if (!CachedASCFromPlayerState || !HasAuthority())
+	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return;
 	}
@@ -1293,46 +1285,46 @@ void ASpellRiseCharacterBase::RecalculateDerivedStats()
 
 void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 {
-	if (!HasAuthority() || !CachedASCFromPlayerState)
+	if (!HasAuthority() || !GetSpellRiseASC())
 	{
 		return;
 	}
 
 	if (DeadStateTag.IsValid())
 	{
-		CachedASCFromPlayerState->RemoveLooseGameplayTag(DeadStateTag);
+		GetSpellRiseASC()->RemoveLooseGameplayTag(DeadStateTag);
 
 		FGameplayTagContainer DeadTags;
 		DeadTags.AddTag(DeadStateTag);
-		CachedASCFromPlayerState->RemoveActiveEffectsWithGrantedTags(DeadTags);
+		GetSpellRiseASC()->RemoveActiveEffectsWithGrantedTags(DeadTags);
 	}
 
 	if (GE_Death)
 	{
-		CachedASCFromPlayerState->RemoveActiveGameplayEffectBySourceEffect(GE_Death, CachedASCFromPlayerState);
+		GetSpellRiseASC()->RemoveActiveGameplayEffectBySourceEffect(GE_Death, GetSpellRiseASC());
 	}
 
 	bIsDead = false;
 	bFullLootProcessedForCurrentDeath = false;
 
-	const float MaxHealthValue = CachedASCFromPlayerState->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute());
-	const float MaxManaValue = CachedASCFromPlayerState->GetNumericAttribute(UResourceAttributeSet::GetMaxManaAttribute());
-	const float MaxStaminaValue = CachedASCFromPlayerState->GetNumericAttribute(UResourceAttributeSet::GetMaxStaminaAttribute());
+	const float MaxHealthValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute());
+	const float MaxManaValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxManaAttribute());
+	const float MaxStaminaValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxStaminaAttribute());
 
-	CachedASCFromPlayerState->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), FMath::Max(1.f, MaxHealthValue));
-	CachedASCFromPlayerState->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), FMath::Max(0.f, MaxManaValue));
-	CachedASCFromPlayerState->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaAttribute(), FMath::Max(0.f, MaxStaminaValue));
+	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), FMath::Max(1.f, MaxHealthValue));
+	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), FMath::Max(0.f, MaxManaValue));
+	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaAttribute(), FMath::Max(0.f, MaxStaminaValue));
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Respawn] Reset de morte aplicado. Char=%s DeadTag=%s Health=%.1f/%.1f"),
 		*GetNameSafe(this),
 		DeadStateTag.IsValid() ? TEXT("valid") : TEXT("invalid"),
-		CachedASCFromPlayerState->GetNumericAttribute(UResourceAttributeSet::GetHealthAttribute()),
-		CachedASCFromPlayerState->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute()));
+		GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetHealthAttribute()),
+		GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute()));
 }
 
 TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
 {
-	if (!CachedASCFromPlayerState || !HasAuthority())
+	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return {};
 	}
@@ -1347,7 +1339,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 			continue;
 		}
 
-		if (CachedASCFromPlayerState->FindAbilitySpecFromClass(Grant.Ability) != nullptr)
+		if (GetSpellRiseASC()->FindAbilitySpecFromClass(Grant.Ability) != nullptr)
 		{
 			UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] Ability ja concedida no ASC. Pulando duplicata: %s"), *GetNameSafe(Grant.Ability));
 			continue;
@@ -1361,12 +1353,12 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
 		}
 
-		const FGameplayAbilitySpecHandle Handle = CachedASCFromPlayerState->GiveAbility(Spec);
+		const FGameplayAbilitySpecHandle Handle = GetSpellRiseASC()->GiveAbility(Spec);
 		AbilityHandles.Add(Handle);
 
 		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
 		{
-			const bool bActivated = CachedASCFromPlayerState->TryActivateAbility(Handle);
+			const bool bActivated = GetSpellRiseASC()->TryActivateAbility(Handle);
 			if (!bActivated)
 			{
 				UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] AutoActivate FAILED: %s"), *GetNameSafe(Grant.Ability));
@@ -1374,7 +1366,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 		}
 	}
 
-	CachedASCFromPlayerState->RefreshAbilityActorInfo();
+	GetSpellRiseASC()->RefreshAbilityActorInfo();
 	SendAbilitiesChangedEvent();
 
 	return AbilityHandles;
@@ -1382,14 +1374,14 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 
 void ASpellRiseCharacterBase::RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove)
 {
-	if (!CachedASCFromPlayerState || !HasAuthority())
+	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return;
 	}
 
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : AbilityHandlesToRemove)
 	{
-		CachedASCFromPlayerState->ClearAbility(AbilityHandle);
+		GetSpellRiseASC()->ClearAbility(AbilityHandle);
 	}
 
 	SendAbilitiesChangedEvent();
@@ -1402,12 +1394,12 @@ void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
 		return;
 	}
 
-	if (!AbilitySystemComponent)
+	if (!GetSpellRiseASC())
 	{
 		InitASCActorInfo();
 	}
 
-	if (!AbilitySystemComponent)
+	if (!GetSpellRiseASC())
 	{
 		UE_LOG(
 			LogSpellRiseCharacterRuntime,
@@ -1457,12 +1449,12 @@ void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const
 		SanitizedEventData.EventMagnitude = 0.f;
 	}
 
-	if (!AbilitySystemComponent)
+	if (!GetSpellRiseASC())
 	{
 		InitASCActorInfo();
 	}
 
-	if (!AbilitySystemComponent)
+	if (!GetSpellRiseASC())
 	{
 		AuditRejectedServerGameplayEvent(SanitizedEventData.EventTag, TEXT("missing_asc_context"));
 		return;
@@ -1713,15 +1705,15 @@ float ASpellRiseCharacterBase::ResolveMaxAbsServerEventMagnitude(const FGameplay
 
 void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount)
 {
-	if (!AbilitySystemComponent || AbilitySystemComponent->GetAvatarActor() != this)
+	if (!GetSpellRiseASC() || GetSpellRiseASC()->GetAvatarActor() != this)
 	{
 		UE_LOG(
 			LogSpellRiseCharacterRuntime,
 			Warning,
 			TEXT("[FullLoot][Death] OnDeadTagChanged ignorado por AvatarContext mismatch. Char=%s ASC=%s Avatar=%s Tag=%s NewCount=%d"),
 			*GetNameSafe(this),
-			*GetNameSafe(AbilitySystemComponent),
-			*GetNameSafe(AbilitySystemComponent ? AbilitySystemComponent->GetAvatarActor() : nullptr),
+			*GetNameSafe(GetSpellRiseASC()),
+			*GetNameSafe(GetSpellRiseASC() ? GetSpellRiseASC()->GetAvatarActor() : nullptr),
 			*CallbackTag.ToString(),
 			NewCount);
 		return;
@@ -2194,13 +2186,13 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 
 void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 {
-	if (!HasAuthority() || !CachedASCFromPlayerState)
+	if (!HasAuthority() || !GetSpellRiseASC())
 	{
 		return;
 	}
 
 	TArray<FGameplayAbilitySpecHandle> HandlesToRemove;
-	for (const FGameplayAbilitySpec& Spec : CachedASCFromPlayerState->GetActivatableAbilities())
+	for (const FGameplayAbilitySpec& Spec : GetSpellRiseASC()->GetActivatableAbilities())
 	{
 		if (!Spec.Handle.IsValid())
 		{
@@ -2227,10 +2219,10 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : HandlesToRemove)
 	{
-		CachedASCFromPlayerState->ClearAbility(AbilityHandle);
+		GetSpellRiseASC()->ClearAbility(AbilityHandle);
 	}
 
-	CachedASCFromPlayerState->RefreshAbilityActorInfo();
+	GetSpellRiseASC()->RefreshAbilityActorInfo();
 	SendAbilitiesChangedEvent();
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[Death] Removidas %d abilities runtime no servidor para %s"),
@@ -2389,3 +2381,5 @@ void ASpellRiseCharacterBase::Landed(const FHitResult& Hit)
 
 	FallDamageComponent->OnLanded(Hit);
 }
+
+

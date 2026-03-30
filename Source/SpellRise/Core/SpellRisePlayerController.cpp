@@ -548,7 +548,7 @@ void ASpellRisePlayerController::BeginPlay()
 	SetupEnhancedInput();
 
 	FString LocalFlowSkipReason;
-	if (CanRunLocalHUDFlow(&LocalFlowSkipReason))
+	if (CanRunLocalPawnRuntime(GetPawn(), &LocalFlowSkipReason))
 	{
 		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=HUDFlowReady"));
 		EnsureCombatHUDCreated();
@@ -596,7 +596,8 @@ void ASpellRisePlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	const bool bCanRunHUDFlow = CanRunLocalHUDFlow();
+	FString LocalPawnRuntimeSkipReason;
+	const bool bCanRunHUDFlow = CanRunLocalPawnRuntime(GetPawn(), &LocalPawnRuntimeSkipReason);
 	if (bCanRunHUDFlow)
 	{
 		EnsureCombatHUDCreated();
@@ -640,6 +641,7 @@ void ASpellRisePlayerController::Tick(float DeltaSeconds)
 	}
 	else
 	{
+		LogASCBindSkipReason(LocalPawnRuntimeSkipReason);
 		bLastKnownPersistenceProfileReady = false;
 	}
 
@@ -698,6 +700,48 @@ bool ASpellRisePlayerController::CanRunLocalHUDFlow(FString* OutSkipReason) cons
 	if (!World)
 	{
 		return SetSkipReason(TEXT("world_missing"));
+	}
+
+	return true;
+}
+
+bool ASpellRisePlayerController::CanRunLocalPawnRuntime(APawn* CandidatePawn, FString* OutSkipReason) const
+{
+	auto SetSkipReason = [&](const TCHAR* Reason)
+	{
+		if (OutSkipReason)
+		{
+			*OutSkipReason = Reason;
+		}
+		return false;
+	};
+
+	FString LocalHUDSkipReason;
+	if (!CanRunLocalHUDFlow(&LocalHUDSkipReason))
+	{
+		return SetSkipReason(*LocalHUDSkipReason);
+	}
+
+	APawn* PawnToValidate = CandidatePawn;
+	if (!IsValid(PawnToValidate))
+	{
+		PawnToValidate = GetPawn();
+	}
+	if (!IsValid(PawnToValidate))
+	{
+		return SetSkipReason(TEXT("pawn_missing"));
+	}
+
+	APlayerState* ControlledPlayerState = PawnToValidate->GetPlayerState();
+	if (!IsValid(ControlledPlayerState))
+	{
+		return SetSkipReason(TEXT("playerstate_missing"));
+	}
+
+	UAbilitySystemComponent* PawnASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(PawnToValidate);
+	if (!IsValid(PawnASC))
+	{
+		return SetSkipReason(TEXT("asc_missing"));
 	}
 
 	return true;
@@ -852,7 +896,7 @@ void ASpellRisePlayerController::EnsureCombatHUDCreated()
 	}
 
 	FString LocalFlowSkipReason;
-	if (!CanRunLocalHUDFlow(&LocalFlowSkipReason))
+	if (!CanRunLocalPawnRuntime(GetPawn(), &LocalFlowSkipReason))
 	{
 		if (!LocalFlowSkipReason.Equals(LastHUDCreateFailureReason, ESearchCase::CaseSensitive))
 		{
@@ -1140,7 +1184,7 @@ void ASpellRisePlayerController::UpdateCombatHUDVisibility()
 void ASpellRisePlayerController::TryBindHUDToCurrentASC()
 {
 	FString LocalFlowSkipReason;
-	if (!CanRunLocalHUDFlow(&LocalFlowSkipReason))
+	if (!CanRunLocalPawnRuntime(GetPawn(), &LocalFlowSkipReason))
 	{
 		LogASCBindSkipReason(LocalFlowSkipReason);
 		return;
@@ -1444,18 +1488,6 @@ void ASpellRisePlayerController::SetupInputComponent()
 		EIC->BindAction(IA_Ability8, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility8Released);
 	}
 
-	if (IA_PauseMenu)
-	{
-		EIC->BindAction(IA_PauseMenu, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnPauseMenuPressed);
-	}
-	else
-	{
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Warning,
-			TEXT("[Input][Menu] IA_PauseMenu nao configurada no PlayerController=%s"),
-			*GetNameSafe(this));
-	}
 }
 
 void ASpellRisePlayerController::OnPossess(APawn* InPawn)
@@ -1499,7 +1531,7 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 		HasAuthority() ? 1 : 0);
 
 	FString LocalFlowSkipReason;
-	if (CanRunLocalHUDFlow(&LocalFlowSkipReason))
+	if (CanRunLocalPawnRuntime(NewPawn, &LocalFlowSkipReason))
 	{
 		SetupEnhancedInput();
 		RefreshEnhancedInputContexts();
@@ -1520,14 +1552,28 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 
 	if (NewPawn && IsLocalController() && GetViewTarget() != NewPawn)
 	{
-		SetViewTarget(NewPawn);
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Verbose,
-			TEXT("[Net][PawnChanged] Source=%s Controller=%s forced ViewTarget=%s"),
-			SafeSource,
-			*GetNameSafe(this),
-			*GetNameSafe(NewPawn));
+		FString CameraFlowSkipReason;
+		if (CanRunLocalHUDFlow(&CameraFlowSkipReason))
+		{
+			SetViewTarget(NewPawn);
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Verbose,
+				TEXT("[Net][PawnChanged] Source=%s Controller=%s forced ViewTarget=%s"),
+				SafeSource,
+				*GetNameSafe(this),
+				*GetNameSafe(NewPawn));
+		}
+		else
+		{
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Verbose,
+				TEXT("[Net][PawnChanged] Source=%s Controller=%s camera flow skipped Reason=%s"),
+				SafeSource,
+				*GetNameSafe(this),
+				*CameraFlowSkipReason);
+		}
 	}
 }
 
@@ -1847,24 +1893,6 @@ void ASpellRisePlayerController::OnAbility7Pressed() { HandleAbilitySlotPressed(
 void ASpellRisePlayerController::OnAbility7Released() { HandleAbilitySlotReleased(6); }
 void ASpellRisePlayerController::OnAbility8Pressed() { HandleAbilitySlotPressed(7); }
 void ASpellRisePlayerController::OnAbility8Released() { HandleAbilitySlotReleased(7); }
-
-void ASpellRisePlayerController::OnPauseMenuPressed()
-{
-	if (!IsLocalController())
-	{
-		return;
-	}
-
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[Input][Menu] Action=PauseMenu Triggered Local=1 Cursor=%d Click=%d Hover=%d"),
-		bShowMouseCursor ? 1 : 0,
-		bEnableClickEvents ? 1 : 0,
-		bEnableMouseOverEvents ? 1 : 0);
-
-	BP_OnPauseMenuInput();
-}
 
 bool ASpellRisePlayerController::ShouldEnableUIInputContext() const
 {
