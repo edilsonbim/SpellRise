@@ -52,6 +52,12 @@ class SPELLRISE_API ASpellRisePlayerController : public APlayerController
 public:
 	ASpellRisePlayerController();
 
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|HUD")
+	void BP_StartCastBar(float CastDuration);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|HUD")
+	void BP_StopCastBar();
+
 	virtual void ProcessEvent(UFunction* Function, void* Parameters) override;
 
 	void ShowDamageNumber(

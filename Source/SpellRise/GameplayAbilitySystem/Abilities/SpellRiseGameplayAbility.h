@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
+#include "GameplayEffectTypes.h"
+#include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 #include "SpellRiseGameplayAbility.generated.h"
 
@@ -11,19 +13,11 @@ class UAbilitySystemComponent;
 class USpellRiseAbilitySystemComponent;
 
 UENUM(BlueprintType)
-enum class ESpellRiseAbilityActivationPolicy : uint8
+enum class ESpellRiseAbilityCastType : uint8
 {
-	OnInputTriggered = 0 UMETA(DisplayName="On Input Triggered"),
-	WhileInputActive = 1 UMETA(DisplayName="While Input Active"),
-	OnSpawn          = 2 UMETA(DisplayName="On Spawn")
-};
-
-UENUM(BlueprintType)
-enum class ESpellRiseAbilityActivationGroup : uint8
-{
-	Independent           = 0 UMETA(DisplayName="Independent"),
-	Exclusive_Replaceable = 1 UMETA(DisplayName="Exclusive Replaceable"),
-	Exclusive_Blocking    = 2 UMETA(DisplayName="Exclusive Blocking")
+	Instant = 0 UMETA(DisplayName="Instant"),
+	Cast = 1 UMETA(DisplayName="Cast"),
+	Channel = 2 UMETA(DisplayName="Channel")
 };
 
 UENUM(BlueprintType)
@@ -46,23 +40,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	bool ShouldShowInAbilityBar = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Activation")
-	bool bActivateAbilityOnGranted = false;
-
-	/** Compat alias para assets antigos. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Activation")
-	bool AutoActivateWhenGranted = false;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Activation")
-	ESpellRiseAbilityActivationPolicy ActivationPolicy = ESpellRiseAbilityActivationPolicy::OnInputTriggered;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Activation")
-	ESpellRiseAbilityActivationGroup ActivationGroup = ESpellRiseAbilityActivationGroup::Independent;
-
-	/** Mantido por compatibilidade com assets antigos. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Activation")
-	bool bActivateOnSelection = false;
-
 	/**
 	 * Regra ideal:
 	 * - conceder a ability com este mesmo tag em Spec.GetDynamicSpecSourceTags()
@@ -70,6 +47,30 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input", meta=(Categories="InputTag"))
 	FGameplayTag AbilityInputTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
+	ESpellRiseAbilityCastType CastType = ESpellRiseAbilityCastType::Instant;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
+	bool bFireOnAbilityInput = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.0", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	float CastTime = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.01", EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
+	float ChannelInterval = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
+	bool bCommitAbilityOnActivate = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
+	bool bCommitAbilityEveryChannelTick = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
+	bool bEndAbilityAfterExecution = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
+	bool bEndChannelOnInputRelease = true;
 
 public:
 	/** Server authoritative: altera o nível apenas no servidor e marca o spec dirty para replicação. */
@@ -85,6 +86,24 @@ public:
 	bool IsAbilityInputPressed() const
 	{
 		return bIsAbilityInputPressed;
+	}
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|State")
+	bool IsCastInProgress() const
+	{
+		return bIsCasting;
+	}
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|State")
+	bool IsChannelInProgress() const
+	{
+		return bIsChanneling;
+	}
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Input")
+	bool FiresFromOwnInputTag() const
+	{
+		return bFireOnAbilityInput;
 	}
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
@@ -103,20 +122,7 @@ public:
 	AController* GetControllerFromActorInfo() const;
 
 public:
-	virtual void InputPressed(
-		const FGameplayAbilitySpecHandle Handle,
-		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo) override;
-
-	virtual void InputReleased(
-		const FGameplayAbilitySpecHandle Handle,
-		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo) override;
-
-protected:
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
-
-	virtual void OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) override;
 
 	virtual bool CanActivateAbility(
 		const FGameplayAbilitySpecHandle Handle,
@@ -131,6 +137,16 @@ protected:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
+	virtual void InputPressed(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
+
+	virtual void InputReleased(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
+
 	virtual void EndAbility(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
@@ -138,48 +154,87 @@ protected:
 		bool bReplicateEndAbility,
 		bool bWasCancelled) override;
 
-	/** Hook nativo para subclasses C++. Não executa gameplay sensível na base. */
+protected:
+	bool TryCommitSpellAbility();
+	void StartCastFlow();
+	void FinishCastFlow();
+	void StartChannelFlow();
+	void TickChannelFlow();
+	void StopChannelFlow(bool bWasCancelled);
+	void ExecuteSpellFromCurrentMode();
+	void ResetSpellRuntimeState();
+	float ResolveElapsedCastTime() const;
+	void ApplyCastingEffect();
+	void ApplyCastingBarEffect();
+	void RemoveCastingEffect();
+	void RemoveCastingBarEffect();
+	void NotifyHUDCastStarted(float Duration) const;
+	void NotifyHUDCastStopped() const;
+
+	UFUNCTION()
+	void HandleCastFinished();
+
+	UFUNCTION()
+	void HandleChannelTick();
+
+	virtual void NativeOnSpellExecuted();
 	virtual void NativeOnAbilityInputPressed(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo);
-
-	/** Hook nativo para subclasses C++. Não executa gameplay sensível na base. */
 	virtual void NativeOnAbilityInputReleased(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo);
-
-	/** Hook nativo para UX local. */
-	virtual void NativeOnAbilityFailedToActivate(const FGameplayTagContainer& FailureTags);
-
-protected:
-	/** Base limpa: decide apenas se deve tentar auto-activate; não implementa cast/channel/charge. */
-	bool ShouldAutoActivateOnGrantOrSpawn() const;
-
-	/** Filtra auto-activate por papel de rede e NetExecutionPolicy. */
-	void TryActivateAbilityOnGrantOrSpawn(
-		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilitySpec& Spec) const;
-
-	/** Eventos Blueprint de input podem rodar no owner local e no servidor autoritativo quando necessário. */
-	bool ShouldBroadcastAbilityInputEvents(const FGameplayAbilityActorInfo* ActorInfo) const;
-
-	/** Failure UX só no lado local relevante. */
-	bool ShouldBroadcastAbilityFailure(const FGameplayAbilityActorInfo* ActorInfo) const;
+	virtual void NativeOnCastStarted();
+	virtual void NativeOnChannelStarted();
+	virtual void NativeOnChannelStopped(bool bWasCancelled);
 
 protected:
-	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnAbilityInputPressed")
-	void K2_OnAbilityInputPressed();
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnSpellExecuted")
+	void K2_OnSpellExecuted();
 
-	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnAbilityInputReleased")
-	void K2_OnAbilityInputReleased();
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnCastStarted")
+	void K2_OnCastStarted();
 
-	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnAbilityFailedToActivate")
-	void K2_OnAbilityFailedToActivate(const FGameplayTagContainer& FailureTags);
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnChannelStarted")
+	void K2_OnChannelStarted();
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnChannelStopped")
+	void K2_OnChannelStopped(bool bWasCancelled);
 
 protected:
 	/** Estado local/transiente de input da spec ativa. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bIsAbilityInputPressed = false;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bIsCasting = false;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bIsChanneling = false;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bHasExecutedSpell = false;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	float CastElapsedTime = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	TSubclassOf<UGameplayEffect> CastingGameplayEffectClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	TSubclassOf<UGameplayEffect> CastingBarGameplayEffectClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(Categories="Data", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	FGameplayTag CastDurationMagnitudeTag;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bAwaitingReleaseAfterCastComplete = false;
+
+	FTimerHandle CastTimerHandle;
+	FTimerHandle ChannelTimerHandle;
+	FActiveGameplayEffectHandle CastingGameplayEffectHandle;
+	FActiveGameplayEffectHandle CastingBarGameplayEffectHandle;
+	double CastStartTimeSeconds = 0.0;
 };
