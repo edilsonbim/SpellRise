@@ -1,10 +1,12 @@
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 
 #include "AbilitySystemComponent.h"
+#include "Engine/World.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseGameplayAbilityRuntime, Log, All);
@@ -12,11 +14,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseGameplayAbilityRuntime, Log, All);
 USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
-
-	// Importante:
-	// A base NÃO deve replicar input diretamente quando o projeto usa pipeline custom por Input Tag no ASC.
-	// Isso reduz risco de fluxo duplicado/confuso entre ASC custom, InputPressed/InputReleased e prediction.
 	bReplicateInputDirectly = false;
+	CastDurationMagnitudeTag = FGameplayTag::RequestGameplayTag(TEXT("Data.CastDuration"), false);
 }
 
 void USpellRiseGameplayAbility::SetAbilityLevel(int32 NewLevel)
@@ -116,16 +115,6 @@ bool USpellRiseGameplayAbility::SR_TriggerGameplayCueReliable(
 		return false;
 	}
 
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Warning,
-		TEXT("[GAS][Cue] ability=%s mode=%d cue=%s role=%d local=%d"),
-		*GetNameSafe(this),
-		static_cast<int32>(TriggerMode),
-		*CueTag.ToString(),
-		CurrentActorInfo ? static_cast<int32>(CurrentActorInfo->AvatarActor.IsValid() ? CurrentActorInfo->AvatarActor->GetLocalRole() : ROLE_None) : -1,
-		IsLocallyControlledAbility() ? 1 : 0);
-
 	return true;
 }
 
@@ -194,15 +183,6 @@ AController* USpellRiseGameplayAbility::GetControllerFromActorInfo() const
 void USpellRiseGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
 	Super::OnGiveAbility(ActorInfo, Spec);
-
-	TryActivateAbilityOnGrantOrSpawn(ActorInfo, Spec);
-}
-
-void USpellRiseGameplayAbility::OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
-{
-	Super::OnAvatarSet(ActorInfo, Spec);
-
-	TryActivateAbilityOnGrantOrSpawn(ActorInfo, Spec);
 }
 
 bool USpellRiseGameplayAbility::CanActivateAbility(
@@ -225,19 +205,13 @@ bool USpellRiseGameplayAbility::CanActivateAbility(
 		UE_LOG(
 			LogSpellRiseGameplayAbilityRuntime,
 			Warning,
-			TEXT("[GAS][AbilityActivateDenied] ability=%s authority=%d local=%d netExec=%d activationPolicy=%d activationGroup=%d failureTags=%s"),
+			TEXT("[GAS][AbilityActivateDenied] ability=%s authority=%d local=%d netExec=%d castType=%d failureTags=%s"),
 			*GetNameSafe(this),
 			ActorInfo && ActorInfo->IsNetAuthority() ? 1 : 0,
 			ActorInfo && ActorInfo->IsLocallyControlled() ? 1 : 0,
 			static_cast<int32>(NetExecutionPolicy),
-			static_cast<int32>(ActivationPolicy),
-			static_cast<int32>(ActivationGroup),
+			static_cast<int32>(CastType),
 			*FailureTags.ToString());
-
-		if (ShouldBroadcastAbilityFailure(ActorInfo))
-		{
-			const_cast<USpellRiseGameplayAbility*>(this)->NativeOnAbilityFailedToActivate(FailureTags);
-		}
 	}
 
 	return bCanActivate;
@@ -251,23 +225,38 @@ void USpellRiseGameplayAbility::ActivateAbility(
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
 
-	bIsAbilityInputPressed = false;
+	ResetSpellRuntimeState();
 
 	if (const FGameplayAbilitySpec* AbilitySpec = GetCurrentAbilitySpec())
 	{
 		bIsAbilityInputPressed = AbilitySpec->InputPressed;
 	}
 
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[GAS][AbilityActivate] ability=%s authority=%d local=%d netExec=%d inputPressed=%d"),
-		*GetNameSafe(this),
-		ActorInfo && ActorInfo->IsNetAuthority() ? 1 : 0,
-		ActorInfo && ActorInfo->IsLocallyControlled() ? 1 : 0,
-		static_cast<int32>(NetExecutionPolicy),
-		bIsAbilityInputPressed ? 1 : 0);
+	switch (CastType)
+	{
+	case ESpellRiseAbilityCastType::Instant:
+		if (TryCommitSpellAbility())
+		{
+			ExecuteSpellFromCurrentMode();
+		}
+		else
+		{
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		}
+		break;
 
+	case ESpellRiseAbilityCastType::Cast:
+		StartCastFlow();
+		break;
+
+	case ESpellRiseAbilityCastType::Channel:
+		StartChannelFlow();
+		break;
+
+	default:
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		break;
+	}
 }
 
 void USpellRiseGameplayAbility::EndAbility(
@@ -277,7 +266,16 @@ void USpellRiseGameplayAbility::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
-	bIsAbilityInputPressed = false;
+	RemoveCastingEffect();
+	RemoveCastingBarEffect();
+	NotifyHUDCastStopped();
+
+	if (bIsChanneling)
+	{
+		StopChannelFlow(bWasCancelled);
+	}
+
+	ResetSpellRuntimeState();
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }
@@ -290,13 +288,7 @@ void USpellRiseGameplayAbility::InputPressed(
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = true;
-
 	NativeOnAbilityInputPressed(Handle, ActorInfo, ActivationInfo);
-
-	if (ShouldBroadcastAbilityInputEvents(ActorInfo))
-	{
-		K2_OnAbilityInputPressed();
-	}
 }
 
 void USpellRiseGameplayAbility::InputReleased(
@@ -307,13 +299,7 @@ void USpellRiseGameplayAbility::InputReleased(
 	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = false;
-
 	NativeOnAbilityInputReleased(Handle, ActorInfo, ActivationInfo);
-
-	if (ShouldBroadcastAbilityInputEvents(ActorInfo))
-	{
-		K2_OnAbilityInputReleased();
-	}
 }
 
 void USpellRiseGameplayAbility::NativeOnAbilityInputPressed(
@@ -328,101 +314,379 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
 {
+	if (!IsActive())
+	{
+		return;
+	}
+
+	if (CastType == ESpellRiseAbilityCastType::Cast && !bHasExecutedSpell)
+	{
+		if (bAwaitingReleaseAfterCastComplete)
+		{
+			bAwaitingReleaseAfterCastComplete = false;
+			FinishCastFlow();
+		}
+		return;
+	}
+
+	if (CastType == ESpellRiseAbilityCastType::Channel && bEndChannelOnInputRelease)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+	}
 }
 
-void USpellRiseGameplayAbility::NativeOnAbilityFailedToActivate(const FGameplayTagContainer& FailureTags)
+bool USpellRiseGameplayAbility::TryCommitSpellAbility()
 {
-	K2_OnAbilityFailedToActivate(FailureTags);
-}
-
-bool USpellRiseGameplayAbility::ShouldAutoActivateOnGrantOrSpawn() const
-{
-	return bActivateAbilityOnGranted
-		|| AutoActivateWhenGranted
-		|| ActivationPolicy == ESpellRiseAbilityActivationPolicy::OnSpawn;
-}
-
-void USpellRiseGameplayAbility::TryActivateAbilityOnGrantOrSpawn(
-	const FGameplayAbilityActorInfo* ActorInfo,
-	const FGameplayAbilitySpec& Spec) const
-{
-	if (!ShouldAutoActivateOnGrantOrSpawn())
+	if (!bCommitAbilityOnActivate)
 	{
-		return;
+		return true;
 	}
 
-	if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid() || !ActorInfo->AvatarActor.IsValid())
+	const bool bCommitted = CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
+	if (!bCommitted)
 	{
-		return;
-	}
-
-	if (Spec.IsActive())
-	{
-		return;
-	}
-
-	UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
-	const AActor* AvatarActor = ActorInfo->AvatarActor.Get();
-
-	if (!ASC || !AvatarActor)
-	{
-		return;
-	}
-
-	// Evita ativar em avatar inválido/transitório.
-	if (AvatarActor->GetTearOff() || AvatarActor->GetLifeSpan() > 0.0f)
-	{
-		return;
-	}
-
-	const bool bIsLocalExecution =
-		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted) ||
-		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalOnly);
-
-	const bool bIsServerExecution =
-		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerOnly) ||
-		(NetExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerInitiated);
-
-	const bool bClientShouldActivate = ActorInfo->IsLocallyControlled() && bIsLocalExecution;
-	const bool bServerShouldActivate = ActorInfo->IsNetAuthority() && bIsServerExecution;
-
-	if (bClientShouldActivate || bServerShouldActivate)
-	{
-		const bool bActivated = ASC->TryActivateAbility(Spec.Handle);
 		UE_LOG(
 			LogSpellRiseGameplayAbilityRuntime,
-			Verbose,
-			TEXT("[GAS][AutoActivateAttempt] ability=%s path=%s result=%d authority=%d local=%d netExec=%d activationPolicy=%d"),
+			Warning,
+			TEXT("[GAS][AbilityCommitDenied] ability=%s castType=%d"),
 			*GetNameSafe(this),
-			bClientShouldActivate ? TEXT("client_predicted") : TEXT("server_authoritative"),
-			bActivated ? 1 : 0,
-			ActorInfo->IsNetAuthority() ? 1 : 0,
-			ActorInfo->IsLocallyControlled() ? 1 : 0,
-			static_cast<int32>(NetExecutionPolicy),
-			static_cast<int32>(ActivationPolicy));
+			static_cast<int32>(CastType));
+	}
 
-		if (!bActivated)
+	return bCommitted;
+}
+
+void USpellRiseGameplayAbility::ApplyCastingEffect()
+{
+	if (!CastingGameplayEffectClass)
+	{
+		return;
+	}
+
+	if (!CurrentActorInfo)
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get())
+	{
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CastingGameplayEffectClass, GetAbilityLevel());
+		if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
 		{
-			UE_LOG(
-				LogSpellRiseGameplayAbilityRuntime,
-				Warning,
-				TEXT("[GAS][AutoActivateDenied] ability=%s path=%s authority=%d local=%d netExec=%d activationPolicy=%d"),
-				*GetNameSafe(this),
-				bClientShouldActivate ? TEXT("client_predicted") : TEXT("server_authoritative"),
-				ActorInfo->IsNetAuthority() ? 1 : 0,
-				ActorInfo->IsLocallyControlled() ? 1 : 0,
-				static_cast<int32>(NetExecutionPolicy),
-				static_cast<int32>(ActivationPolicy));
+			return;
+		}
+
+		CastingGameplayEffectHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
+}
+
+void USpellRiseGameplayAbility::RemoveCastingEffect()
+{
+	if (!CastingGameplayEffectHandle.IsValid())
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+	{
+		ASC->RemoveActiveGameplayEffect(CastingGameplayEffectHandle);
+	}
+
+	CastingGameplayEffectHandle = FActiveGameplayEffectHandle();
+}
+
+void USpellRiseGameplayAbility::ApplyCastingBarEffect()
+{
+	if (!CastingBarGameplayEffectClass || CastTime <= 0.0f)
+	{
+		return;
+	}
+
+	if (!CurrentActorInfo)
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* ASC = CurrentActorInfo->AbilitySystemComponent.Get())
+	{
+		FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(CastingBarGameplayEffectClass, GetAbilityLevel());
+		if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
+		{
+			return;
+		}
+
+		if (CastDurationMagnitudeTag.IsValid())
+		{
+			SpecHandle.Data->SetSetByCallerMagnitude(CastDurationMagnitudeTag, CastTime);
+		}
+
+		CastingBarGameplayEffectHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
+}
+
+void USpellRiseGameplayAbility::RemoveCastingBarEffect()
+{
+	if (!CastingBarGameplayEffectHandle.IsValid())
+	{
+		return;
+	}
+
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+	{
+		ASC->RemoveActiveGameplayEffect(CastingBarGameplayEffectHandle);
+	}
+
+	CastingBarGameplayEffectHandle = FActiveGameplayEffectHandle();
+}
+
+void USpellRiseGameplayAbility::NotifyHUDCastStarted(float Duration) const
+{
+	if (!IsLocallyControlledAbility())
+	{
+		return;
+	}
+
+	if (Duration <= 0.0f)
+	{
+		return;
+	}
+
+	UE_LOG(LogSpellRiseGameplayAbilityRuntime, Verbose, TEXT("[HUD][Cast] Starting cast duration=%.2f ability=%s"), Duration, *GetNameSafe(this));
+
+	if (AController* Controller = GetControllerFromActorInfo())
+	{
+		if (ASpellRisePlayerController* SRPC = Cast<ASpellRisePlayerController>(Controller))
+		{
+			SRPC->BP_StartCastBar(Duration);
 		}
 	}
 }
 
-bool USpellRiseGameplayAbility::ShouldBroadcastAbilityInputEvents(const FGameplayAbilityActorInfo* ActorInfo) const
+void USpellRiseGameplayAbility::NotifyHUDCastStopped() const
 {
-	return ActorInfo && (ActorInfo->IsLocallyControlled() || ActorInfo->IsNetAuthority());
+	if (!IsLocallyControlledAbility())
+	{
+		return;
+	}
+
+	if (AController* Controller = GetControllerFromActorInfo())
+	{
+		if (ASpellRisePlayerController* SRPC = Cast<ASpellRisePlayerController>(Controller))
+		{
+			SRPC->BP_StopCastBar();
+		}
+	}
 }
 
-bool USpellRiseGameplayAbility::ShouldBroadcastAbilityFailure(const FGameplayAbilityActorInfo* ActorInfo) const
+void USpellRiseGameplayAbility::StartCastFlow()
 {
-	return ActorInfo && ActorInfo->IsLocallyControlled();
+	if (!TryCommitSpellAbility())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	bIsCasting = true;
+	CastElapsedTime = 0.0f;
+	CastStartTimeSeconds = 0.0;
+	bAwaitingReleaseAfterCastComplete = false;
+	ApplyCastingEffect();
+	ApplyCastingBarEffect();
+	NotifyHUDCastStarted(CastTime);
+
+	if (const UWorld* World = GetWorld())
+	{
+		CastStartTimeSeconds = World->GetTimeSeconds();
+	}
+
+	NativeOnCastStarted();
+
+	if (CastTime <= 0.0f)
+	{
+		FinishCastFlow();
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			CastTimerHandle,
+			this,
+			&USpellRiseGameplayAbility::HandleCastFinished,
+			CastTime,
+			false);
+	}
+}
+
+void USpellRiseGameplayAbility::FinishCastFlow()
+{
+	if (!IsActive() || bHasExecutedSpell)
+	{
+		return;
+	}
+
+	bAwaitingReleaseAfterCastComplete = false;
+	CastElapsedTime = ResolveElapsedCastTime();
+
+	if (bIsCasting)
+	{
+		bIsCasting = false;
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(CastTimerHandle);
+		}
+	}
+
+	ExecuteSpellFromCurrentMode();
+}
+
+void USpellRiseGameplayAbility::StartChannelFlow()
+{
+	if (!TryCommitSpellAbility())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	bIsChanneling = true;
+	NativeOnChannelStarted();
+	NativeOnSpellExecuted();
+
+	if (ChannelInterval <= 0.0f)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			ChannelTimerHandle,
+			this,
+			&USpellRiseGameplayAbility::HandleChannelTick,
+			ChannelInterval,
+			true);
+	}
+}
+
+void USpellRiseGameplayAbility::TickChannelFlow()
+{
+	if (!IsActive() || !bIsChanneling)
+	{
+		return;
+	}
+
+	if (bCommitAbilityEveryChannelTick && !CommitAbilityCost(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	NativeOnSpellExecuted();
+}
+
+void USpellRiseGameplayAbility::StopChannelFlow(bool bWasCancelled)
+{
+	if (!bIsChanneling)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ChannelTimerHandle);
+	}
+
+	bIsChanneling = false;
+	NativeOnChannelStopped(bWasCancelled);
+}
+
+void USpellRiseGameplayAbility::ExecuteSpellFromCurrentMode()
+{
+	if (!IsActive() || bHasExecutedSpell)
+	{
+		return;
+	}
+
+	bHasExecutedSpell = true;
+	NativeOnSpellExecuted();
+
+	if (bEndAbilityAfterExecution && CastType != ESpellRiseAbilityCastType::Channel)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+	}
+}
+
+void USpellRiseGameplayAbility::ResetSpellRuntimeState()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(CastTimerHandle);
+		World->GetTimerManager().ClearTimer(ChannelTimerHandle);
+	}
+
+	bIsAbilityInputPressed = false;
+	bIsCasting = false;
+	bIsChanneling = false;
+	bHasExecutedSpell = false;
+	CastElapsedTime = 0.0f;
+	bAwaitingReleaseAfterCastComplete = false;
+	CastingGameplayEffectHandle = FActiveGameplayEffectHandle();
+	CastingBarGameplayEffectHandle = FActiveGameplayEffectHandle();
+	CastStartTimeSeconds = 0.0;
+}
+
+float USpellRiseGameplayAbility::ResolveElapsedCastTime() const
+{
+	if (CastElapsedTime > 0.0f)
+	{
+		return CastElapsedTime;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World || CastStartTimeSeconds <= 0.0)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Max(0.0f, static_cast<float>(World->GetTimeSeconds() - CastStartTimeSeconds));
+}
+
+void USpellRiseGameplayAbility::HandleCastFinished()
+{
+	CastElapsedTime = ResolveElapsedCastTime();
+
+	bIsCasting = false;
+
+	if (bIsAbilityInputPressed)
+	{
+		bAwaitingReleaseAfterCastComplete = true;
+		return;
+	}
+
+	FinishCastFlow();
+}
+
+void USpellRiseGameplayAbility::HandleChannelTick()
+{
+	TickChannelFlow();
+}
+
+void USpellRiseGameplayAbility::NativeOnSpellExecuted()
+{
+	K2_OnSpellExecuted();
+}
+
+void USpellRiseGameplayAbility::NativeOnCastStarted()
+{
+	K2_OnCastStarted();
+}
+
+void USpellRiseGameplayAbility::NativeOnChannelStarted()
+{
+	K2_OnChannelStarted();
+}
+
+void USpellRiseGameplayAbility::NativeOnChannelStopped(bool bWasCancelled)
+{
+	K2_OnChannelStopped(bWasCancelled);
 }
