@@ -136,18 +136,32 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 {
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 
-	const bool bNoSteamCmd = FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
-	const bool bRequireSteamInThisContext = bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !bNoSteamCmd;
+	const bool bNoSteamParam = IsNoSteamCommandLineParamPresent();
+	const bool bNoSteamTestingActive = IsNoSteamTestingModeActive();
+	const bool bRequireSteamInThisContext = ShouldRequireSteamAuthentication();
 	UE_LOG(
 		LogSpellRiseLoginPersistence,
 		Log,
-		TEXT("[Net][PreLoginStart] Address=%s UniqueId=%s Options=%s RequireSteamDS=%d NoSteamCmd=%d OSS={%s}"),
+		TEXT("[Net][PreLoginStart] Address=%s UniqueId=%s Options=%s RequireSteamDS=%d NoSteamParam=%d NoSteamTesting=%d OSS={%s}"),
 		*Address,
 		*DescribeUniqueId(UniqueId),
 		*Options,
 		bRequireSteamAuthOnDedicatedServer ? 1 : 0,
-		bNoSteamCmd ? 1 : 0,
+		bNoSteamParam ? 1 : 0,
+		bNoSteamTestingActive ? 1 : 0,
 		*DescribeOnlineSubsystemState());
+
+	if (bNoSteamParam && !bNoSteamTestingActive)
+	{
+		UE_LOG(
+			LogSpellRiseLoginPersistence,
+			Warning,
+			TEXT("[Auth][NoSteamBlocked] Address=%s RequireSteam=%d NoSteamParam=%d NoSteamTesting=%d"),
+			*Address,
+			bRequireSteamAuthOnDedicatedServer ? 1 : 0,
+			1,
+			0);
+	}
 
 	if (!ErrorMessage.IsEmpty())
 	{
@@ -217,17 +231,18 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 
 	bool bUsedDevFallback = false;
 	const FString PersistentId = ResolvePersistentIdFromPreLoginData(Options, Address, UniqueId, bUsedDevFallback);
+	const bool bOfflineFallbackAllowedInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive;
 	if (PersistentId.IsEmpty())
 	{
 		ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
 		UE_LOG(
 			LogSpellRiseLoginPersistence,
 			Warning,
-			TEXT("[Auth][PreLoginReject] Address=%s Reason=missing_persistent_id RequireSteam=%d NoSteamCmd=%d FallbackEnabled=%d UniqueId=%s OSS={%s}"),
+			TEXT("[Auth][PreLoginReject] Address=%s Reason=missing_persistent_id RequireSteam=%d NoSteamParam=%d FallbackEnabled=%d UniqueId=%s OSS={%s}"),
 			*Address,
 			bRequireSteamAuthOnDedicatedServer ? 1 : 0,
-			bNoSteamCmd ? 1 : 0,
-			bAllowDevOfflineIdFallback ? 1 : 0,
+			bNoSteamParam ? 1 : 0,
+			bOfflineFallbackAllowedInThisContext ? 1 : 0,
 			*DescribeUniqueId(UniqueId),
 			*DescribeOnlineSubsystemState());
 		return;
@@ -443,12 +458,14 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdFromPreLoginData(
 {
 	bOutUsedDevFallback = false;
 
-	const bool bNoSteamCmd = FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
-	const bool bRequireSteamInThisContext = bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !bNoSteamCmd;
+	const bool bNoSteamParam = IsNoSteamCommandLineParamPresent();
+	const bool bNoSteamTestingActive = IsNoSteamTestingModeActive();
+	const bool bRequireSteamInThisContext = bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !bNoSteamTestingActive;
+	const bool bAllowOfflineFallbackInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive;
 	const FString DevAuthId = UGameplayStatics::ParseOption(Options, TEXT("DevAuthId")).TrimStartAndEnd();
 	const bool bSteamIdValid = IsSteamUniqueId(UniqueId);
 
-	if (!DevAuthId.IsEmpty() && bAllowDevOfflineIdFallback && !bRequireSteamInThisContext)
+	if (!DevAuthId.IsEmpty() && bAllowOfflineFallbackInThisContext && !bRequireSteamInThisContext)
 	{
 		bOutUsedDevFallback = true;
 		return BuildDevOfflinePersistentId(DevAuthId);
@@ -469,12 +486,12 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdFromPreLoginData(
 		}
 	}
 
-	if (bRequireSteamInThisContext && !bAllowDevOfflineIdFallback)
+	if (bRequireSteamInThisContext && !bAllowOfflineFallbackInThisContext)
 	{
 		return FString();
 	}
 
-	if (!bAllowDevOfflineIdFallback)
+	if (!bAllowOfflineFallbackInThisContext)
 	{
 		return FString();
 	}
@@ -513,7 +530,7 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdForController(APlayerControll
 		}
 	}
 
-	if (!bAllowDevOfflineIdFallback)
+	if (!(bAllowDevOfflineIdFallback || IsNoSteamTestingModeActive()))
 	{
 		return FString();
 	}
@@ -681,4 +698,19 @@ FString ASpellRiseGameModeBase::NormalizeAddressKey(const FString& Address) cons
 	}
 
 	return Result.TrimStartAndEnd();
+}
+
+bool ASpellRiseGameModeBase::IsNoSteamCommandLineParamPresent() const
+{
+	return FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
+}
+
+bool ASpellRiseGameModeBase::IsNoSteamTestingModeActive() const
+{
+	return bEnableNoSteamTestingMode && IsNoSteamCommandLineParamPresent();
+}
+
+bool ASpellRiseGameModeBase::ShouldRequireSteamAuthentication() const
+{
+	return bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !IsNoSteamTestingModeActive();
 }

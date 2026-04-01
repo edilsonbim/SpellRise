@@ -171,6 +171,31 @@ namespace
 		return false;
 	}
 
+	void SR_InvokeNoParamFunctionIfExists(UObject* Target, std::initializer_list<const TCHAR*> CandidateNames)
+	{
+		if (!Target)
+		{
+			return;
+		}
+
+		for (const TCHAR* CandidateName : CandidateNames)
+		{
+			if (!CandidateName)
+			{
+				continue;
+			}
+
+			UFunction* Function = Target->FindFunction(FName(CandidateName));
+			if (!Function || Function->NumParms != 0)
+			{
+				continue;
+			}
+
+			Target->ProcessEvent(Function, nullptr);
+			return;
+		}
+	}
+
 }
 
 ASpellRiseCharacterBase::ASpellRiseCharacterBase()
@@ -274,6 +299,10 @@ void ASpellRiseCharacterBase::BeginPlay()
 
 void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ASCInitializationRetryTimerHandle);
+	}
 	ResetLocalDeathPresentation();
 	Super::EndPlay(EndPlayReason);
 }
@@ -281,6 +310,11 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ASpellRiseCharacterBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (!HasValidASCActorInfo())
+	{
+		ScheduleASCInitializationRetry();
+	}
 
 	if (!IsLocallyControlled())
 	{
@@ -515,6 +549,56 @@ void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 
 	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, SelectedAbilityInputTag, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, Archetype, COND_None, REPNOTIFY_Always);
+}
+
+void ASpellRiseCharacterBase::MultiRefreshEquipmentVisuals_Implementation()
+{
+	UE_LOG(
+		LogSpellRiseCharacterRuntime,
+		Log,
+		TEXT("[Equipment][VisualRefresh] Character=%s Local=%d Authority=%d"),
+		*GetNameSafe(this),
+		IsLocallyControlled() ? 1 : 0,
+		HasAuthority() ? 1 : 0);
+
+	TInlineComponentArray<UActorComponent*> Components(this);
+	for (UActorComponent* Component : Components)
+	{
+		SR_InvokeNoParamFunctionIfExists(
+			Component,
+			{
+				TEXT("ClientRefreshInventory"),
+				TEXT("RefreshInventory"),
+				TEXT("RefreshInventorySERVER"),
+				TEXT("RefreshHotbar"),
+				TEXT("RefreshHotbarSERVER"),
+				TEXT("RefreshEquipment"),
+				TEXT("RefreshEquipmentSERVER"),
+				TEXT("RefreshEquippedItems"),
+				TEXT("RefreshEquippedItemsSERVER"),
+				TEXT("UpdateEquipment"),
+				TEXT("UpdateEquipmentSERVER"),
+				TEXT("UpdateHotbar"),
+				TEXT("UpdateHotbarSERVER"),
+				TEXT("SyncEquipmentVisuals"),
+				TEXT("SyncEquipmentVisualsSERVER")
+			});
+	}
+
+	SR_InvokeNoParamFunctionIfExists(
+		this,
+		{
+			TEXT("RefreshEquipment"),
+			TEXT("RefreshEquipmentSERVER"),
+			TEXT("RefreshEquippedItems"),
+			TEXT("RefreshEquippedItemsSERVER"),
+			TEXT("UpdateEquipment"),
+			TEXT("UpdateEquipmentSERVER"),
+			TEXT("SyncEquipmentVisuals"),
+			TEXT("SyncEquipmentVisualsSERVER")
+		});
+
+	ForceNetUpdate();
 }
 
 void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
@@ -814,6 +898,7 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 	if (!InitializeAbilitySystemFromPlayerState())
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] InitASCActorInfo falhou em %s: PlayerState/ASC ainda nao disponivel."), *GetNameSafe(this));
+		ScheduleASCInitializationRetry();
 	}
 
 	if (!GetSpellRiseASC())
@@ -843,6 +928,50 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 	GetSpellRiseASC()->SetReplicationMode(AscReplicationMode);
 	GetSpellRiseASC()->InitAbilityActorInfo(OwnerActor, this);
 	GetSpellRiseASC()->RefreshAbilityActorInfo();
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ASCInitializationRetryTimerHandle);
+	}
+}
+
+void ASpellRiseCharacterBase::ScheduleASCInitializationRetry()
+{
+	UWorld* World = GetWorld();
+	if (!World || HasValidASCActorInfo())
+	{
+		return;
+	}
+
+	if (World->GetTimerManager().IsTimerActive(ASCInitializationRetryTimerHandle))
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		ASCInitializationRetryTimerHandle,
+		this,
+		&ASpellRiseCharacterBase::HandleASCInitializationRetry,
+		0.1f,
+		false);
+}
+
+void ASpellRiseCharacterBase::HandleASCInitializationRetry()
+{
+	InitASCActorInfo();
+	BindASCDelegates();
+}
+
+bool ASpellRiseCharacterBase::HasValidASCActorInfo() const
+{
+	const USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC();
+	if (!ASC)
+	{
+		return false;
+	}
+
+	const FGameplayAbilityActorInfo* ActorInfo = ASC->AbilityActorInfo.Get();
+	return ActorInfo && ActorInfo->OwnerActor.Get() && ActorInfo->AvatarActor.Get() == this;
 }
 
 void ASpellRiseCharacterBase::PossessedBy(AController* NewController)

@@ -135,6 +135,9 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiOnCatalystProc(int32 CatalystTier);
 
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|Equipment")
+	void MultiRefreshEquipmentVisuals();
+
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Catalyst")
 	void BP_OnCatalystProc(int32 CatalystTier);
 
@@ -316,6 +319,7 @@ public:
 	FTimerHandle RespawnTimerHandle;
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
+	FTimerHandle ASCInitializationRetryTimerHandle;
 
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpecHandle> StartupGrantedAbilityHandles;
@@ -331,6 +335,9 @@ protected:
 	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
 
 	void InitASCActorInfo();
+	void ScheduleASCInitializationRetry();
+	void HandleASCInitializationRetry();
+	bool HasValidASCActorInfo() const;
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	bool InitializeAbilitySystemFromPlayerState();
 	void ApplyStartupEffects();
