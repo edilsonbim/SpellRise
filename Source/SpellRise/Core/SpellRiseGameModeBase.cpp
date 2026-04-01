@@ -138,17 +138,19 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 
 	const bool bNoSteamParam = IsNoSteamCommandLineParamPresent();
 	const bool bNoSteamTestingActive = IsNoSteamTestingModeActive();
+	const bool bEditorPIETestingActive = IsEditorPIETestingModeActive();
 	const bool bRequireSteamInThisContext = ShouldRequireSteamAuthentication();
 	UE_LOG(
 		LogSpellRiseLoginPersistence,
 		Log,
-		TEXT("[Net][PreLoginStart] Address=%s UniqueId=%s Options=%s RequireSteamDS=%d NoSteamParam=%d NoSteamTesting=%d OSS={%s}"),
+		TEXT("[Net][PreLoginStart] Address=%s UniqueId=%s Options=%s RequireSteamDS=%d NoSteamParam=%d NoSteamTesting=%d EditorPIE=%d OSS={%s}"),
 		*Address,
 		*DescribeUniqueId(UniqueId),
 		*Options,
 		bRequireSteamAuthOnDedicatedServer ? 1 : 0,
 		bNoSteamParam ? 1 : 0,
 		bNoSteamTestingActive ? 1 : 0,
+		bEditorPIETestingActive ? 1 : 0,
 		*DescribeOnlineSubsystemState());
 
 	if (bNoSteamParam && !bNoSteamTestingActive)
@@ -231,7 +233,7 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 
 	bool bUsedDevFallback = false;
 	const FString PersistentId = ResolvePersistentIdFromPreLoginData(Options, Address, UniqueId, bUsedDevFallback);
-	const bool bOfflineFallbackAllowedInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive;
+	const bool bOfflineFallbackAllowedInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive || bEditorPIETestingActive;
 	if (PersistentId.IsEmpty())
 	{
 		ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
@@ -460,8 +462,9 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdFromPreLoginData(
 
 	const bool bNoSteamParam = IsNoSteamCommandLineParamPresent();
 	const bool bNoSteamTestingActive = IsNoSteamTestingModeActive();
+	const bool bEditorPIETestingActive = IsEditorPIETestingModeActive();
 	const bool bRequireSteamInThisContext = bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !bNoSteamTestingActive;
-	const bool bAllowOfflineFallbackInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive;
+	const bool bAllowOfflineFallbackInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive || bEditorPIETestingActive;
 	const FString DevAuthId = UGameplayStatics::ParseOption(Options, TEXT("DevAuthId")).TrimStartAndEnd();
 	const bool bSteamIdValid = IsSteamUniqueId(UniqueId);
 
@@ -530,7 +533,7 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdForController(APlayerControll
 		}
 	}
 
-	if (!(bAllowDevOfflineIdFallback || IsNoSteamTestingModeActive()))
+	if (!(bAllowDevOfflineIdFallback || IsNoSteamTestingModeActive() || IsEditorPIETestingModeActive()))
 	{
 		return FString();
 	}
@@ -710,7 +713,27 @@ bool ASpellRiseGameModeBase::IsNoSteamTestingModeActive() const
 	return bEnableNoSteamTestingMode && IsNoSteamCommandLineParamPresent();
 }
 
+bool ASpellRiseGameModeBase::IsEditorPIETestingModeActive() const
+{
+#if WITH_EDITOR
+	if (!GIsEditor)
+	{
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	return World->WorldType == EWorldType::PIE || World->WorldType == EWorldType::EditorPreview || World->WorldType == EWorldType::GamePreview;
+#else
+	return false;
+#endif
+}
+
 bool ASpellRiseGameModeBase::ShouldRequireSteamAuthentication() const
 {
-	return bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !IsNoSteamTestingModeActive();
+	return bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !IsNoSteamTestingModeActive() && !IsEditorPIETestingModeActive();
 }
