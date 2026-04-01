@@ -42,6 +42,7 @@ private:
 
 	bool CollectCharacterData(AController* Controller, const FString& SteamId64, FSpellRiseCharacterSaveData& OutData) const;
 	bool ApplyCharacterDataToController(AController* Controller, const FSpellRiseCharacterSaveData& Data);
+	void EnsureDefaultItemsForControllerIfNeeded(AController* Controller, const TCHAR* ContextTag);
 	void BuildInventorySnapshotFromCharacterData(const FSpellRiseCharacterSaveData& CharacterData, const FString& SteamId64, FSpellRiseInventorySaveData& OutInventoryData) const;
 	void MergeInventorySnapshotIntoCharacterData(const FSpellRiseInventorySaveData& InventoryData, FSpellRiseCharacterSaveData& InOutCharacterData) const;
 	void RecordPersistenceTelemetry(const TCHAR* Operation, bool bSuccess, double LatencyMs, const TCHAR* Reason);

@@ -1,37 +1,40 @@
 # Combat Design Philosophy
 
-## Target TTK (1v1)
-- Light armor: 5-8s
-- Medium armor: 8-12s
-- Heavy armor: 12-18s
-
-## Core Priorities
+## Identidade
 - Skill > Gear
 - Reaction > RNG
 - Positioning > Burst
-- Free target, sem auto-aim e sem tab target.
+- Free target
+- Sem auto-aim
+- Sem tab target
 
-## Runtime Damage Order
-1. Base damage from SetByCaller (weapon or spell channel).
-2. Channel multiplier (melee/bow/spell).
-3. Generic damage scaling multiplier.
-4. Resistance mitigation (with physical penetration interaction).
-5. Critical roll and critical multiplier.
-6. Resource drains (stamina/mana) by damage type profile.
+## TTK alvo (1v1)
+- Armadura leve: `5-8s`
+- Armadura média: `8-12s`
+- Armadura pesada: `12-18s`
 
-## Scaling Rules (Current)
-- Crit chance clamped to 25%.
-- Crit damage multiplier clamped to 2.0x.
-- Armor penetration clamped to 30%.
-- Resistances clamped to 75%.
-- No exponential primary scaling in current derived formulas.
+## Ordem de dano
+1. Base damage do `SetByCaller`.
+2. Multiplicador do canal (`melee`, `bow`, `spell`).
+3. Escala genérica de dano.
+4. Mitigação por resistência com penetração.
+5. Crit chance + crit multiplier.
+6. Drains de stamina/mana pelo perfil de dano.
 
-## Power Creep Controls
-- Baseline-driven formulas (primary baseline = 20).
-- Linear bonus growth to derived multipliers.
-- Hard clamps on crit, penetration, and resist to avoid runaway scaling.
+## Clamps de balance
+- `CritChance <= 25%`
+- `CritDamageMultiplier <= 2.0x`
+- `ArmorPenetration <= 30%`
+- `Resistance <= 75%`
 
-## Current Balance Constraints
-- Primary runtime clamp is 20..120.
-- Derived normalization code targets 20..120.
-- Runtime clamp and normalization are aligned.
+## Controle de power creep
+- baseline primário fixo em `20`;
+- crescimento linear;
+- clamps rígidos em crit, penetração e resist;
+- sem scaling exponencial nos primários atuais.
+
+## Regras para novas mecânicas
+- não introduzir aim assist;
+- não transferir decisão de hit/dano para o cliente;
+- não quebrar legibilidade de PvP;
+- rework de balance deve provar aderência ao TTK alvo.

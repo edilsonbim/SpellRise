@@ -17,6 +17,15 @@
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCombo, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCues, Log, All);
 
+namespace
+{
+	FGameplayTag GetPrimaryAbilityInputTag()
+	{
+		static const FGameplayTag PrimaryTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Primary"), false);
+		return PrimaryTag;
+	}
+}
+
 USpellRiseAbilitySystemComponent::USpellRiseAbilitySystemComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
@@ -24,6 +33,7 @@ USpellRiseAbilitySystemComponent::USpellRiseAbilitySystemComponent()
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
 	InputHeldSpecHandles.Reset();
+	SelectedSpellSpecHandle = FGameplayAbilitySpecHandle();
 }
 
 void USpellRiseAbilitySystemComponent::BeginPlay()
@@ -313,11 +323,29 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 		return;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
+		{
+			InputPressedSpecHandles.AddUnique(SelectedSpec->Handle);
+			InputHeldSpecHandles.AddUnique(SelectedSpec->Handle);
+			return;
+		}
+	}
+
 	TArray<FGameplayAbilitySpecHandle> MatchingHandles;
 	GetAbilitySpecsFromInputTag(InputTag, MatchingHandles);
 
 	for (const FGameplayAbilitySpecHandle& Handle : MatchingHandles)
 	{
+		const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+		const USpellRiseGameplayAbility* SpellAbility = Spec ? Cast<USpellRiseGameplayAbility>(Spec->Ability) : nullptr;
+		if (SpellAbility && !SpellAbility->FiresFromOwnInputTag())
+		{
+			SelectedSpellSpecHandle = Handle;
+			continue;
+		}
+
 		InputPressedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.AddUnique(Handle);
 	}
@@ -328,6 +356,16 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 	if (!InputTag.IsValid())
 	{
 		return;
+	}
+
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
+		{
+			InputReleasedSpecHandles.AddUnique(SelectedSpec->Handle);
+			InputHeldSpecHandles.Remove(SelectedSpec->Handle);
+			return;
+		}
 	}
 
 	TArray<FGameplayAbilitySpecHandle> MatchingHandles;
@@ -433,10 +471,28 @@ bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputTag(FGameplay
 		return false;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
+		{
+			SelectedSpec->InputPressed = true;
+			return TryActivateAbility(SelectedSpec->Handle, true);
+		}
+	}
+
 	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
 		if (AbilitySpecMatchesInputTag(Spec, InputTag))
 		{
+			if (const USpellRiseGameplayAbility* SpellAbility = Cast<USpellRiseGameplayAbility>(Spec.Ability))
+			{
+				if (!SpellAbility->FiresFromOwnInputTag())
+				{
+					SelectedSpellSpecHandle = Spec.Handle;
+					return true;
+				}
+			}
+
 			Spec.InputPressed = true;
 
 			const bool bAllowRemoteActivation = true;
@@ -454,6 +510,14 @@ USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSpellRiseAbil
 		return nullptr;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (USpellRiseGameplayAbility* SelectedAbility = SR_GetSelectedSpellAbility())
+		{
+			return SelectedAbility;
+		}
+	}
+
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
 		if (AbilitySpecMatchesInputTag(Spec, InputTag))
@@ -463,6 +527,12 @@ USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSpellRiseAbil
 	}
 
 	return nullptr;
+}
+
+USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSelectedSpellAbility() const
+{
+	const FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle);
+	return SelectedSpec ? Cast<USpellRiseGameplayAbility>(SelectedSpec->Ability) : nullptr;
 }
 
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)

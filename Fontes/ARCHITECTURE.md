@@ -1,53 +1,55 @@
-# Architecture Overview (Current Runtime)
+# Architecture Overview
 
-## High-Level Topology
-- ASpellRiseGameModeBase sets custom GameState, PlayerController, and PlayerState classes.
-- GAS authoritative owner is ASpellRisePlayerState.
-- ASpellRiseCharacterBase consumes ASC/AttributeSets from PlayerState and handles avatar-side behavior.
+## Topologia principal
+- `ASpellRiseGameModeBase` define `GameState`, `PlayerController` e `PlayerState` custom.
+- O owner autoritativo do GAS é `ASpellRisePlayerState`.
+- `ASpellRiseCharacterBase` consome `ASC` e `AttributeSets` do `PlayerState`.
 
 ## GAS Layout
-- Ability System Component:
-  - USpellRiseAbilitySystemComponent on PlayerState
-  - Replication mode: Mixed
-- Attribute Sets:
-  - UBasicAttributeSet (primary attributes)
-  - UCombatAttributeSet (resistances, movement, compatibility helpers)
-  - UResourceAttributeSet (health/mana/stamina/meta damage)
-  - UCatalystAttributeSet (charge/xp/level/meta delta)
-  - UDerivedStatsAttributeSet (combat multipliers and reductions)
+### Ability System
+- `USpellRiseAbilitySystemComponent` no `PlayerState`.
+- Replication mode: `Mixed`.
 
-## Combat Data Flow
-1. Ability prepares GameplayEffect spec (SetByCaller + damage tags).
-2. ExecCalc_Damage resolves channel, scaling, resistance, crit, and drains.
-3. Output writes meta Damage in UResourceAttributeSet.
-4. UResourceAttributeSet::PostGameplayEffectExecute applies health loss and side effects:
-   - catalyst charge path
-   - damage number multicast/cue path
-   - resource clamps
+### Attribute Sets
+- `UBasicAttributeSet`
+- `UCombatAttributeSet`
+- `UResourceAttributeSet`
+- `UCatalystAttributeSet`
+- `UDerivedStatsAttributeSet`
 
-## Projectile Flow
-1. PlayerController builds local aim trace result.
-2. Projectile ability sends target data to server.
-3. Server consumes target data, commits ability, spawns replicated projectile.
-4. Projectile overlap/hit applies GE damage on authority.
+## Contrato de authority
+### Servidor
+- resolve dano e mutação de vida/recursos;
+- valida target data e RPC;
+- aplica `GameplayEffects` autoritativos;
+- decide morte, loot e respawn;
+- executa fall damage e catalyst.
 
-## Additional Combat Components
-- UFallDamageComponent:
-  - server-only tracking and application
-  - computes severity and applies GE-driven fall damage
-- UCatalystComponent:
-  - server-side charge listener and proc trigger
-  - integrates with damage events
-- Number pops:
-  - multicast/UI pathway plus gameplay cue support
+### Cliente
+- gera input;
+- prevê apenas UX;
+- faz aim trace local quando necessário;
+- apresenta UI/VFX/SFX.
 
-## Controller Runtime Modules
-- `ASpellRisePlayerController` hosts gameplay input and local UX glue.
-- Building mode is isolated in `USpellRiseConstructionModeComponent` (controller component), keeping gameplay input gating outside of ability core code.
-- Dedicated server flow must remain independent of HUD/widget logic.
+## Fluxo de combate
+1. Ability prepara spec/SetByCaller.
+2. `ExecCalc_Damage` resolve canal, scaling, resistência, crit e drains.
+3. Resultado escreve meta damage em `UResourceAttributeSet`.
+4. `PostGameplayEffectExecute` aplica perda de vida e efeitos colaterais autorizados.
 
-## Current Technical Debt
-- Legacy attribute aliases/MMCs still coexist with new derived formulas.
-- Some runtime debug logs/effects remain in gameplay path.
-- Documentation now reflects runtime state and should be kept as source-of-truth baseline.
-- Narrative inventory migration is active; integration hardening for full-loot + persistence remains under ongoing validation.
+## Fluxo de projétil
+1. `PlayerController` gera aim local.
+2. Ability envia target data.
+3. Servidor valida target data.
+4. Servidor commita e spawna projétil replicado.
+5. Projétil aplica GE em authority.
+
+## Módulos de runtime relevantes
+- `ASpellRisePlayerController`: input de gameplay e glue local de UX.
+- `USpellRiseConstructionModeComponent`: isola o building mode no controller.
+- Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
+
+## Regras estruturais
+- dedicated server deve funcionar sem HUD/widget/câmera;
+- lógica obrigatória de gameplay não deve depender de Blueprint de UI;
+- features novas devem preferir data-driven sobre hardcode quando isso não enfraquecer a arquitetura.
