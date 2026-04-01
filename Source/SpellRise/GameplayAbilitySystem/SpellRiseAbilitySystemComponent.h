@@ -24,6 +24,9 @@ protected:
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpec> LastActivatableAbilities;
 
+	UPROPERTY(Transient)
+	FGameplayAbilitySpecHandle SelectedSpellSpecHandle;
+
 	// =========================================================
 	// Input pipeline por Gameplay Tag (custom, estilo Lyra)
 	// =========================================================
@@ -77,6 +80,9 @@ public:
 	/** Retorna a SpellRiseGameplayAbility CDO da primeira spec que combinar com o InputTag. */
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForInputTag(FGameplayTag InputTag) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	USpellRiseGameplayAbility* SR_GetSelectedSpellAbility() const;
 
 	// =========================================================
 	// Tag relationship mapping

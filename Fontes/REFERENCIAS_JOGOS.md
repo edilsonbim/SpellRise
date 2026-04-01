@@ -1,23 +1,26 @@
-# Referencias de Jogos (Diretriz Oficial)
+# Referências de Jogos
 
-Data: 2026-03-20
-Status: Ativo
+## Objetivo
+Usar referências reais de mercado para orientar trade-offs de design, ritmo de combate, risco, economia e peso de consequência.
 
-Este documento define os jogos de referencia permanentes para design, combate, progressao, economia, risco e decisao de features no SpellRise.
-
-## Mais Importantes
+## Referências principais
 - Darkfall Unholy Wars
 - Last Oasis
 - New World
 - Albion Online
 - Tibia
 
-## Importantes
+## Referências secundárias
 - Ultima Online
 - Star Citizen
 - Conan Exiles
 
-## Regra de Uso
-1. Sempre considerar este conjunto como baseline de referencia em novas criacoes e revisoes de sistema.
-2. Quando houver trade-off de design, priorizar alinhamento com os jogos da secao "Mais Importantes".
-3. Evitar decisoes que conflitem com os pilares centrais do projeto (server-authoritative, skill-based, full loot, sem auto-aim).
+## Regra de uso
+- Em trade-off de design, priorizar alinhamento com as referências principais.
+- Não copiar feature isolada sem validar aderência aos pilares do SpellRise.
+- Toda referência deve passar por este filtro:
+  - server-authoritative;
+  - skill-based;
+  - full loot ou consequência real;
+  - sem auto-aim;
+  - boa legibilidade multiplayer.

@@ -5,8 +5,7 @@ USpellRiseGA_CancelCast::USpellRiseGA_CancelCast()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
-
-	ActivationPolicy = ESpellRiseAbilityActivationPolicy::OnInputTriggered;
+	CastType = ESpellRiseAbilityCastType::Instant;
 }
 
 void USpellRiseGA_CancelCast::ActivateAbility(

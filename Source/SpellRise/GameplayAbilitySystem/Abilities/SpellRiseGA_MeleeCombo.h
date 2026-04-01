@@ -29,9 +29,6 @@ protected:
 	float PlayRate = 1.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combo")
-	bool bCommitAbilityOnActivate = true;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combo")
 	bool bStopMontageWhenAbilityEnds = true;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combo|Events", meta=(Categories="Event"))

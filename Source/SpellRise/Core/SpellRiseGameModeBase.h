@@ -41,6 +41,9 @@ protected:
 	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
 	FString DevOfflineIdPrefix = TEXT("DEV");
 
+	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
+	bool bEnableNoSteamTestingMode = false;
+
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Persistence", meta=(ClampMin="5.0"))
 	float PersistenceSnapshotIntervalSeconds = 30.0f;
 
@@ -63,6 +66,10 @@ private:
 	bool ShouldSkipSaveDuringHandover(const AController* ExitingController) const;
 	FString BuildDevOfflinePersistentId(const FString& Seed) const;
 	FString NormalizeAddressKey(const FString& Address) const;
+
+	bool IsNoSteamCommandLineParamPresent() const;
+	bool IsNoSteamTestingModeActive() const;
+	bool ShouldRequireSteamAuthentication() const;
 
 	FTimerHandle PersistenceSnapshotTimerHandle;
 	TMap<FString, TWeakObjectPtr<APlayerController>> ActiveSessionByPersistentId;
