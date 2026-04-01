@@ -69,6 +69,7 @@ private:
 
 	bool IsNoSteamCommandLineParamPresent() const;
 	bool IsNoSteamTestingModeActive() const;
+	bool IsEditorPIETestingModeActive() const;
 	bool ShouldRequireSteamAuthentication() const;
 
 	FTimerHandle PersistenceSnapshotTimerHandle;
