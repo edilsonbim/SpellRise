@@ -30,6 +30,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/Persistence/SpellRiseBuildPersistenceAdapter.h"
 #include "SpellRise/Persistence/SpellRiseFilePersistenceProvider.h"
+#include "SpellRise/Persistence/SpellRisePostgresPersistenceProvider.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
@@ -44,6 +45,21 @@ namespace
 	constexpr double RespawnBedLocationToleranceSq = 300.0 * 300.0;
 	constexpr double SpawnActorLocationMatchToleranceSq = 25.0 * 25.0;
 	constexpr double WorldEquipConflictRadius = 350.0;
+
+	FString GetRequestedPersistenceProvider()
+	{
+		FString CmdProvider;
+		if (FParse::Value(FCommandLine::Get(), TEXT("SRPersistenceProvider="), CmdProvider))
+		{
+			CmdProvider.TrimStartAndEndInline();
+			CmdProvider.ToLowerInline();
+			if (!CmdProvider.IsEmpty())
+			{
+				return CmdProvider;
+			}
+		}
+		return TEXT("file");
+	}
 
 	struct FPersistenceInventoryStats
 	{
@@ -613,7 +629,33 @@ void USpellRisePersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collec
 {
 	Super::Initialize(Collection);
 
-	Provider = MakeUnique<FSpellRiseFilePersistenceProvider>();
+	const FString RequestedProvider = GetRequestedPersistenceProvider();
+	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ProviderInit] Requested=%s"), *RequestedProvider);
+
+	TUniquePtr<ISpellRisePersistenceProvider> SelectedProvider;
+	if (RequestedProvider.Equals(TEXT("postgres"), ESearchCase::IgnoreCase))
+	{
+		SelectedProvider = MakeUnique<FSpellRisePostgresPersistenceProvider>();
+		if (!SelectedProvider->IsReady())
+		{
+			UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ProviderInit] Postgres provider not ready, falling back to file provider."));
+			SelectedProvider.Reset();
+		}
+	}
+
+	if (!SelectedProvider.IsValid())
+	{
+		SelectedProvider = MakeUnique<FSpellRiseFilePersistenceProvider>();
+	}
+
+	UE_LOG(
+		LogSpellRisePersistence,
+		Log,
+		TEXT("[Persistence][ProviderInit] Active=%s Ready=%d"),
+		*SelectedProvider->GetProviderName(),
+		SelectedProvider->IsReady() ? 1 : 0);
+
+	Provider = MoveTemp(SelectedProvider);
 	CachedCharacterDataBySteamId.Reset();
 	CachedInventoryDataBySteamId.Reset();
 	CharacterRevisionBySteamId.Reset();
@@ -751,6 +793,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	const FSpellRiseCharacterSaveData* CachedData = CachedCharacterDataBySteamId.Find(SteamId64);
 	if (!CachedData)
 	{
+		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("no_cached_data"));
 		if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 		{
 			SRPlayerState->SetPersistenceProfileApplied(true);
@@ -1726,9 +1769,89 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		SkippedInvalidStacks,
 		SkippedUnmatchedComponents);
 
+	const bool bShouldEnsureDefaults =
+		(Data.InventoryComponents.Num() == 0) ||
+		(AppliedItemQuantity <= 0 && (SkippedLegacyComponents > 0 || SkippedInvalidStacks > 0 || SkippedUnmatchedComponents > 0));
+	if (bShouldEnsureDefaults)
+	{
+		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("apply_profile_fallback"));
+	}
+
 	ReconcileCharacterVisualEquipment(Character, SRPlayerState);
 
 	return true;
+}
+
+void USpellRisePersistenceSubsystem::EnsureDefaultItemsForControllerIfNeeded(AController* Controller, const TCHAR* ContextTag)
+{
+	if (!Controller || !Controller->HasAuthority())
+	{
+		return;
+	}
+
+	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Controller->GetPawn());
+	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
+	if (!Character || !SRPlayerState)
+	{
+		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][DefaultItemsSkipped] Controller=%s Context=%s Reason=missing_character_or_playerstate"),
+			*GetNameSafe(Controller),
+			ContextTag ? ContextTag : TEXT("unknown"));
+		return;
+	}
+
+	TArray<FNarrativeInventoryBinding> Bindings;
+	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, Bindings);
+	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, Bindings);
+
+	for (const FNarrativeInventoryBinding& Binding : Bindings)
+	{
+		UNarrativeInventoryComponent* Inventory = Binding.Inventory.Get();
+		if (!Inventory)
+		{
+			continue;
+		}
+
+		int32 ExistingStackCount = 0;
+		for (UNarrativeItem* ExistingItem : Inventory->GetItems())
+		{
+			if (ExistingItem && ExistingItem->GetQuantity() > 0)
+			{
+				++ExistingStackCount;
+			}
+		}
+
+		if (ExistingStackCount > 0)
+		{
+			UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][DefaultItemsSkipComponent] Controller=%s Context=%s Component=%s Reason=already_has_items Stacks=%d"),
+				*GetNameSafe(Controller),
+				ContextTag ? ContextTag : TEXT("unknown"),
+				*Inventory->GetName(),
+				ExistingStackCount);
+			continue;
+		}
+
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][DefaultItemsAttempt] Controller=%s Context=%s Component=%s"),
+			*GetNameSafe(Controller),
+			ContextTag ? ContextTag : TEXT("unknown"),
+			*Inventory->GetName());
+
+		Inventory->GiveDefaultItems();
+
+		int32 ResultingStackCount = 0;
+		for (UNarrativeItem* Item : Inventory->GetItems())
+		{
+			if (Item && Item->GetQuantity() > 0)
+			{
+				++ResultingStackCount;
+			}
+		}
+
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][DefaultItemsResult] Controller=%s Context=%s Component=%s Stacks=%d"),
+			*GetNameSafe(Controller),
+			ContextTag ? ContextTag : TEXT("unknown"),
+			*Inventory->GetName(),
+			ResultingStackCount);
+	}
 }
 
 void USpellRisePersistenceSubsystem::BuildInventorySnapshotFromCharacterData(const FSpellRiseCharacterSaveData& CharacterData, const FString& SteamId64, FSpellRiseInventorySaveData& OutInventoryData) const
@@ -1807,6 +1930,11 @@ void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRis
 	if (PlayerState)
 	{
 		PlayerState->ForceNetUpdate();
+	}
+
+	if (Character->HasAuthority())
+	{
+		Character->MultiRefreshEquipmentVisuals();
 	}
 }
 

@@ -1241,6 +1241,9 @@ void ASpellRisePlayerController::TryBindHUDToCurrentASC()
 		TEXT("[PC.ASCBind.Success] Controller=%s ASC=%s"),
 		*GetNameSafe(this),
 		*GetNameSafe(CurrentASC));
+
+	BroadcastResourcesToHUD();
+	BroadcastAbilitySlotsToHUD();
 }
 
 void ASpellRisePlayerController::UnbindHUDFromASC()
@@ -1653,7 +1656,7 @@ bool ASpellRisePlayerController::IsControlledCharacterDead() const
 
 bool ASpellRisePlayerController::IsGameplayInputBlocked() const
 {
-	return IsControlledCharacterDead();
+	return IsControlledCharacterDead() || ShouldEnableUIInputContext();
 }
 
 void ASpellRisePlayerController::SendAbilityInputTagPressed(FGameplayTag InputTag)
