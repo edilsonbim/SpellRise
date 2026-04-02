@@ -26,6 +26,7 @@ public class SpellRise : ModuleRules
 				"Niagara",
 				"ModularGameplay",
 				"NarrativeInventory",
+				"NarrativeEquipment",
 				"NarrativeInteraction",
 				"NarrativeNavigator"
 			}

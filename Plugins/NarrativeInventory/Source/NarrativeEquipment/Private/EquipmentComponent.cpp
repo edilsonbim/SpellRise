@@ -84,3 +84,15 @@ void UEquipmentComponent::UnequipItem(class UEquippableItem* Equippable)
 		OnItemUnequipped.Broadcast(Equippable->EquippableSlot, Equippable);
 	}
 }
+
+void UEquipmentComponent::ApplyEquippableVisual(class UEquippableItem* Equippable, bool bEquip)
+{
+	if (bEquip)
+	{
+		EquipItem(Equippable);
+	}
+	else
+	{
+		UnequipItem(Equippable);
+	}
+}

@@ -1932,10 +1932,7 @@ void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRis
 		PlayerState->ForceNetUpdate();
 	}
 
-	if (Character->HasAuthority())
-	{
-		Character->MultiRefreshEquipmentVisuals();
-	}
+	// Equipment visuals are now driven by replicated equipment state (SpellRiseEquipmentManagerComponent).
 }
 
 AActor* USpellRisePersistenceSubsystem::ResolveSavedBedActor(UWorld* World, const FSpellRiseCharacterSaveData& Data) const
