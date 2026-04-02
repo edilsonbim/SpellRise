@@ -39,7 +39,7 @@ class NARRATIVEEQUIPMENT_API UEquipmentComponent : public UActorComponent
 	friend class UEquippableItem;
 	friend class UEquippableItem_Clothing;
 
-public:	
+public:
 	// Sets default values for this component's properties
 	UEquipmentComponent();
 
@@ -96,5 +96,8 @@ public:
 	FORCEINLINE class USkeletalMeshComponent* GetLeaderPoseComponent() const {return LeaderPoseComponent;};
 	FORCEINLINE TMap<EEquippableSlot, USkeletalMeshComponent*> GetEquippableComponents() const {return EquippableComponents;};
 	FORCEINLINE TMap<EEquippableSlot, USkeletalMesh*> GetDefaultClothing() const {return DefaultClothing;};
+
+	/** Exposed for deterministic replication-driven visual sync pipelines (server and client). */
+	void ApplyEquippableVisual(class UEquippableItem* Equippable, bool bEquip);
 
 };
