@@ -43,18 +43,22 @@ namespace
 				|| World->GetNetMode() == NM_Standalone);
 	}
 
-	static FVector ResolveGroundSpawnLocation(UWorld* World, const AActor* DeadCharacter, const FVector& FallbackLocation)
+	static FVector ResolveGroundSpawnLocation(
+		UWorld* World,
+		const AActor* ActorToIgnore,
+		const FVector& TraceOriginLocation,
+		const FVector& FallbackLocation)
 	{
-		if (!World || !DeadCharacter)
+		if (!World)
 		{
 			return FallbackLocation;
 		}
 
-		const FVector TraceStart = DeadCharacter->GetActorLocation() + FVector(0.f, 0.f, 80.f);
+		const FVector TraceStart = TraceOriginLocation + FVector(0.f, 0.f, 80.f);
 		const FVector TraceEnd = TraceStart - FVector(0.f, 0.f, 3000.f);
 
 		FHitResult Hit;
-		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(FullLootGroundTrace), false, DeadCharacter);
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(FullLootGroundTrace), false, ActorToIgnore);
 		if (World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams)
 			|| World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams)
 			|| World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldDynamic, QueryParams))
@@ -621,20 +625,45 @@ void USpellRiseFullLootSubsystem::HandleCharacterDeath(ASpellRiseCharacterBase* 
 		return;
 	}
 
+	const FVector DeathLocation = DeadCharacter->GetActorLocation();
 	if (LootBagSpawnDelaySeconds > KINDA_SMALL_NUMBER)
 	{
+		const float DelaySeconds = LootBagSpawnDelaySeconds;
+		TWeakObjectPtr<USpellRiseFullLootSubsystem> WeakSubsystem(this);
+		TWeakObjectPtr<ASpellRiseCharacterBase> WeakDeadCharacter(DeadCharacter);
+
+		FTimerDelegate SpawnDelayDelegate = FTimerDelegate::CreateLambda(
+			[WeakSubsystem, WeakDeadCharacter, LootBagClassOverride, DeathLocation]()
+			{
+				USpellRiseFullLootSubsystem* Subsystem = WeakSubsystem.Get();
+				ASpellRiseCharacterBase* ResolvedDeadCharacter = WeakDeadCharacter.Get();
+				if (!Subsystem || !ResolvedDeadCharacter)
+				{
+					return;
+				}
+
+				Subsystem->ProcessCharacterDeathNow(ResolvedDeadCharacter, LootBagClassOverride, DeathLocation);
+			});
+
+		FTimerHandle DelayHandle;
+		World->GetTimerManager().SetTimer(DelayHandle, SpawnDelayDelegate, DelaySeconds, false);
+
 		UE_LOG(
 			LogSpellRiseFullLoot,
-			Warning,
-			TEXT("[FullLoot] Ignorando LootBagSpawnDelaySeconds=%.2f para evitar overlap de disconnect/morte. Char=%s"),
-			LootBagSpawnDelaySeconds,
+			Log,
+			TEXT("[FullLoot] Spawn da bag agendado para %.2fs apos a morte. Char=%s"),
+			DelaySeconds,
 			*GetNameSafe(DeadCharacter));
+		return;
 	}
 
-	ProcessCharacterDeathNow(DeadCharacter, LootBagClassOverride);
+	ProcessCharacterDeathNow(DeadCharacter, LootBagClassOverride, DeathLocation);
 }
 
-void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride)
+void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
+	ASpellRiseCharacterBase* DeadCharacter,
+	TSubclassOf<AActor> LootBagClassOverride,
+	const FVector& DeathLocation)
 {
 	UWorld* World = GetWorld();
 	if (!World || !DeadCharacter || !DeadCharacter->HasAuthority() || !IsAuthorityWorld(World))
@@ -779,7 +808,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(ASpellRiseCharacterBa
 
 	FTransform SpawnTransform = DeadCharacter->GetActorTransform();
 	SpawnTransform.SetScale3D(FVector::OneVector);
-	SpawnTransform.SetLocation(ResolveGroundSpawnLocation(World, DeadCharacter, SpawnTransform.GetLocation()));
+	SpawnTransform.SetLocation(ResolveGroundSpawnLocation(World, DeadCharacter, DeathLocation, DeathLocation));
 
 	AActor* LootBagOwner = nullptr;
 	if (AController* VictimController = DeadCharacter->GetController())
