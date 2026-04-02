@@ -29,6 +29,7 @@
 #include "SpellRise/Components/CatalystComponent.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
@@ -39,6 +40,7 @@
 #include "SpellRise/Security/SpellRiseAuditTrail.h"
 #include "SpellRise/UI/SpellRiseDamageEdgeWidget.h"
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
+#include "EquippableItem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDeathLoot, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseSecurity, Log, All);
@@ -171,31 +173,6 @@ namespace
 		return false;
 	}
 
-	void SR_InvokeNoParamFunctionIfExists(UObject* Target, std::initializer_list<const TCHAR*> CandidateNames)
-	{
-		if (!Target)
-		{
-			return;
-		}
-
-		for (const TCHAR* CandidateName : CandidateNames)
-		{
-			if (!CandidateName)
-			{
-				continue;
-			}
-
-			UFunction* Function = Target->FindFunction(FName(CandidateName));
-			if (!Function || Function->NumParms != 0)
-			{
-				continue;
-			}
-
-			Target->ProcessEvent(Function, nullptr);
-			return;
-		}
-	}
-
 }
 
 ASpellRiseCharacterBase::ASpellRiseCharacterBase()
@@ -209,6 +186,7 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	}
 
 	FallDamageComponent = CreateDefaultSubobject<UFallDamageComponent>(TEXT("FallDamageComponent"));
+	EquipmentManager = CreateDefaultSubobject<USpellRiseEquipmentManagerComponent>(TEXT("EquipmentManager"));
 
 	DeadStateTag = SpellRiseTags::State_Dead();
 
@@ -555,50 +533,45 @@ void ASpellRiseCharacterBase::MultiRefreshEquipmentVisuals_Implementation()
 {
 	UE_LOG(
 		LogSpellRiseCharacterRuntime,
-		Log,
-		TEXT("[Equipment][VisualRefresh] Character=%s Local=%d Authority=%d"),
+		Warning,
+		TEXT("[Equipment][VisualRefreshDeprecated] Character=%s Local=%d Authority=%d"),
 		*GetNameSafe(this),
 		IsLocallyControlled() ? 1 : 0,
 		HasAuthority() ? 1 : 0);
+}
 
-	TInlineComponentArray<UActorComponent*> Components(this);
-	for (UActorComponent* Component : Components)
+void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Implementation(UObject* ItemObject, bool bShouldEquip)
+{
+	if (!HasAuthority())
 	{
-		SR_InvokeNoParamFunctionIfExists(
-			Component,
-			{
-				TEXT("ClientRefreshInventory"),
-				TEXT("RefreshInventory"),
-				TEXT("RefreshInventorySERVER"),
-				TEXT("RefreshHotbar"),
-				TEXT("RefreshHotbarSERVER"),
-				TEXT("RefreshEquipment"),
-				TEXT("RefreshEquipmentSERVER"),
-				TEXT("RefreshEquippedItems"),
-				TEXT("RefreshEquippedItemsSERVER"),
-				TEXT("UpdateEquipment"),
-				TEXT("UpdateEquipmentSERVER"),
-				TEXT("UpdateHotbar"),
-				TEXT("UpdateHotbarSERVER"),
-				TEXT("SyncEquipmentVisuals"),
-				TEXT("SyncEquipmentVisualsSERVER")
-			});
+		return;
 	}
 
-	SR_InvokeNoParamFunctionIfExists(
-		this,
-		{
-			TEXT("RefreshEquipment"),
-			TEXT("RefreshEquipmentSERVER"),
-			TEXT("RefreshEquippedItems"),
-			TEXT("RefreshEquippedItemsSERVER"),
-			TEXT("UpdateEquipment"),
-			TEXT("UpdateEquipmentSERVER"),
-			TEXT("SyncEquipmentVisuals"),
-			TEXT("SyncEquipmentVisualsSERVER")
-		});
+	UEquippableItem* EquippableItem = Cast<UEquippableItem>(ItemObject);
+	if (!EquippableItem || !EquipmentManager)
+	{
+		return;
+	}
 
-	ForceNetUpdate();
+	if (EquippableItem->GetOwningPawn() != this)
+	{
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Warning,
+			TEXT("[Equipment][EquipRejected] Character=%s Item=%s Reason=item_not_owned_by_character"),
+			*GetNameSafe(this),
+			*GetNameSafe(EquippableItem));
+		return;
+	}
+
+	if (bShouldEquip)
+	{
+		EquipmentManager->EquipItem(EquippableItem);
+	}
+	else
+	{
+		EquipmentManager->UnequipItem(EquippableItem);
+	}
 }
 
 void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
@@ -1591,6 +1564,22 @@ void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const
 
 	AActor* EventReceiverActor = GetPlayerState() ? Cast<AActor>(GetPlayerState()) : Cast<AActor>(this);
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(EventReceiverActor, SanitizedEventData.EventTag, SanitizedEventData);
+}
+
+void ASpellRiseCharacterBase::MultiSendGameplayEventToActor_Implementation(AActor* TargetActor, const FGameplayEventData& EventData)
+{
+	if (!TargetActor || !EventData.EventTag.IsValid())
+	{
+		return;
+	}
+
+	FGameplayEventData SanitizedEventData = EventData;
+	if (!FMath::IsFinite(SanitizedEventData.EventMagnitude))
+	{
+		SanitizedEventData.EventMagnitude = 0.f;
+	}
+
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, SanitizedEventData.EventTag, SanitizedEventData);
 }
 
 bool ASpellRiseCharacterBase::IsAllowedServerEventTag(const FGameplayTag& EventTag) const

@@ -25,6 +25,7 @@ class UCatalystComponent;
 class UDerivedStatsAttributeSet;
 class UAbilitySystemComponent;
 class ASpellRisePlayerState;
+class USpellRiseEquipmentManagerComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
 
@@ -112,6 +113,9 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|GAS")
 	void ServerSendGameplayEventToSelf(const FGameplayEventData& EventData);
 
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|GAS")
+	void MultiSendGameplayEventToActor(AActor* TargetActor, const FGameplayEventData& EventData);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
 	bool IsDead() const { return bIsDead; }
 
@@ -137,6 +141,12 @@ public:
 
 	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|Equipment")
 	void MultiRefreshEquipmentVisuals();
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	USpellRiseEquipmentManagerComponent* GetSpellRiseEquipmentManager() const { return EquipmentManager; }
+
+	UFUNCTION(Server, Reliable)
+	void ServerHandleNarrativeItemActivationForEquipment(UObject* ItemObject, bool bShouldEquip);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Catalyst")
 	void BP_OnCatalystProc(int32 CatalystTier);
@@ -200,6 +210,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCatalystComponent> CatalystComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseEquipmentManagerComponent> EquipmentManager = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Catalyst")
 	bool bEnableCatalyst = true;
