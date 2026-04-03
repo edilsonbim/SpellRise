@@ -806,6 +806,10 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 void ASpellRiseCharacterBase::ClearSelectedAbility()
 {
 	FGameplayTag NewTag;
+	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(GetSpellRiseASC()))
+	{
+		SRASC->SR_ClearSelectedSpellAbility();
+	}
 
 	if (!HasAuthority())
 	{

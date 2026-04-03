@@ -84,6 +84,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	USpellRiseGameplayAbility* SR_GetSelectedSpellAbility() const;
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void SR_ClearSelectedSpellAbility();
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	bool SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const;
+
 	// =========================================================
 	// Tag relationship mapping
 	// =========================================================
