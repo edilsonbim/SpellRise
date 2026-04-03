@@ -40,12 +40,6 @@ void USpellRiseGA_MeleeCombo::ActivateAbility(
 		return;
 	}
 
-	if (bCommitAbilityOnActivate && !CommitAbility(Handle, ActorInfo, ActivationInfo))
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-		return;
-	}
-
 	StartComboTasks();
 }
 
