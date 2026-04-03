@@ -72,6 +72,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bEndChannelOnInputRelease = true;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input|Selection")
+	bool bKeepSelectedAfterAbilityEnds = false;
+
 public:
 	/** Server authoritative: altera o nível apenas no servidor e marca o spec dirty para replicação. */
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")

@@ -306,6 +306,24 @@ void USpellRiseGameplayAbility::EndAbility(
 		StopChannelFlow(bWasCancelled);
 	}
 
+	if (!bKeepSelectedAfterAbilityEnds && ActorInfo && ActorInfo->IsLocallyControlled())
+	{
+		if (USpellRiseAbilitySystemComponent* SpellRiseASC = Cast<USpellRiseAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get()))
+		{
+			if (SpellRiseASC->SR_IsSelectedSpellAbilityHandle(Handle))
+			{
+				if (ASpellRiseCharacterBase* SpellRiseCharacter = Cast<ASpellRiseCharacterBase>(ActorInfo->AvatarActor.Get()))
+				{
+					SpellRiseCharacter->ClearSelectedAbility();
+				}
+				else
+				{
+					SpellRiseASC->SR_ClearSelectedSpellAbility();
+				}
+			}
+		}
+	}
+
 	ResetSpellRuntimeState();
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
