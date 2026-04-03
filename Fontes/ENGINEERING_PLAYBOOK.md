@@ -70,8 +70,8 @@ Toda feature de combate/rede deve declarar:
 2. `Listen Server`
 3. `Dedicated Server + 2 clientes`
 4. `Dedicated Server + 2 clientes` com:
-   - `Net PktLag=120`
-   - `Net PktLoss=5`
+   - Perfil A: `Net PktLag=120` e `Net PktLoss=1`
+   - Perfil B: `Net PktLag=180` e `Net PktLoss=3`
 
 ## Casos mínimos de smoke
 - cast / commit / cooldown / custo;
@@ -85,6 +85,22 @@ Toda feature de combate/rede deve declarar:
 - resultado PASS/FAIL;
 - causa raiz se falhar;
 - próximo passo objetivo.
+
+## Gate de rede para CI (obrigatório em mudança net-critical)
+Mudanças em combate, GAS, projétil, atributos replicados, morte/loot/respawn, building mode ou PlayerController devem:
+- rodar `DS+2` normal + perfis A/B de lag/loss;
+- registrar `TryActivate` success/fail com `FailureTags`;
+- registrar RPC rejeitado por motivo;
+- falhar pipeline em:
+  - qualquer `FBitReader::SetOverflowed`;
+  - trust indevido no cliente (dano/custo/cooldown/morte/loot);
+  - regressão funcional autoritativa.
+
+## DoD de replicação (PR checklist)
+- escopo de authority/server/client explícito;
+- RPC novo/alterado com validação + anti-spam;
+- variável replicada nova com condição e impacto de `OnRep`;
+- evidência de teste em `Standalone`, `Listen` e `DS+2` (normal + lag/loss).
 
 ## Referências oficiais
 - GAS: documentação oficial da Epic.

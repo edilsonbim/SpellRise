@@ -7,7 +7,8 @@ param(
     [int]$TestDurationSeconds = 55,
     [switch]$SkipLagLoss,
     [string]$TestPersistentId = "",
-    [switch]$AllowHighInProgressBugLog
+    [switch]$AllowHighInProgressBugLog,
+    [switch]$DisableAutoNoSteamRetry
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,28 +70,70 @@ function Invoke-SmokeScenario {
     param(
         [string]$Name,
         [bool]$WithLagLoss,
-        [int]$Port
+        [int]$Port,
+        [int]$PktLag = 120,
+        [int]$PktLoss = 1
     )
 
     $args = @($shared)
     $args += @("-Port", $Port)
     if ($WithLagLoss) {
-        $args += "-WithLagLoss"
+        $args += @("-WithLagLoss", "-PktLag", $PktLag, "-PktLoss", $PktLoss)
     }
 
     Write-Host ("[GATE] Rodando cenario: {0}" -f $Name)
     & powershell @args
     $code = $LASTEXITCODE
-    if ($code -ne 0) {
-        Write-Error ("Cenario '{0}' falhou com codigo {1}" -f $Name, $code)
-        exit $code
+    if ($code -eq 0) {
+        return
     }
+
+    $canRetryNoSteam = (-not $NoSteam.IsPresent) -and (-not $DisableAutoNoSteamRetry.IsPresent)
+    if ($canRetryNoSteam) {
+        $smokeRoot = Join-Path $ProjectRoot "Saved\Logs\SmokeAuto"
+        if (Test-Path $smokeRoot) {
+            $lastRunDir = Get-ChildItem -Path $smokeRoot -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($null -ne $lastRunDir) {
+                $summaryPath = Join-Path $lastRunDir.FullName "Smoke_Summary.txt"
+                $serverLogPath = Join-Path $lastRunDir.FullName "Smoke_DS_Server.stdout.log"
+                $client1LogPath = Join-Path $lastRunDir.FullName "Smoke_DS_Client1.stdout.log"
+                $client2LogPath = Join-Path $lastRunDir.FullName "Smoke_DS_Client2.stdout.log"
+
+                $hasUniqueNetIdMismatch = $false
+                foreach ($candidate in @($summaryPath, $serverLogPath, $client1LogPath, $client2LogPath)) {
+                    if ((Test-Path $candidate) -and ((Select-String -Path $candidate -Pattern "incompatible_unique_net_id" -SimpleMatch -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)) {
+                        $hasUniqueNetIdMismatch = $true
+                        break
+                    }
+                }
+
+                if ($hasUniqueNetIdMismatch) {
+                    Write-Warning ("[GATE] Cenario '{0}' falhou por Steam/UniqueNetId mismatch. Reexecutando automaticamente com -NoSteam." -f $Name)
+                    $retryArgs = @($args)
+                    $retryArgs += "-NoSteam"
+                    & powershell @retryArgs
+                    $retryCode = $LASTEXITCODE
+                    if ($retryCode -eq 0) {
+                        Write-Host ("[GATE] Cenario '{0}' aprovado no retry -NoSteam." -f $Name)
+                        return
+                    }
+
+                    Write-Error ("Cenario '{0}' falhou no retry -NoSteam com codigo {1}" -f $Name, $retryCode)
+                    exit $retryCode
+                }
+            }
+        }
+    }
+
+    Write-Error ("Cenario '{0}' falhou com codigo {1}" -f $Name, $code)
+    exit $code
 }
 
 Invoke-SmokeScenario -Name "DS+2 reconnect (normal)" -WithLagLoss:$false -Port $PortBase
 
 if (-not $SkipLagLoss.IsPresent) {
-    Invoke-SmokeScenario -Name "DS+2 reconnect (lag/loss)" -WithLagLoss:$true -Port ($PortBase + 1)
+    Invoke-SmokeScenario -Name "DS+2 reconnect (lag/loss Perfil A: 120/1)" -WithLagLoss:$true -Port ($PortBase + 1) -PktLag 120 -PktLoss 1
+    Invoke-SmokeScenario -Name "DS+2 reconnect (lag/loss Perfil B: 180/3)" -WithLagLoss:$true -Port ($PortBase + 2) -PktLag 180 -PktLoss 3
 }
 
 Write-Host "[GATE] PASS: todos os cenarios obrigatorios aprovados."

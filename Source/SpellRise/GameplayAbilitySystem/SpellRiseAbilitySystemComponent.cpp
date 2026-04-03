@@ -496,7 +496,24 @@ bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputTag(FGameplay
 			Spec.InputPressed = true;
 
 			const bool bAllowRemoteActivation = true;
-			return TryActivateAbility(Spec.Handle, bAllowRemoteActivation);
+			const bool bActivated = TryActivateAbility(Spec.Handle, bAllowRemoteActivation);
+			if (!bActivated)
+			{
+				FGameplayTagContainer FailureTags;
+				const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
+				if (!Spec.Ability->CanActivateAbility(Spec.Handle, ActorInfo, nullptr, nullptr, &FailureTags))
+				{
+					UE_LOG(
+						LogSpellRiseASCCombo,
+						Warning,
+						TEXT("[GAS][TryActivateByInputTagFailed] InputTag=%s Ability=%s Handle=%s FailureTags=%s"),
+						*InputTag.ToString(),
+						*GetNameSafe(Spec.Ability),
+						*Spec.Handle.ToString(),
+						*FailureTags.ToString());
+				}
+			}
+			return bActivated;
 		}
 	}
 
@@ -533,6 +550,18 @@ USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSelectedSpell
 {
 	const FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle);
 	return SelectedSpec ? Cast<USpellRiseGameplayAbility>(SelectedSpec->Ability) : nullptr;
+}
+
+void USpellRiseAbilitySystemComponent::SR_ClearSelectedSpellAbility()
+{
+	SelectedSpellSpecHandle = FGameplayAbilitySpecHandle();
+}
+
+bool USpellRiseAbilitySystemComponent::SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const
+{
+	return AbilityHandle.IsValid()
+		&& SelectedSpellSpecHandle.IsValid()
+		&& AbilityHandle == SelectedSpellSpecHandle;
 }
 
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)
@@ -572,6 +601,38 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 	const auto IsNativeComboSpec = [&](const FGameplayAbilitySpec* Spec) -> bool
 	{
 		return Spec && Cast<USpellRiseGA_MeleeCombo>(Spec->Ability) != nullptr;
+	};
+	const auto LogActivationFailure = [&](const FGameplayAbilitySpec* Spec)
+	{
+		if (!Spec || !Spec->Ability)
+		{
+			return;
+		}
+
+		FGameplayTagContainer FailureTags;
+		const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
+		const bool bCanActivate = Spec->Ability->CanActivateAbility(
+			Spec->Handle,
+			ActorInfo,
+			nullptr,
+			nullptr,
+			&FailureTags);
+		if (bCanActivate)
+		{
+			return;
+		}
+
+		UE_LOG(
+			LogSpellRiseASCCombo,
+			Warning,
+			TEXT("[GAS][TryActivateFailed] Ability=%s Handle=%s InputPressed=%d IsActive=%d FailureTags=%s Local=%d Authority=%d"),
+			*GetNameSafe(Spec->Ability),
+			*Spec->Handle.ToString(),
+			Spec->InputPressed ? 1 : 0,
+			Spec->IsActive() ? 1 : 0,
+			*FailureTags.ToString(),
+			IsOwnerActorAuthoritative() ? 0 : 1,
+			IsOwnerActorAuthoritative() ? 1 : 0);
 	};
 
 	AActor* Avatar = GetAvatarActor();
@@ -692,7 +753,11 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		Spec->InputPressed = true;
 
 		const bool bAllowRemoteActivation = true;
-		TryActivateAbility(Handle, bAllowRemoteActivation);
+		const bool bActivated = TryActivateAbility(Handle, bAllowRemoteActivation);
+		if (!bActivated)
+		{
+			LogActivationFailure(Spec);
+		}
 	}
 
 	// 4) Released
