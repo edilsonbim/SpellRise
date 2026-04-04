@@ -6,9 +6,10 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 ## Princípios obrigatórios
 - Dedicated Server é fonte de verdade.
 - Cliente só prevê para UX e nunca decide resultado final de gameplay.
-- Multicast é só apresentação.
+- `NetMulticast` é só apresentação (`UI`, `VFX`, `SFX`, feedback local), nunca decisão autoritativa.
 - Toda mutação autoritativa exige validação de ownership, contexto e anti-spam.
 - ASC no `PlayerState` em `Mixed`.
+- Commit de ability em fluxo crítico não pode usar `soft-accept` local para ocultar falha de confirmação do servidor.
 
 ## Matriz de replicação por sistema
 
@@ -30,6 +31,7 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
   - janela de rate-limit;
   - comportamento de rejeição com log categorizado.
 - Proibido RPC autoritativo sem validação de contexto.
+- Proibido usar `NetMulticast` para transportar decisão de gameplay (hit, dano final, custo, cooldown, morte, loot).
 
 ## Contrato de OnRep
 - `OnRep` só para reconciliação e apresentação.

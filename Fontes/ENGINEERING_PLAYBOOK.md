@@ -57,6 +57,7 @@ Para cada RPC novo/alterado, registrar:
 - validação de contexto;
 - anti-spam;
 - falha segura + log categorizado.
+- garantia de que `NetMulticast` foi usado apenas para apresentação.
 
 ### Network Budget
 Toda feature de combate/rede deve declarar:
@@ -64,6 +65,7 @@ Toda feature de combate/rede deve declarar:
 - max RPC/s por player;
 - payload max por RPC;
 - taxa/tamanho de target data.
+- estratégia de confirmação de commit autoritativo (sem `soft-accept` local em fluxo crítico).
 
 ### Smoke mínimo
 1. `Standalone`
@@ -106,3 +108,5 @@ Mudanças em combate, GAS, projétil, atributos replicados, morte/loot/respawn, 
 - GAS: documentação oficial da Epic.
 - Lyra: documentação oficial da Epic.
 - Narrative: documentação oficial do plugin usado no projeto.
+  - Contrato de interação/equip no runtime: baseado em `APawn` (não exige `ACharacter`).
+  - Evitar `LootSource` com owner player-owned (`Pawn`/`PlayerState`/`PlayerController`), pois o próprio Narrative rejeita esse vínculo.

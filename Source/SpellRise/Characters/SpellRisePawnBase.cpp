@@ -1,4 +1,4 @@
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -22,6 +22,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "NavigationMarkerComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "MoverComponent.h"
+#include "DefaultMovementSet/InstantMovementEffects/BasicInstantMovementEffects.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
@@ -46,7 +48,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDeathLoot, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCharacterRuntime, Log, All);
 
-namespace SpellRiseTags
+namespace SpellRisePawnTags
 {
 	static const FGameplayTag& State_Dead()
 	{
@@ -139,16 +141,16 @@ namespace SpellRiseTags
 
 namespace
 {
-	bool SR_IsValidArchetype(ESpellRiseArchetype Archetype)
+	bool SR_IsValidArchetype(ESpellRisePawnArchetype Archetype)
 	{
 		switch (Archetype)
 		{
-		case ESpellRiseArchetype::None:
-		case ESpellRiseArchetype::Warrior:
-		case ESpellRiseArchetype::Assassin:
-		case ESpellRiseArchetype::Mage:
-		case ESpellRiseArchetype::Battlemage:
-		case ESpellRiseArchetype::Cleric:
+		case ESpellRisePawnArchetype::None:
+		case ESpellRisePawnArchetype::Warrior:
+		case ESpellRisePawnArchetype::Assassin:
+		case ESpellRisePawnArchetype::Mage:
+		case ESpellRisePawnArchetype::Battlemage:
+		case ESpellRisePawnArchetype::Cleric:
 			return true;
 		default:
 			return false;
@@ -164,7 +166,7 @@ namespace
 
 		for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
 		{
-			if (Tag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
+			if (Tag.MatchesTagExact(SpellRisePawnTags::Input_AbilitySlot(SlotIndex)))
 			{
 				return true;
 			}
@@ -175,9 +177,13 @@ namespace
 
 }
 
-ASpellRiseCharacterBase::ASpellRiseCharacterBase()
+ASpellRisePawnBase::ASpellRisePawnBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	bReplicates = true;
+	SetReplicateMovement(true);
+	SetNetUpdateFrequency(60.0f);
+	SetMinNetUpdateFrequency(20.0f);
 
 	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
 	if (CatalystComponent)
@@ -185,25 +191,14 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 		CatalystComponent->bCatalystEnabled = bEnableCatalyst;
 	}
 
-	FallDamageComponent = CreateDefaultSubobject<UFallDamageComponent>(TEXT("FallDamageComponent"));
+	FallDamageComponent = CreateDefaultSubobject<UFallDamageMoverComponent>(TEXT("FallDamageComponent"));
 	EquipmentManager = CreateDefaultSubobject<USpellRiseEquipmentManagerComponent>(TEXT("EquipmentManager"));
 
-	DeadStateTag = SpellRiseTags::State_Dead();
-
-	GetCapsuleComponent()->InitCapsuleSize(35.0f, 90.0f);
+	DeadStateTag = SpellRisePawnTags::State_Dead();
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
-
-	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.f, 500.f, 0.f);
-	GetCharacterMovement()->JumpZVelocity = 500.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.f;
 
 	ForceServerAnimTick();
 
@@ -221,7 +216,7 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	}
 }
 
-void ASpellRiseCharacterBase::PostInitializeComponents()
+void ASpellRisePawnBase::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 
@@ -229,7 +224,7 @@ void ASpellRiseCharacterBase::PostInitializeComponents()
 	EnsureAnimInstanceInitialized();
 }
 
-void ASpellRiseCharacterBase::BeginPlay()
+void ASpellRisePawnBase::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -275,7 +270,7 @@ void ASpellRiseCharacterBase::BeginPlay()
 	}
 }
 
-void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void ASpellRisePawnBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	if (UWorld* World = GetWorld())
 	{
@@ -285,7 +280,7 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void ASpellRiseCharacterBase::Tick(float DeltaTime)
+void ASpellRisePawnBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
@@ -303,22 +298,10 @@ void ASpellRiseCharacterBase::Tick(float DeltaTime)
 		return;
 	}
 
-	if (const ASpellRisePlayerController* SRPC = Cast<ASpellRisePlayerController>(GetController()))
-	{
-		if (SRPC->IsConstructionModeActive())
-		{
-			if (GetSpellRiseASC())
-			{
-				GetSpellRiseASC()->SR_ClearAbilityInput();
-			}
-			return;
-		}
-	}
-
 	SR_ProcessAbilityInput(DeltaTime, false);
 }
 
-void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+void ASpellRisePawnBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
@@ -345,7 +328,7 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 	// Character keeps movement/locomotion responsibilities.
 }
 
-void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
+void ASpellRisePawnBase::AbilityInputTagPressed(FGameplayTag InputTag)
 {
 	if (!IsLocallyControlled() || !GetSpellRiseASC() || !InputTag.IsValid())
 	{
@@ -354,7 +337,7 @@ void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
 
 	for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
 	{
-		if (InputTag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
+		if (InputTag.MatchesTagExact(SpellRisePawnTags::Input_AbilitySlot(SlotIndex)))
 		{
 			AbilityWheelInputPressed(SlotIndex);
 			return;
@@ -364,7 +347,7 @@ void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
 	GetSpellRiseASC()->SR_AbilityInputTagPressed(InputTag);
 }
 
-void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
+void ASpellRisePawnBase::AbilityInputTagReleased(FGameplayTag InputTag)
 {
 	if (!IsLocallyControlled() || !GetSpellRiseASC() || !InputTag.IsValid())
 	{
@@ -373,7 +356,7 @@ void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
 
 	for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
 	{
-		if (InputTag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
+		if (InputTag.MatchesTagExact(SpellRisePawnTags::Input_AbilitySlot(SlotIndex)))
 		{
 			AbilityWheelInputReleased(SlotIndex);
 			return;
@@ -383,7 +366,7 @@ void ASpellRiseCharacterBase::AbilityInputTagReleased(FGameplayTag InputTag)
 	GetSpellRiseASC()->SR_AbilityInputTagReleased(InputTag);
 }
 
-void ASpellRiseCharacterBase::ForceServerAnimTick()
+void ASpellRisePawnBase::ForceServerAnimTick()
 {
 	TArray<USkeletalMeshComponent*> SkeletalMeshes;
 	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
@@ -401,7 +384,7 @@ void ASpellRiseCharacterBase::ForceServerAnimTick()
 	}
 }
 
-void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
+void ASpellRisePawnBase::EnsureAnimInstanceInitialized()
 {
 	TArray<USkeletalMeshComponent*> SkeletalMeshes;
 	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
@@ -420,7 +403,7 @@ void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
 	}
 }
 
-USkeletalMeshComponent* ASpellRiseCharacterBase::FindCharacterSkeletalMeshComponentByName(FName ComponentName) const
+USkeletalMeshComponent* ASpellRisePawnBase::FindCharacterSkeletalMeshComponentByName(FName ComponentName) const
 {
 	if (ComponentName.IsNone())
 	{
@@ -446,7 +429,7 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::FindCharacterSkeletalMeshCompon
 	return nullptr;
 }
 
-UCameraComponent* ASpellRiseCharacterBase::FindCharacterCameraComponentByName(FName ComponentName) const
+UCameraComponent* ASpellRisePawnBase::FindCharacterCameraComponentByName(FName ComponentName) const
 {
 	if (ComponentName.IsNone())
 	{
@@ -472,7 +455,67 @@ UCameraComponent* ASpellRiseCharacterBase::FindCharacterCameraComponentByName(FN
 	return nullptr;
 }
 
-USkeletalMeshComponent* ASpellRiseCharacterBase::GetVisualMeshComponent() const
+UCapsuleComponent* ASpellRisePawnBase::GetCapsuleComponent() const
+{
+	return FindComponentByClass<UCapsuleComponent>();
+}
+
+USkeletalMeshComponent* ASpellRisePawnBase::GetMesh() const
+{
+	return FindComponentByClass<USkeletalMeshComponent>();
+}
+
+UCharacterMovementComponent* ASpellRisePawnBase::GetCharacterMovement() const
+{
+	return FindComponentByClass<UCharacterMovementComponent>();
+}
+
+void ASpellRisePawnBase::LaunchPawn(const FVector& LaunchVelocity, bool bXYOverride, bool bZOverride, FName ForceMovementMode)
+{
+	if (!HasAuthority() && !IsLocallyControlled())
+	{
+		return;
+	}
+
+	if (UMoverComponent* MoverComponent = FindComponentByClass<UMoverComponent>())
+	{
+		const FVector CurrentVelocity = MoverComponent->GetVelocity();
+		FVector FinalVelocity = CurrentVelocity;
+
+		if (bXYOverride)
+		{
+			FinalVelocity.X = LaunchVelocity.X;
+			FinalVelocity.Y = LaunchVelocity.Y;
+		}
+		else
+		{
+			FinalVelocity.X += LaunchVelocity.X;
+			FinalVelocity.Y += LaunchVelocity.Y;
+		}
+
+		if (bZOverride)
+		{
+			FinalVelocity.Z = LaunchVelocity.Z;
+		}
+		else
+		{
+			FinalVelocity.Z += LaunchVelocity.Z;
+		}
+
+		TSharedPtr<FApplyVelocityEffect> ApplyVelocityEffect = MakeShared<FApplyVelocityEffect>();
+		ApplyVelocityEffect->VelocityToApply = FinalVelocity;
+		ApplyVelocityEffect->bAdditiveVelocity = false;
+		ApplyVelocityEffect->ForceMovementMode = ForceMovementMode;
+		MoverComponent->QueueInstantMovementEffect(ApplyVelocityEffect);
+		return;
+	}
+
+	UE_LOG(LogSpellRiseCharacterRuntime, Warning,
+		TEXT("[Movement] LaunchPawn called but no MoverComponent found. Pawn=%s"),
+		*GetNameSafe(this));
+}
+
+USkeletalMeshComponent* ASpellRisePawnBase::GetVisualMeshComponent() const
 {
 	if (USkeletalMeshComponent* VisualMesh = FindCharacterSkeletalMeshComponentByName(VisualMeshComponentName))
 	{
@@ -482,7 +525,7 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::GetVisualMeshComponent() const
 	return GetMesh();
 }
 
-USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent() const
+USkeletalMeshComponent* ASpellRisePawnBase::GetEquipmentAttachMeshComponent() const
 {
 	if (USkeletalMeshComponent* AttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
 	{
@@ -492,7 +535,7 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent
 	return GetVisualMeshComponent();
 }
 
-UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
+UCameraComponent* ASpellRisePawnBase::GetActiveAimCameraComponent() const
 {
 	if (UCameraComponent* NamedCamera = FindCharacterCameraComponentByName(AimCameraComponentName))
 	{
@@ -521,15 +564,15 @@ UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
 	return nullptr;
 }
 
-void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void ASpellRisePawnBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, SelectedAbilityInputTag, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, Archetype, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRisePawnBase, SelectedAbilityInputTag, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRisePawnBase, Archetype, COND_None, REPNOTIFY_Always);
 }
 
-void ASpellRiseCharacterBase::MultiRefreshEquipmentVisuals_Implementation()
+void ASpellRisePawnBase::MultiRefreshEquipmentVisuals_Implementation()
 {
 	UE_LOG(
 		LogSpellRiseCharacterRuntime,
@@ -540,7 +583,7 @@ void ASpellRiseCharacterBase::MultiRefreshEquipmentVisuals_Implementation()
 		HasAuthority() ? 1 : 0);
 }
 
-void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Implementation(UObject* ItemObject, bool bShouldEquip)
+void ASpellRisePawnBase::ServerHandleNarrativeItemActivationForEquipment_Implementation(UObject* ItemObject, bool bShouldEquip)
 {
 	if (!HasAuthority())
 	{
@@ -574,11 +617,11 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 	}
 }
 
-void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
+void ASpellRisePawnBase::SetArchetype(ESpellRisePawnArchetype NewArchetype)
 {
 	if (HasAuthority())
 	{
-		const ESpellRiseArchetype OldArchetype = Archetype;
+		const ESpellRisePawnArchetype OldArchetype = Archetype;
 		Archetype = NewArchetype;
 		ApplyArchetypeToPrimaries_Server();
 		HandleArchetypeChanged(OldArchetype);
@@ -588,7 +631,7 @@ void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
 	ServerSetArchetype(NewArchetype);
 }
 
-void ASpellRiseCharacterBase::ServerSetArchetype_Implementation(ESpellRiseArchetype NewArchetype)
+void ASpellRisePawnBase::ServerSetArchetype_Implementation(ESpellRisePawnArchetype NewArchetype)
 {
 	FString RejectReason;
 	if (!ValidateServerRpcOwnerContext(RejectReason))
@@ -625,13 +668,13 @@ void ASpellRiseCharacterBase::ServerSetArchetype_Implementation(ESpellRiseArchet
 		return;
 	}
 
-	const ESpellRiseArchetype OldArchetype = Archetype;
+	const ESpellRisePawnArchetype OldArchetype = Archetype;
 	Archetype = NewArchetype;
 	ApplyArchetypeToPrimaries_Server();
 	HandleArchetypeChanged(OldArchetype);
 }
 
-void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
+void ASpellRisePawnBase::ApplyArchetypeToPrimaries_Server()
 {
 	if (!HasAuthority() || !GetSpellRiseASC())
 	{
@@ -647,30 +690,30 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 
 	switch (Archetype)
 	{
-	case ESpellRiseArchetype::Warrior:
+	case ESpellRisePawnArchetype::Warrior:
 		dSTR = 20.f;
 		dAGI = 20.f;
 		break;
-	case ESpellRiseArchetype::Assassin:
+	case ESpellRisePawnArchetype::Assassin:
 		dAGI = 20.f;
 		dSTR = 10.f;
 		dWIS = 10.f;
 		break;
-	case ESpellRiseArchetype::Mage:
+	case ESpellRisePawnArchetype::Mage:
 		dINT = 20.f;
 		dWIS = 20.f;
 		break;
-	case ESpellRiseArchetype::Battlemage:
+	case ESpellRisePawnArchetype::Battlemage:
 		dSTR = 10.f;
 		dAGI = 10.f;
 		dINT = 10.f;
 		dWIS = 10.f;
 		break;
-	case ESpellRiseArchetype::Cleric:
+	case ESpellRisePawnArchetype::Cleric:
 		dWIS = 30.f;
 		dSTR = 10.f;
 		break;
-	case ESpellRiseArchetype::None:
+	case ESpellRisePawnArchetype::None:
 	default:
 		break;
 	}
@@ -685,7 +728,7 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 	LogDerivedDebug();
 }
 
-void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FGameplayTag NewTag)
+void ASpellRisePawnBase::ServerSetSelectedAbilityInputTag_Implementation(FGameplayTag NewTag)
 {
 	FString RejectReason;
 	if (!ValidateServerRpcOwnerContext(RejectReason))
@@ -733,13 +776,13 @@ void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FG
 	HandleSelectedAbilityInputTagChanged(OldTag);
 }
 
-void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
+void ASpellRisePawnBase::SelectAbilitySlot(int32 SlotIndex)
 {
 	FGameplayTag NewTag;
 
 	if (SlotIndex >= 0 && SlotIndex < 8)
 	{
-		NewTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
+		NewTag = SpellRisePawnTags::Input_AbilitySlot(SlotIndex);
 	}
 
 	if (!HasAuthority())
@@ -752,7 +795,7 @@ void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 	HandleSelectedAbilityInputTagChanged(OldTag);
 }
 
-void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
+void ASpellRisePawnBase::AbilityWheelInputPressed(int32 SlotIndex)
 {
 	SelectAbilitySlot(SlotIndex);
 
@@ -766,7 +809,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 		return;
 	}
 
-	const FGameplayTag InputTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
+	const FGameplayTag InputTag = SpellRisePawnTags::Input_AbilitySlot(SlotIndex);
 	if (!InputTag.IsValid())
 	{
 		return;
@@ -778,7 +821,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 	}
 }
 
-void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
+void ASpellRisePawnBase::AbilityWheelInputReleased(int32 SlotIndex)
 {
 	if (!IsLocallyControlled() || !GetSpellRiseASC())
 	{
@@ -790,7 +833,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 		return;
 	}
 
-	const FGameplayTag InputTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
+	const FGameplayTag InputTag = SpellRisePawnTags::Input_AbilitySlot(SlotIndex);
 	if (!InputTag.IsValid())
 	{
 		return;
@@ -803,7 +846,7 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 	}
 }
 
-void ASpellRiseCharacterBase::ClearSelectedAbility()
+void ASpellRisePawnBase::ClearSelectedAbility()
 {
 	FGameplayTag NewTag;
 	if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(GetSpellRiseASC()))
@@ -821,27 +864,27 @@ void ASpellRiseCharacterBase::ClearSelectedAbility()
 	HandleSelectedAbilityInputTagChanged(OldTag);
 }
 
-void ASpellRiseCharacterBase::OnRep_Archetype(ESpellRiseArchetype OldArchetype)
+void ASpellRisePawnBase::OnRep_Archetype(ESpellRisePawnArchetype OldArchetype)
 {
 	HandleArchetypeChanged(OldArchetype);
 }
 
-void ASpellRiseCharacterBase::OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag)
+void ASpellRisePawnBase::OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag)
 {
 	HandleSelectedAbilityInputTagChanged(OldTag);
 }
 
-void ASpellRiseCharacterBase::HandleArchetypeChanged(ESpellRiseArchetype OldArchetype)
+void ASpellRisePawnBase::HandleArchetypeChanged(ESpellRisePawnArchetype OldArchetype)
 {
 	BP_OnArchetypeChanged(Archetype, OldArchetype);
 }
 
-void ASpellRiseCharacterBase::HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag)
+void ASpellRisePawnBase::HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag)
 {
 	BP_OnSelectedAbilityInputTagChanged(SelectedAbilityInputTag, OldTag);
 }
 
-void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
+void ASpellRisePawnBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
 {
 	if (GetSpellRiseASC())
 	{
@@ -849,7 +892,7 @@ void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bG
 	}
 }
 
-void ASpellRiseCharacterBase::SR_ClearAbilityInput()
+void ASpellRisePawnBase::SR_ClearAbilityInput()
 {
 	if (GetSpellRiseASC())
 	{
@@ -857,18 +900,18 @@ void ASpellRiseCharacterBase::SR_ClearAbilityInput()
 	}
 }
 
-UAbilitySystemComponent* ASpellRiseCharacterBase::GetAbilitySystemComponent() const
+UAbilitySystemComponent* ASpellRisePawnBase::GetAbilitySystemComponent() const
 {
 	return GetSpellRiseASC();
 }
 
-USpellRiseAbilitySystemComponent* ASpellRiseCharacterBase::GetSpellRiseASC() const
+USpellRiseAbilitySystemComponent* ASpellRisePawnBase::GetSpellRiseASC() const
 {
 	const ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
 	return SRPlayerState ? SRPlayerState->GetSpellRiseASC() : nullptr;
 }
 
-void ASpellRiseCharacterBase::InitASCActorInfo()
+void ASpellRisePawnBase::InitASCActorInfo()
 {
 	USpellRiseAbilitySystemComponent* PreviousASC = GetSpellRiseASC();
 
@@ -902,7 +945,17 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 		OwnerActor = SRPlayerState;
 	}
 
-	GetSpellRiseASC()->SetReplicationMode(AscReplicationMode);
+	if (AscReplicationMode != EGameplayEffectReplicationMode::Mixed)
+	{
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Warning,
+			TEXT("[GAS][ReplicationMode] AscReplicationMode=%d ignorado em %s. Forcando Mixed por contrato de projeto."),
+			static_cast<int32>(AscReplicationMode),
+			*GetNameSafe(this));
+	}
+
+	GetSpellRiseASC()->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	GetSpellRiseASC()->InitAbilityActorInfo(OwnerActor, this);
 	GetSpellRiseASC()->RefreshAbilityActorInfo();
 
@@ -912,7 +965,7 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 	}
 }
 
-void ASpellRiseCharacterBase::ScheduleASCInitializationRetry()
+void ASpellRisePawnBase::ScheduleASCInitializationRetry()
 {
 	UWorld* World = GetWorld();
 	if (!World || HasValidASCActorInfo())
@@ -928,18 +981,18 @@ void ASpellRiseCharacterBase::ScheduleASCInitializationRetry()
 	World->GetTimerManager().SetTimer(
 		ASCInitializationRetryTimerHandle,
 		this,
-		&ASpellRiseCharacterBase::HandleASCInitializationRetry,
+		&ASpellRisePawnBase::HandleASCInitializationRetry,
 		0.1f,
 		false);
 }
 
-void ASpellRiseCharacterBase::HandleASCInitializationRetry()
+void ASpellRisePawnBase::HandleASCInitializationRetry()
 {
 	InitASCActorInfo();
 	BindASCDelegates();
 }
 
-bool ASpellRiseCharacterBase::HasValidASCActorInfo() const
+bool ASpellRisePawnBase::HasValidASCActorInfo() const
 {
 	const USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC();
 	if (!ASC)
@@ -948,10 +1001,14 @@ bool ASpellRiseCharacterBase::HasValidASCActorInfo() const
 	}
 
 	const FGameplayAbilityActorInfo* ActorInfo = ASC->AbilityActorInfo.Get();
-	return ActorInfo && ActorInfo->OwnerActor.Get() && ActorInfo->AvatarActor.Get() == this;
+	const AActor* OwnerActor = ActorInfo ? ActorInfo->OwnerActor.Get() : nullptr;
+	return ActorInfo
+		&& OwnerActor
+		&& OwnerActor->IsA<ASpellRisePlayerState>()
+		&& ActorInfo->AvatarActor.Get() == this;
 }
 
-void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
+void ASpellRisePawnBase::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
@@ -1001,7 +1058,7 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	ApplyStartupEffects();
 }
 
-void ASpellRiseCharacterBase::OnRep_PlayerState()
+void ASpellRisePawnBase::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 
@@ -1019,7 +1076,7 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 	}
 }
 
-void ASpellRiseCharacterBase::BindASCDelegates()
+void ASpellRisePawnBase::BindASCDelegates()
 {
 	if (!GetSpellRiseASC())
 	{
@@ -1065,31 +1122,31 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 	{
 		GetSpellRiseASC()
 			->RegisterGameplayTagEvent(DeadStateTag, EGameplayTagEventType::NewOrRemoved)
-			.AddUObject(this, &ASpellRiseCharacterBase::OnDeadTagChanged);
+			.AddUObject(this, &ASpellRisePawnBase::OnDeadTagChanged);
 	}
 
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetHealthAttribute())
-		.AddUObject(this, &ASpellRiseCharacterBase::OnHealthChanged);
+		.AddUObject(this, &ASpellRisePawnBase::OnHealthChanged);
 
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetStrengthAttribute())
-		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
+		.AddUObject(this, &ASpellRisePawnBase::OnPrimaryChanged);
 
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetAgilityAttribute())
-		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
+		.AddUObject(this, &ASpellRisePawnBase::OnPrimaryChanged);
 
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetIntelligenceAttribute())
-		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
+		.AddUObject(this, &ASpellRisePawnBase::OnPrimaryChanged);
 
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
-		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
+		.AddUObject(this, &ASpellRisePawnBase::OnPrimaryChanged);
 }
 
-bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
+bool ASpellRisePawnBase::InitializeAbilitySystemFromPlayerState()
 {
 	ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
 	if (!SRPlayerState)
@@ -1111,7 +1168,7 @@ bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
 	return true;
 }
 
-void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Data)
+void ASpellRisePawnBase::OnPrimaryChanged(const FOnAttributeChangeData& Data)
 {
 	if (!HasAuthority() || !GetSpellRiseASC())
 	{
@@ -1123,7 +1180,7 @@ void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Dat
 	LogDerivedDebug();
 }
 
-void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data)
+void ASpellRisePawnBase::OnHealthChanged(const FOnAttributeChangeData& Data)
 {
 	if (!GetSpellRiseASC() || GetSpellRiseASC()->GetAvatarActor() != this)
 	{
@@ -1221,7 +1278,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 	ScheduleRespawn_Server();
 }
 
-void ASpellRiseCharacterBase::ApplyStartupEffects()
+void ASpellRisePawnBase::ApplyStartupEffects()
 {
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
@@ -1239,7 +1296,7 @@ void ASpellRiseCharacterBase::ApplyStartupEffects()
 	LogDerivedDebug();
 }
 
-void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
+void ASpellRisePawnBase::ApplyDerivedStatsInfinite()
 {
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
@@ -1266,14 +1323,14 @@ void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
-void ASpellRiseCharacterBase::LogDerivedDebug()
+void ASpellRisePawnBase::LogDerivedDebug()
 {
 	if (!GetSpellRiseASC())
 	{
 		return;
 	}
 
-	const bool bTagActive = GetSpellRiseASC()->HasMatchingGameplayTag(SpellRiseTags::State_DerivedStats_Active());
+	const bool bTagActive = GetSpellRiseASC()->HasMatchingGameplayTag(SpellRisePawnTags::State_DerivedStats_Active());
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[DERIVED] GE=%s TagActive=%d"),
 		*GetNameSafe(GE_DerivedStatsInfinite),
@@ -1300,7 +1357,7 @@ void ASpellRiseCharacterBase::LogDerivedDebug()
 		MeleeMult, BowMult, SpellMult, HealMult, CTR, CC, CD, AP, MCR);
 }
 
-void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass)
+void ASpellRisePawnBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass)
 {
 	if (!GetSpellRiseASC() || !HasAuthority() || !EffectClass)
 	{
@@ -1319,7 +1376,7 @@ void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> 
 	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
-void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
+void ASpellRisePawnBase::SetCharacterInputEnabled(bool bEnabled)
 {
 	if (!IsLocallyControlled())
 	{
@@ -1360,7 +1417,7 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 	}
 }
 
-void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
+void ASpellRisePawnBase::ApplyRegenStartupEffects()
 {
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
@@ -1379,7 +1436,7 @@ void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
 	}
 }
 
-void ASpellRiseCharacterBase::RecalculateDerivedStats()
+void ASpellRisePawnBase::RecalculateDerivedStats()
 {
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
@@ -1389,7 +1446,7 @@ void ASpellRiseCharacterBase::RecalculateDerivedStats()
 	ApplyOrRefreshEffect(GE_RecalculateResources);
 }
 
-void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
+void ASpellRisePawnBase::ResetDeathStateAndResources_Server()
 {
 	if (!HasAuthority() || !GetSpellRiseASC())
 	{
@@ -1428,7 +1485,7 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 		GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute()));
 }
 
-TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
+TArray<FGameplayAbilitySpecHandle> ASpellRisePawnBase::GrantAbilities(const TArray<FSpellRisePawnGrantedAbility>& AbilitiesToGrant)
 {
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
@@ -1438,7 +1495,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
 	AbilityHandles.Reserve(AbilitiesToGrant.Num());
 
-	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
+	for (const FSpellRisePawnGrantedAbility& Grant : AbilitiesToGrant)
 	{
 		if (!Grant.Ability)
 		{
@@ -1478,7 +1535,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 	return AbilityHandles;
 }
 
-void ASpellRiseCharacterBase::RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove)
+void ASpellRisePawnBase::RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove)
 {
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
@@ -1493,9 +1550,9 @@ void ASpellRiseCharacterBase::RemoveAbilities(const TArray<FGameplayAbilitySpecH
 	SendAbilitiesChangedEvent();
 }
 
-void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
+void ASpellRisePawnBase::SendAbilitiesChangedEvent()
 {
-	if (!SpellRiseTags::Event_Abilities_Changed().IsValid())
+	if (!SpellRisePawnTags::Event_Abilities_Changed().IsValid())
 	{
 		return;
 	}
@@ -1518,22 +1575,34 @@ void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
 	}
 
 	FGameplayEventData EventData;
-	EventData.EventTag = SpellRiseTags::Event_Abilities_Changed();
+	EventData.EventTag = SpellRisePawnTags::Event_Abilities_Changed();
 	EventData.Instigator = this;
 	EventData.Target = this;
 	AActor* EventReceiverActor = GetPlayerState() ? Cast<AActor>(GetPlayerState()) : Cast<AActor>(this);
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(EventReceiverActor, EventData.EventTag, EventData);
 }
 
-void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const FGameplayEventData& EventData)
+void ASpellRisePawnBase::ServerSendGameplayEventToSelf_Implementation(const FGameplayEventData& EventData)
 {
+	FString RejectReason;
+	if (!ValidateServerRpcOwnerContext(RejectReason))
+	{
+		AuditRejectedServerRpc(TEXT("ServerSendGameplayEventToSelf"), RejectReason);
+		return;
+	}
+
+	if (bIsDead)
+	{
+		AuditRejectedServerGameplayEvent(EventData.EventTag, TEXT("character_is_dead"));
+		return;
+	}
+
 	if (!IsAllowedServerEventTag(EventData.EventTag))
 	{
 		AuditRejectedServerGameplayEvent(EventData.EventTag, TEXT("tag_not_allowlisted"));
 		return;
 	}
 
-	FString RejectReason;
 	if (!ValidateServerGameplayEventPayload(EventData, RejectReason))
 	{
 		AuditRejectedServerGameplayEvent(EventData.EventTag, RejectReason);
@@ -1570,23 +1639,18 @@ void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(EventReceiverActor, SanitizedEventData.EventTag, SanitizedEventData);
 }
 
-void ASpellRiseCharacterBase::MultiSendGameplayEventToActor_Implementation(AActor* TargetActor, const FGameplayEventData& EventData)
+void ASpellRisePawnBase::MultiSendGameplayEventToActor_Implementation(AActor* TargetActor, const FGameplayEventData& EventData)
 {
-	if (!TargetActor || !EventData.EventTag.IsValid())
-	{
-		return;
-	}
-
-	FGameplayEventData SanitizedEventData = EventData;
-	if (!FMath::IsFinite(SanitizedEventData.EventMagnitude))
-	{
-		SanitizedEventData.EventMagnitude = 0.f;
-	}
-
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, SanitizedEventData.EventTag, SanitizedEventData);
+	UE_LOG(
+		LogSpellRiseSecurity,
+		Warning,
+		TEXT("[SEC][RPC][MulticastGameplayEventBlocked] Pawn=%s Target=%s Tag=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(TargetActor),
+		*EventData.EventTag.ToString());
 }
 
-bool ASpellRiseCharacterBase::IsAllowedServerEventTag(const FGameplayTag& EventTag) const
+bool ASpellRisePawnBase::IsAllowedServerEventTag(const FGameplayTag& EventTag) const
 {
 	if (!EventTag.IsValid())
 	{
@@ -1609,7 +1673,7 @@ bool ASpellRiseCharacterBase::IsAllowedServerEventTag(const FGameplayTag& EventT
 	return false;
 }
 
-bool ASpellRiseCharacterBase::ValidateServerGameplayEventPayload(const FGameplayEventData& EventData, FString& OutRejectReason) const
+bool ASpellRisePawnBase::ValidateServerGameplayEventPayload(const FGameplayEventData& EventData, FString& OutRejectReason) const
 {
 	if (!HasAuthority())
 	{
@@ -1645,7 +1709,7 @@ bool ASpellRiseCharacterBase::ValidateServerGameplayEventPayload(const FGameplay
 	return true;
 }
 
-bool ASpellRiseCharacterBase::CheckServerGameplayEventRateLimit(const FGameplayTag& EventTag, FString& OutRejectReason)
+bool ASpellRisePawnBase::CheckServerGameplayEventRateLimit(const FGameplayTag& EventTag, FString& OutRejectReason)
 {
 	if (!EventTag.IsValid())
 	{
@@ -1661,7 +1725,7 @@ bool ASpellRiseCharacterBase::CheckServerGameplayEventRateLimit(const FGameplayT
 	}
 
 	const double Now = static_cast<double>(World->GetTimeSeconds());
-	FSpellRiseServerEventRateLimitState& RateState = ServerEventRateLimitByTag.FindOrAdd(EventTag);
+	FSpellRisePawnServerEventRateLimitState& RateState = ServerEventRateLimitByTag.FindOrAdd(EventTag);
 
 	const double WindowSeconds = static_cast<double>(FMath::Max(0.01f, ServerGameplayEventRateLimitWindowSeconds));
 	if ((Now - RateState.WindowStartServerTimeSeconds) > WindowSeconds)
@@ -1685,7 +1749,7 @@ bool ASpellRiseCharacterBase::CheckServerGameplayEventRateLimit(const FGameplayT
 	return true;
 }
 
-bool ASpellRiseCharacterBase::ValidateServerRpcOwnerContext(FString& OutRejectReason) const
+bool ASpellRisePawnBase::ValidateServerRpcOwnerContext(FString& OutRejectReason) const
 {
 	if (!HasAuthority())
 	{
@@ -1715,8 +1779,8 @@ bool ASpellRiseCharacterBase::ValidateServerRpcOwnerContext(FString& OutRejectRe
 	return true;
 }
 
-bool ASpellRiseCharacterBase::CheckServerRpcRateLimit(
-	FSpellRiseServerEventRateLimitState& RateState,
+bool ASpellRisePawnBase::CheckServerRpcRateLimit(
+	FSpellRisePawnServerEventRateLimitState& RateState,
 	float WindowSeconds,
 	int32 MaxCountPerWindow,
 	const TCHAR* RpcName,
@@ -1755,7 +1819,7 @@ bool ASpellRiseCharacterBase::CheckServerRpcRateLimit(
 	return true;
 }
 
-void ASpellRiseCharacterBase::AuditRejectedServerRpc(const TCHAR* RpcName, const FString& RejectReason)
+void ASpellRisePawnBase::AuditRejectedServerRpc(const TCHAR* RpcName, const FString& RejectReason)
 {
 	ServerRejectedGenericRpcs += 1;
 
@@ -1780,7 +1844,7 @@ void ASpellRiseCharacterBase::AuditRejectedServerRpc(const TCHAR* RpcName, const
 		FString::Printf(TEXT("rpc=%s reason=%s character=%s"), RpcName ? RpcName : TEXT("unknown"), *RejectReason, *GetNameSafe(this)));
 }
 
-void ASpellRiseCharacterBase::AuditRejectedServerGameplayEvent(const FGameplayTag& EventTag, const FString& RejectReason)
+void ASpellRisePawnBase::AuditRejectedServerGameplayEvent(const FGameplayTag& EventTag, const FString& RejectReason)
 {
 	ServerRejectedGameplayEvents += 1;
 
@@ -1805,7 +1869,7 @@ void ASpellRiseCharacterBase::AuditRejectedServerGameplayEvent(const FGameplayTa
 		FString::Printf(TEXT("tag=%s reason=%s character=%s"), *EventTag.ToString(), *RejectReason, *GetNameSafe(this)));
 }
 
-float ASpellRiseCharacterBase::ResolveMaxAbsServerEventMagnitude(const FGameplayTag& EventTag) const
+float ASpellRisePawnBase::ResolveMaxAbsServerEventMagnitude(const FGameplayTag& EventTag) const
 {
 	const FGameplayTag ComboStartTag = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Start"), false);
 	const FGameplayTag ComboInputTag = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Input"), false);
@@ -1825,7 +1889,7 @@ float ASpellRiseCharacterBase::ResolveMaxAbsServerEventMagnitude(const FGameplay
 	return FMath::Max(0.f, ServerGameplayEventDefaultMaxAbsMagnitude);
 }
 
-void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount)
+void ASpellRisePawnBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount)
 {
 	if (!GetSpellRiseASC() || GetSpellRiseASC()->GetAvatarActor() != this)
 	{
@@ -1889,6 +1953,8 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 	bIsDead = false;
 	bFullLootProcessedForCurrentDeath = false;
 	CombatLockExpireAtServerTimeSeconds = -1.0;
+	SetReplicateMovement(true);
+	SetActorTickEnabled(true);
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(true);
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] Estado de morte resetado. Char=%s"), *GetNameSafe(this));
@@ -1903,7 +1969,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 	}
 }
 
-void ASpellRiseCharacterBase::ScheduleRespawn_Server()
+void ASpellRisePawnBase::ScheduleRespawn_Server()
 {
 	if (!HasAuthority())
 	{
@@ -1948,10 +2014,10 @@ void ASpellRiseCharacterBase::ScheduleRespawn_Server()
 	}
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Respawn] Agendado respawn em %.1fs para %s"), EffectiveDelaySeconds, *GetNameSafe(this));
-	World->GetTimerManager().SetTimer(RespawnTimerHandle, this, &ASpellRiseCharacterBase::ExecuteRespawn_Server, EffectiveDelaySeconds, false);
+	World->GetTimerManager().SetTimer(RespawnTimerHandle, this, &ASpellRisePawnBase::ExecuteRespawn_Server, EffectiveDelaySeconds, false);
 }
 
-void ASpellRiseCharacterBase::ExecuteRespawn_Server()
+void ASpellRisePawnBase::ExecuteRespawn_Server()
 {
 	if (!HasAuthority())
 	{
@@ -1993,7 +2059,7 @@ void ASpellRiseCharacterBase::ExecuteRespawn_Server()
 	GameMode->RestartPlayer(ControllerToRespawn);
 }
 
-void ASpellRiseCharacterBase::RefreshCombatLockFromDamage_Server(float DamageDelta)
+void ASpellRisePawnBase::RefreshCombatLockFromDamage_Server(float DamageDelta)
 {
 	if (!HasAuthority() || DamageDelta <= KINDA_SMALL_NUMBER)
 	{
@@ -2016,7 +2082,7 @@ void ASpellRiseCharacterBase::RefreshCombatLockFromDamage_Server(float DamageDel
 	CombatLockExpireAtServerTimeSeconds = FMath::Max(CombatLockExpireAtServerTimeSeconds, NowSeconds + LockDurationSeconds);
 }
 
-bool ASpellRiseCharacterBase::IsCombatLockActive_Server(double* OutSecondsRemaining) const
+bool ASpellRisePawnBase::IsCombatLockActive_Server(double* OutSecondsRemaining) const
 {
 	if (OutSecondsRemaining)
 	{
@@ -2048,7 +2114,7 @@ bool ASpellRiseCharacterBase::IsCombatLockActive_Server(double* OutSecondsRemain
 	return true;
 }
 
-void ASpellRiseCharacterBase::StopAllCharacterAudio(bool bIncludeAttachedActors)
+void ASpellRisePawnBase::StopAllCharacterAudio(bool bIncludeAttachedActors)
 {
 	TArray<UAudioComponent*> AudioComponents;
 	GetComponents<UAudioComponent>(AudioComponents);
@@ -2091,7 +2157,7 @@ void ASpellRiseCharacterBase::StopAllCharacterAudio(bool bIncludeAttachedActors)
 	}
 }
 
-void ASpellRiseCharacterBase::TriggerLocalDamageScreenEffect()
+void ASpellRisePawnBase::TriggerLocalDamageScreenEffect()
 {
 	if (GetNetMode() == NM_DedicatedServer)
 	{
@@ -2142,7 +2208,7 @@ void ASpellRiseCharacterBase::TriggerLocalDamageScreenEffect()
 		true);
 }
 
-void ASpellRiseCharacterBase::ShowLocalDeathScreenText()
+void ASpellRisePawnBase::ShowLocalDeathScreenText()
 {
 	if (GetNetMode() == NM_DedicatedServer)
 	{
@@ -2176,7 +2242,7 @@ void ASpellRiseCharacterBase::ShowLocalDeathScreenText()
 	}
 }
 
-void ASpellRiseCharacterBase::HideLocalDeathScreenText()
+void ASpellRisePawnBase::HideLocalDeathScreenText()
 {
 	if (UWorld* World = GetWorld())
 	{
@@ -2191,7 +2257,7 @@ void ASpellRiseCharacterBase::HideLocalDeathScreenText()
 	}
 }
 
-void ASpellRiseCharacterBase::ResetLocalDeathPresentation()
+void ASpellRisePawnBase::ResetLocalDeathPresentation()
 {
 	HideLocalDeathScreenText();
 
@@ -2240,15 +2306,16 @@ void ASpellRiseCharacterBase::ResetLocalDeathPresentation()
 	}
 }
 
-void ASpellRiseCharacterBase::MultiHandleDeath_Implementation()
+void ASpellRisePawnBase::MultiHandleDeath_Implementation()
 {
 	HandleDeath();
 }
 
-void ASpellRiseCharacterBase::HandleDeath_Implementation()
+void ASpellRisePawnBase::HandleDeath_Implementation()
 {
 	USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
-	if (!VisualMesh || !GetCapsuleComponent() || !GetCharacterMovement())
+	UCapsuleComponent* CapsuleComponent = GetCapsuleComponent();
+	if (!VisualMesh || !CapsuleComponent)
 	{
 		return;
 	}
@@ -2267,10 +2334,48 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 		DestroyDeathAttachments_Server(VisualMesh);
 	}
 
-	VisualMesh->SetSimulatePhysics(true);
+	const bool bHasMover = (FindComponentByClass<UMoverComponent>() != nullptr);
+	const bool bVisualMeshIsRoot = (VisualMesh == Cast<USkeletalMeshComponent>(GetRootComponent()));
+
 	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	GetCharacterMovement()->DisableMovement();
+	VisualMesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+	CapsuleComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Fallback de locomocao para setups que ainda expõem CharacterMovement.
+	if (UCharacterMovementComponent* CharacterMovement = GetCharacterMovement())
+	{
+		CharacterMovement->DisableMovement();
+	}
+
+	// Mover path (Pawn + CharacterMover, similar to Lyra/GAS pawn-style ownership).
+	if (UMoverComponent* MoverComponent = FindComponentByClass<UMoverComponent>())
+	{
+		MoverComponent->SetComponentTickEnabled(false);
+		MoverComponent->Deactivate();
+	}
+
+	// Prevent BP/sample-driven movement updates while ragdoll is active.
+	SetReplicateMovement(false);
+	SetActorTickEnabled(false);
+
+	// Com Mover, o ragdoll e permitido quando o mesh visual nao e o root do ator.
+	// Se o mesh for root, mantemos sem simulacao para evitar conflito de transform.
+	if (bHasMover && bVisualMeshIsRoot)
+	{
+		VisualMesh->SetAllBodiesSimulatePhysics(false);
+		VisualMesh->SetSimulatePhysics(false);
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Warning,
+			TEXT("[Death] Ragdoll desativado: VisualMesh e root em pawn com Mover. Pawn=%s Mesh=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(VisualMesh));
+	}
+	else
+	{
+		VisualMesh->SetAllBodiesSimulatePhysics(true);
+		VisualMesh->SetSimulatePhysics(true);
+	}
 
 	if (GetNetMode() != NM_DedicatedServer && bEnableLocalDeathCameraEffect && IsLocallyControlled())
 	{
@@ -2294,19 +2399,22 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 			World->GetTimerManager().ClearTimer(LocalDeathScreenTimerHandle);
 			World->GetTimerManager().ClearTimer(LocalDeathScreenHideTimerHandle);
 			const float DeathTextDelay = bEnableLocalDeathCameraEffect ? FMath::Max(0.f, DeathCameraFadeOutDuration) : 0.f;
-			World->GetTimerManager().SetTimer(LocalDeathScreenTimerHandle, this, &ASpellRiseCharacterBase::ShowLocalDeathScreenText, DeathTextDelay, false);
+			World->GetTimerManager().SetTimer(LocalDeathScreenTimerHandle, this, &ASpellRisePawnBase::ShowLocalDeathScreenText, DeathTextDelay, false);
 
 			const float HideDelay = FMath::Max(0.f, RespawnDelaySeconds - FMath::Max(0.f, DeathMessageHideLeadTimeSeconds));
-			World->GetTimerManager().SetTimer(LocalDeathScreenHideTimerHandle, this, &ASpellRiseCharacterBase::HideLocalDeathScreenText, HideDelay, false);
+			World->GetTimerManager().SetTimer(LocalDeathScreenHideTimerHandle, this, &ASpellRisePawnBase::HideLocalDeathScreenText, HideDelay, false);
 		}
 	}
 
 	FVector Impulse = GetActorForwardVector() * -20000.f;
 	Impulse.Z = 15000.f;
-	VisualMesh->AddImpulseAtLocation(Impulse, GetActorLocation());
+	if (VisualMesh->IsSimulatingPhysics())
+	{
+		VisualMesh->AddImpulseAtLocation(Impulse, GetActorLocation());
+	}
 }
 
-void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
+void ASpellRisePawnBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 {
 	if (!HasAuthority() || !GetSpellRiseASC())
 	{
@@ -2352,7 +2460,7 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 		*GetNameSafe(this));
 }
 
-void ASpellRiseCharacterBase::DestroyDeathAttachments_Server(USkeletalMeshComponent* VisualMesh)
+void ASpellRisePawnBase::DestroyDeathAttachments_Server(USkeletalMeshComponent* VisualMesh)
 {
 	if (!HasAuthority())
 	{
@@ -2410,12 +2518,12 @@ void ASpellRiseCharacterBase::DestroyDeathAttachments_Server(USkeletalMeshCompon
 	}
 }
 
-void ASpellRiseCharacterBase::MultiOnCatalystProc_Implementation(int32 CatalystTier)
+void ASpellRisePawnBase::MultiOnCatalystProc_Implementation(int32 CatalystTier)
 {
 	BP_OnCatalystProc(CatalystTier);
 }
 
-void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AActor* InstigatorActor, FGameplayTag DamageTypeTag, bool bIsCrit)
+void ASpellRisePawnBase::MultiShowDamagePop_Implementation(float Damage, AActor* InstigatorActor, FGameplayTag DamageTypeTag, bool bIsCrit)
 {
 	if (Damage <= 0.f)
 	{
@@ -2458,7 +2566,7 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 		*GetNameSafe(PC));
 }
 
-void ASpellRiseCharacterBase::MultiPlayHitReactionMontage_Implementation(float PlayRate)
+void ASpellRisePawnBase::MultiPlayHitReactionMontage_Implementation(float PlayRate)
 {
 	if (bIsDead || !HitReactionMontage)
 	{
@@ -2480,28 +2588,7 @@ void ASpellRiseCharacterBase::MultiPlayHitReactionMontage_Implementation(float P
 	AnimInstance->Montage_Play(HitReactionMontage, FMath::Max(0.1f, PlayRate));
 }
 
-void ASpellRiseCharacterBase::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
-{
-	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
 
-	if (!FallDamageComponent)
-	{
-		return;
-	}
 
-	FallDamageComponent->OnMovementModeChanged();
-}
-
-void ASpellRiseCharacterBase::Landed(const FHitResult& Hit)
-{
-	Super::Landed(Hit);
-
-	if (!FallDamageComponent)
-	{
-		return;
-	}
-
-	FallDamageComponent->OnLanded(Hit);
-}
 
 

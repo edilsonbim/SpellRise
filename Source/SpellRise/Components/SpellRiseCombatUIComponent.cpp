@@ -2,6 +2,7 @@
 #include "SpellRiseCombatUIComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
+#include "GameFramework/Pawn.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 
 USpellRiseCombatUIComponent::USpellRiseCombatUIComponent()
@@ -48,7 +49,25 @@ void USpellRiseCombatUIComponent::OnHealthChanged(const FOnAttributeChangeData& 
     float NewStamina  = CachedASC->GetNumericAttribute(UResourceAttributeSet::GetStaminaAttribute());
     float MaxStamina  = CachedASC->GetNumericAttribute(UResourceAttributeSet::GetMaxStaminaAttribute());
 
-    Client_UpdateResourceBars(NewHealth, MaxHealth, NewMana, MaxMana, NewStamina, MaxStamina);
+    const AActor* OwnerActor = GetOwner();
+    if (!OwnerActor)
+    {
+        return;
+    }
+
+    if (OwnerActor->HasAuthority())
+    {
+        Client_UpdateResourceBars(NewHealth, MaxHealth, NewMana, MaxMana, NewStamina, MaxStamina);
+        return;
+    }
+
+    const APawn* OwnerPawn = Cast<APawn>(OwnerActor);
+    if (OwnerPawn && !OwnerPawn->IsLocallyControlled())
+    {
+        return;
+    }
+
+    BP_UpdateResourceBars(NewHealth, MaxHealth, NewMana, MaxMana, NewStamina, MaxStamina);
 }
 
 void USpellRiseCombatUIComponent::OnManaChanged(const FOnAttributeChangeData& Data)
@@ -80,5 +99,10 @@ void USpellRiseCombatUIComponent::Client_UpdateResourceBars_Implementation(
     float NewMana,    float MaxMana,
     float NewStamina, float MaxStamina)
 {
+    if (GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
     BP_UpdateResourceBars(NewHealth, MaxHealth, NewMana, MaxMana, NewStamina, MaxStamina);
 }

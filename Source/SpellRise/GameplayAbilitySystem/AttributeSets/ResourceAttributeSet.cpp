@@ -8,7 +8,7 @@
 #include "Misc/DateTime.h"
 #include "Net/UnrealNetwork.h"
 
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 #include "SpellRise/Components/CatalystComponent.h"
 #include "SpellRise/Components/SpellRiseChatComponent.h"
 #include "SpellRise/Core/SpellRiseGameState.h"
@@ -106,14 +106,14 @@ static void ApplyCatalystChargeIfConfigured(
 	ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
-static ASpellRisePlayerController* ResolvePlayerControllerFromCharacter(ASpellRiseCharacterBase* Character)
+static ASpellRisePlayerController* ResolvePlayerControllerFromPawn(ASpellRisePawnBase* Pawn)
 {
-	if (!Character)
+	if (!Pawn)
 	{
 		return nullptr;
 	}
 
-	return Cast<ASpellRisePlayerController>(Character->GetController());
+	return Cast<ASpellRisePlayerController>(Pawn->GetController());
 }
 
 static FString ResolveCombatDisplayName(const AActor* Actor)
@@ -271,8 +271,8 @@ static FString ResolveDamageTypeLabel(const FGameplayTag& DamageTypeTag)
 }
 
 static void SendCombatLogMessages(
-	ASpellRiseCharacterBase* SourceCharacter,
-	ASpellRiseCharacterBase* TargetCharacter,
+	ASpellRisePawnBase* SourcePawn,
+	ASpellRisePawnBase* TargetPawn,
 	float Damage,
 	const FGameplayTag& DamageTypeTag,
 	bool bTargetDied)
@@ -283,25 +283,25 @@ static void SendCombatLogMessages(
 	}
 
 	const bool bIsFallDamage = IsFallDamageTypeTag(DamageTypeTag);
-	const bool bFallSourceIsSelfOrUnknown = bIsFallDamage && (!SourceCharacter || SourceCharacter == TargetCharacter);
-	ASpellRisePlayerController* SourceController = ResolvePlayerControllerFromCharacter(SourceCharacter);
-	ASpellRisePlayerController* TargetController = ResolvePlayerControllerFromCharacter(TargetCharacter);
-	ASpellRisePlayerState* SourcePlayerState = SourceCharacter ? Cast<ASpellRisePlayerState>(SourceCharacter->GetPlayerState()) : nullptr;
-	ASpellRisePlayerState* TargetPlayerState = TargetCharacter ? Cast<ASpellRisePlayerState>(TargetCharacter->GetPlayerState()) : nullptr;
+	const bool bFallSourceIsSelfOrUnknown = bIsFallDamage && (!SourcePawn || SourcePawn == TargetPawn);
+	ASpellRisePlayerController* SourceController = ResolvePlayerControllerFromPawn(SourcePawn);
+	ASpellRisePlayerController* TargetController = ResolvePlayerControllerFromPawn(TargetPawn);
+	ASpellRisePlayerState* SourcePlayerState = SourcePawn ? Cast<ASpellRisePlayerState>(SourcePawn->GetPlayerState()) : nullptr;
+	ASpellRisePlayerState* TargetPlayerState = TargetPawn ? Cast<ASpellRisePlayerState>(TargetPawn->GetPlayerState()) : nullptr;
 
 	if (!SourceController && !TargetController)
 	{
 		return;
 	}
 
-	const FString SourceName = ResolveCombatSourceName(SourceCharacter, TargetCharacter, DamageTypeTag);
-	const FString TargetName = ResolveCombatDisplayName(TargetCharacter);
+	const FString SourceName = ResolveCombatSourceName(SourcePawn, TargetPawn, DamageTypeTag);
+	const FString TargetName = ResolveCombatDisplayName(TargetPawn);
 	const FString DamageTypeLabel = ResolveDamageTypeLabel(DamageTypeTag);
 	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
-	UWorld* World = TargetCharacter ? TargetCharacter->GetWorld() : nullptr;
-	if (!World && SourceCharacter)
+	UWorld* World = TargetPawn ? TargetPawn->GetWorld() : nullptr;
+	if (!World && SourcePawn)
 	{
-		World = SourceCharacter->GetWorld();
+		World = SourcePawn->GetWorld();
 	}
 
 	if (SourcePlayerState)
@@ -732,19 +732,19 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			InstigatorActor = Ctx.GetEffectCauser();
 		}
 
-		ASpellRiseCharacterBase* SourceCharacter = Cast<ASpellRiseCharacterBase>(InstigatorActor);
+		ASpellRisePawnBase* SourcePawn = Cast<ASpellRisePawnBase>(InstigatorActor);
 
-		if (!SourceCharacter && Ctx.GetEffectCauser())
+		if (!SourcePawn && Ctx.GetEffectCauser())
 		{
-			SourceCharacter = Cast<ASpellRiseCharacterBase>(Ctx.GetEffectCauser()->GetInstigator());
+			SourcePawn = Cast<ASpellRisePawnBase>(Ctx.GetEffectCauser()->GetInstigator());
 		}
 
-		if (!SourceCharacter && Ctx.GetOriginalInstigator())
+		if (!SourcePawn && Ctx.GetOriginalInstigator())
 		{
-			SourceCharacter = Cast<ASpellRiseCharacterBase>(Ctx.GetOriginalInstigator());
+			SourcePawn = Cast<ASpellRisePawnBase>(Ctx.GetOriginalInstigator());
 		}
 
-		ASpellRiseCharacterBase* TargetCharacter = Cast<ASpellRiseCharacterBase>(TargetASC->GetAvatarActor());
+		ASpellRisePawnBase* TargetPawn = Cast<ASpellRisePawnBase>(TargetASC->GetAvatarActor());
 		const FGameplayTag DamageTypeTag = ResolveDamageTypeTag(Data.EffectSpec);
 		const bool bTargetDied = (GetHealth() <= KINDA_SMALL_NUMBER);
 		++GResourceCombatRuntimeCounters.DamageApplied;
@@ -758,18 +758,18 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			TEXT("[COMBAT][DAMAGE_APPLIED] Damage=%.2f Type=%s Source=%s Target=%s Died=%d Applied=%lld Kills=%lld"),
 			TotalDamage,
 			*DamageTypeTag.ToString(),
-			*GetNameSafe(SourceCharacter),
-			*GetNameSafe(TargetCharacter),
+			*GetNameSafe(SourcePawn),
+			*GetNameSafe(TargetPawn),
 			bTargetDied ? 1 : 0,
 			GResourceCombatRuntimeCounters.DamageApplied,
 			GResourceCombatRuntimeCounters.DamageTargetKilled);
-		SendCombatHitGameplayEvents(Ctx, SourceCharacter, TargetCharacter, TotalDamage);
-		if (TargetCharacter && !bTargetDied)
+		SendCombatHitGameplayEvents(Ctx, SourcePawn, TargetPawn, TotalDamage);
+		if (TargetPawn && !bTargetDied)
 		{
 			// Cosmetic fallback AAA: server decides hit and replicates only presentation.
-			TargetCharacter->MultiPlayHitReactionMontage(1.0f);
+			TargetPawn->MultiPlayHitReactionMontage(1.0f);
 		}
-		SendCombatLogMessages(SourceCharacter, TargetCharacter, TotalDamage, DamageTypeTag, bTargetDied);
+		SendCombatLogMessages(SourcePawn, TargetPawn, TotalDamage, DamageTypeTag, bTargetDied);
 
 		const float CatalystChargeAmount = TotalDamage * CatalystScalar;
 		if (GE_Catalyst_AddCharge)
@@ -786,36 +786,36 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		}
 		else
 		{
-			if (TargetCharacter)
+			if (TargetPawn)
 			{
-				if (UCatalystComponent* TargetCatalyst = TargetCharacter->GetCatalystComponent())
+				if (UCatalystComponent* TargetCatalyst = TargetPawn->GetCatalystComponent())
 				{
-					TargetCatalyst->TryAddCatalystCharge_OnDamageTaken(SourceCharacter);
+					TargetCatalyst->TryAddCatalystCharge_OnDamageTaken(SourcePawn);
 				}
 			}
 
-			if (SourceCharacter && SourceCharacter != TargetCharacter)
+			if (SourcePawn && SourcePawn != TargetPawn)
 			{
-				if (UCatalystComponent* SourceCatalyst = SourceCharacter->GetCatalystComponent())
+				if (UCatalystComponent* SourceCatalyst = SourcePawn->GetCatalystComponent())
 				{
-					SourceCatalyst->TryAddCatalystCharge_OnValidHit(TargetCharacter);
+					SourceCatalyst->TryAddCatalystCharge_OnValidHit(TargetPawn);
 				}
 			}
 		}
 
-		if (TargetCharacter)
+		if (TargetPawn)
 		{
-			TargetCharacter->MultiShowDamagePop(
+			TargetPawn->MultiShowDamagePop(
 				TotalDamage,
-				TargetCharacter,
+				TargetPawn,
 				DamageTypeTag,
 				false
 			);
 
 			UE_LOG(LogSpellRiseResourceRuntime, Verbose, TEXT("[POP][ResourceSet] Damage=%.1f Source=%s Target=%s Causer=%s"),
 				TotalDamage,
-				*GetNameSafe(SourceCharacter),
-				*GetNameSafe(TargetCharacter),
+				*GetNameSafe(SourcePawn),
+				*GetNameSafe(TargetPawn),
 				*GetNameSafe(Ctx.GetEffectCauser()));
 		}
 
@@ -897,3 +897,4 @@ void UResourceAttributeSet::OnRep_StaminaRegen(const FGameplayAttributeData& Old
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UResourceAttributeSet, StaminaRegen, OldValue);
 }
+

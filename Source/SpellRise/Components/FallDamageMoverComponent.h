@@ -1,24 +1,25 @@
-﻿// FallDamageComponent.h
+// FallDamageMoverComponent.h
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
-#include "FallDamageComponent.generated.h"
+#include "FallDamageMoverComponent.generated.h"
 
-class ACharacter;
+class APawn;
+class UMoverComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
 class UCurveFloat;
 struct FHitResult;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class SPELLRISE_API UFallDamageComponent : public UActorComponent
+class SPELLRISE_API UFallDamageMoverComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
-	UFallDamageComponent();
+	UFallDamageMoverComponent();
 
 	virtual void BeginPlay() override;
 	virtual void TickComponent(
@@ -26,12 +27,12 @@ public:
 		ELevelTick TickType,
 		FActorComponentTickFunction* ThisTickFunction) override;
 
-	void OnMovementModeChanged();
-	void OnLanded(const FHitResult& Hit);
-
 protected:
-	UPROPERTY()
-	ACharacter* OwnerCharacter = nullptr;
+	UPROPERTY(Transient)
+	TObjectPtr<APawn> OwnerPawn = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMoverComponent> OwnerMover = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="Fall Damage")
 	TSubclassOf<UGameplayEffect> GE_FallDamage = nullptr;
@@ -72,10 +73,18 @@ protected:
 	UPROPERTY(Transient)
 	bool bIgnoreNextFallDamage = false;
 
+	UPROPERTY(Transient)
+	FName LastMovementModeName = NAME_None;
+
+	UFUNCTION()
+	void HandleMoverMovementModeChanged(const FName& PreviousMovementModeName, const FName& NewMovementModeName);
+
 	void StartFallTracking();
 	void StopFallTracking();
+	void EvaluateLanding(const FHitResult& Hit);
 
-	bool ShouldTrackFall() const;
+	bool IsCurrentModeFalling() const;
+	bool IsFallingModeName(const FName& ModeName) const;
 	bool IsSafeSurface(const FHitResult& Hit) const;
 	bool HasFallImmunity() const;
 

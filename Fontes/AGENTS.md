@@ -24,7 +24,7 @@ Se houver conflito entre legado e documentação atual, sinalizar o conflito e s
 - Full Loot, Free Target, sem auto-aim e sem tab target.
 - GAS owner autoritativo = `PlayerState`.
 - `ASC` e `AttributeSets` vivem no `PlayerState`.
-- `Character` consome `ASC/ActorInfo` do `PlayerState`.
+- Avatar principal (`ASpellRisePawnBase`) consome `ASC/ActorInfo` do `PlayerState`.
 - `ASC` usa replication mode `Mixed`.
 - Primários canônicos: `STR`, `AGI`, `INT`, `WIS`.
 - Cliente nunca decide dano final, custo, cooldown, recurso, morte, loot ou mutação autoritativa.
@@ -72,8 +72,10 @@ Dono de validação multiplayer, `Standalone`, `Listen`, `DS+2`, reconnect e lag
 - Não inventar classe, tag, API, asset ou fluxo sem verificar equivalente existente.
 - Não afirmar build, teste ou validação sem ter executado.
 - Nunca usar multicast para decidir gameplay autoritativo.
+- `NetMulticast` é reservado para apresentação (`UI`, `VFX`, `SFX`, feedback local).
 - Dedicated Server não pode depender de HUD, widget, câmera ou lógica de UI.
 - Ability code não deve depender apenas de `HasAuthority()` para fluxo de ativação.
+- Em fluxo crítico de combate, commit de ability deve ser confirmado pelo servidor (sem `soft-accept` local para mascarar falha autoritativa).
 - Toda mudança de combate/rede deve explicitar `Server vs Client`, riscos de `authority / prediction / RPC / OnRep` e checklist de teste.
 
 ## Contrato de entrega

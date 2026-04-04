@@ -12,8 +12,15 @@ $ProjectPath = (Resolve-Path (Join-Path $ProjectRoot "SpellRise.uproject")).Path
 $BuildBat = "C:\UnrealSource\UnrealEngine\Engine\Build\BatchFiles\Build.bat"
 $EditorExe = "C:\UnrealSource\UnrealEngine\Engine\Binaries\Win64\UnrealEditor.exe"
 $SmokeGateScript = (Resolve-Path (Join-Path $PSScriptRoot "Run-Smoke-Gate.ps1")).Path
+$LegacyGateScript = (Resolve-Path (Join-Path $PSScriptRoot "Check-NoCharacterLegacy.ps1")).Path
 
 function Invoke-SpellRiseBuild {
+    Write-Host "[Workflow] Gate anti-legado Character/Pawn..."
+    & powershell -ExecutionPolicy Bypass -File $LegacyGateScript -ProjectRoot $ProjectRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "Gate anti-legado falhou com codigo $LASTEXITCODE"
+    }
+
     if (!(Test-Path $BuildBat)) {
         throw "Build.bat nao encontrado em: $BuildBat"
     }

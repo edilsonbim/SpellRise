@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/MovementComponent.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "TimerManager.h"
 #include "UObject/SoftObjectPath.h"
@@ -16,7 +17,6 @@
 #include "InventoryFunctionLibrary.h"
 #include "NarrativeItem.h"
 #include "NavigationMarkerComponent.h"
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 #include "SpellRise/Inventory/SpellRiseLootBagNameComponent.h"
 
@@ -209,14 +209,34 @@ namespace
 		return LegacyBagClass.LoadSynchronous();
 	}
 
-	static FString ResolveDeadPlayerName(const ASpellRiseCharacterBase* DeadCharacter)
+	static APlayerState* ResolvePlayerStateFromDeadActor(const AActor* DeadActor)
 	{
-		if (!DeadCharacter)
+		if (!DeadActor)
+		{
+			return nullptr;
+		}
+
+		if (const APawn* DeadPawn = Cast<APawn>(DeadActor))
+		{
+			return DeadPawn->GetPlayerState();
+		}
+
+		if (const APlayerState* DeadPlayerState = Cast<APlayerState>(DeadActor))
+		{
+			return const_cast<APlayerState*>(DeadPlayerState);
+		}
+
+		return nullptr;
+	}
+
+	static FString ResolveDeadPlayerName(const AActor* DeadActor)
+	{
+		if (!DeadActor)
 		{
 			return FString();
 		}
 
-		if (const APlayerState* PlayerState = DeadCharacter->GetPlayerState<APlayerState>())
+		if (const APlayerState* PlayerState = ResolvePlayerStateFromDeadActor(DeadActor))
 		{
 			const FString PlayerName = PlayerState->GetPlayerName();
 			if (!PlayerName.IsEmpty())
@@ -225,7 +245,7 @@ namespace
 			}
 		}
 
-		return DeadCharacter->GetName();
+		return DeadActor->GetName();
 	}
 
 	static FString SanitizeDeadPlayerNameForNet(const FString& InName, const int32 MaxUtf8Bytes)
@@ -540,6 +560,11 @@ namespace
 		}
 
 		const AActor* Owner = Inventory->GetOwner();
+		if (Owner && Owner->IsA(ASpellRiseLootBagActor::StaticClass()))
+		{
+			return false;
+		}
+
 		if (Owner && (Owner->IsA<APawn>() || Owner->IsA<APlayerState>() || Owner->IsA<APlayerController>()))
 		{
 			return true;
@@ -609,40 +634,54 @@ void USpellRiseFullLootSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-void USpellRiseFullLootSubsystem::HandleCharacterDeath(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride)
+void USpellRiseFullLootSubsystem::HandleCharacterDeath(AActor* DeadActor, TSubclassOf<AActor> LootBagClassOverride)
 {
 	UWorld* World = GetWorld();
-	if (!World || !DeadCharacter || !DeadCharacter->HasAuthority() || !IsAuthorityWorld(World))
+	if (!World || !DeadActor || !DeadActor->HasAuthority() || !IsAuthorityWorld(World))
 	{
 		UE_LOG(
 			LogSpellRiseFullLoot,
 			Warning,
 			TEXT("[FullLoot] Abortado contexto invalido. World=%d Char=%s Auth=%d NetMode=%d"),
 			World ? 1 : 0,
-			*GetNameSafe(DeadCharacter),
-			DeadCharacter && DeadCharacter->HasAuthority() ? 1 : 0,
+			*GetNameSafe(DeadActor),
+			DeadActor && DeadActor->HasAuthority() ? 1 : 0,
 			World ? static_cast<int32>(World->GetNetMode()) : -1);
 		return;
 	}
 
-	const FVector DeathLocation = DeadCharacter->GetActorLocation();
+	const FVector DeathLocation = DeadActor->GetActorLocation();
 	if (LootBagSpawnDelaySeconds > KINDA_SMALL_NUMBER)
 	{
 		const float DelaySeconds = LootBagSpawnDelaySeconds;
 		TWeakObjectPtr<USpellRiseFullLootSubsystem> WeakSubsystem(this);
-		TWeakObjectPtr<ASpellRiseCharacterBase> WeakDeadCharacter(DeadCharacter);
+		TWeakObjectPtr<AActor> WeakDeadActor(DeadActor);
+		TWeakObjectPtr<APlayerState> WeakDeadPlayerState(ResolvePlayerStateFromDeadActor(DeadActor));
 
 		FTimerDelegate SpawnDelayDelegate = FTimerDelegate::CreateLambda(
-			[WeakSubsystem, WeakDeadCharacter, LootBagClassOverride, DeathLocation]()
+			[WeakSubsystem, WeakDeadActor, WeakDeadPlayerState, LootBagClassOverride, DeathLocation]()
 			{
 				USpellRiseFullLootSubsystem* Subsystem = WeakSubsystem.Get();
-				ASpellRiseCharacterBase* ResolvedDeadCharacter = WeakDeadCharacter.Get();
-				if (!Subsystem || !ResolvedDeadCharacter)
+				AActor* ResolvedDeadActor = WeakDeadActor.Get();
+				APlayerState* ResolvedDeadPlayerState = WeakDeadPlayerState.Get();
+				if (!Subsystem)
 				{
 					return;
 				}
 
-				Subsystem->ProcessCharacterDeathNow(ResolvedDeadCharacter, LootBagClassOverride, DeathLocation);
+				// Fallback importante: o Pawn pode ter sido destruido antes do delay da bag.
+				// Nesse caso, ainda processamos o loot usando PlayerState (owner autoritativo do inventario/GAS).
+				if (!ResolvedDeadActor)
+				{
+					ResolvedDeadActor = ResolvedDeadPlayerState;
+				}
+
+				if (!ResolvedDeadActor)
+				{
+					return;
+				}
+
+				Subsystem->ProcessCharacterDeathNow(ResolvedDeadActor, LootBagClassOverride, DeathLocation);
 			});
 
 		FTimerHandle DelayHandle;
@@ -653,20 +692,20 @@ void USpellRiseFullLootSubsystem::HandleCharacterDeath(ASpellRiseCharacterBase* 
 			Log,
 			TEXT("[FullLoot] Spawn da bag agendado para %.2fs apos a morte. Char=%s"),
 			DelaySeconds,
-			*GetNameSafe(DeadCharacter));
+			*GetNameSafe(DeadActor));
 		return;
 	}
 
-	ProcessCharacterDeathNow(DeadCharacter, LootBagClassOverride, DeathLocation);
+	ProcessCharacterDeathNow(DeadActor, LootBagClassOverride, DeathLocation);
 }
 
 void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
-	ASpellRiseCharacterBase* DeadCharacter,
+	AActor* DeadActor,
 	TSubclassOf<AActor> LootBagClassOverride,
 	const FVector& DeathLocation)
 {
 	UWorld* World = GetWorld();
-	if (!World || !DeadCharacter || !DeadCharacter->HasAuthority() || !IsAuthorityWorld(World))
+	if (!World || !DeadActor || !DeadActor->HasAuthority() || !IsAuthorityWorld(World))
 	{
 		return;
 	}
@@ -682,14 +721,14 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 	}
 
 	TArray<UNarrativeInventoryComponent*> SourceInventories;
-	GatherEligibleInventoryComponents(DeadCharacter, false, SourceInventories);
-	GatherEligibleInventoryComponents(DeadCharacter->GetPlayerState(), true, SourceInventories);
+	GatherEligibleInventoryComponents(DeadActor, false, SourceInventories);
+	GatherEligibleInventoryComponents(ResolvePlayerStateFromDeadActor(DeadActor), true, SourceInventories);
 
 	UE_LOG(
 		LogSpellRiseFullLoot,
 		Log,
 		TEXT("[FullLoot] Morte detectada. Char=%s InventariosElegiveis=%d"),
-		*GetNameSafe(DeadCharacter),
+		*GetNameSafe(DeadActor),
 		SourceInventories.Num());
 
 	if (SourceInventories.Num() <= 0)
@@ -698,7 +737,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 			LogSpellRiseFullLoot,
 			Warning,
 			TEXT("[FullLoot] Nenhum inventario Narrative elegivel para %s"),
-			*GetNameSafe(DeadCharacter));
+			*GetNameSafe(DeadActor));
 		return;
 	}
 
@@ -718,7 +757,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 			LogSpellRiseFullLoot,
 			Warning,
 			TEXT("[FullLoot] Limpeza preventiva de LootSource da vitima aplicada. Char=%s InventariosVitima=%d LootersReset=%d"),
-			*GetNameSafe(DeadCharacter),
+			*GetNameSafe(DeadActor),
 			VictimSourceSet.Num(),
 			ClearedVictimSourceLooters);
 	}
@@ -791,7 +830,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 			LogSpellRiseFullLoot,
 			Warning,
 			TEXT("[FullLoot] Nenhum item elegivel para dropar. Char=%s"),
-			*GetNameSafe(DeadCharacter));
+			*GetNameSafe(DeadActor));
 		return;
 	}
 
@@ -802,33 +841,23 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 			LogSpellRiseFullLoot,
 			Error,
 			TEXT("[FullLoot] Classe da bag invalida. Char=%s"),
-			*GetNameSafe(DeadCharacter));
+			*GetNameSafe(DeadActor));
 		return;
 	}
 
-	FTransform SpawnTransform = DeadCharacter->GetActorTransform();
+	FTransform SpawnTransform = DeadActor->GetActorTransform();
 	SpawnTransform.SetScale3D(FVector::OneVector);
-	SpawnTransform.SetLocation(ResolveGroundSpawnLocation(World, DeadCharacter, DeathLocation, DeathLocation));
+	SpawnTransform.SetLocation(ResolveGroundSpawnLocation(World, DeadActor, DeathLocation, DeathLocation));
 
+	// Narrative rejects LootSource that is player-owned (Pawn/PlayerState/Controller).
+	// Keep bag owner null so bag inventory remains loot-eligible for player inventories.
 	AActor* LootBagOwner = nullptr;
-	if (AController* VictimController = DeadCharacter->GetController())
-	{
-		LootBagOwner = VictimController;
-	}
-	else if (APlayerState* VictimPlayerState = DeadCharacter->GetPlayerState<APlayerState>())
-	{
-		LootBagOwner = VictimPlayerState;
-	}
-	else
-	{
-		LootBagOwner = DeadCharacter;
-	}
 
 	AActor* LootBagActor = World->SpawnActorDeferred<AActor>(
 		LootBagClass,
 		SpawnTransform,
 		LootBagOwner,
-		DeadCharacter,
+		Cast<APawn>(DeadActor),
 		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
 	if (!LootBagActor)
 	{
@@ -836,7 +865,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 			LogSpellRiseFullLoot,
 			Error,
 			TEXT("[FullLoot] Falha ao spawnar bag para %s"),
-			*GetNameSafe(DeadCharacter));
+			*GetNameSafe(DeadActor));
 		return;
 	}
 
@@ -850,7 +879,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 	ConfigureLootMarkerForVictimOnly(LootBagActor);
 
 	const FString DeadPlayerDisplayName = SanitizeDeadPlayerNameForNet(
-		ResolveDeadPlayerName(DeadCharacter),
+		ResolveDeadPlayerName(DeadActor),
 		DeadPlayerNameMaxUtf8Bytes);
 	SetLootBagDeadPlayerName(LootBagActor, DeadPlayerDisplayName);
 
@@ -991,7 +1020,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 		Warning,
 		TEXT("[FullLoot] Sucesso. Bag=%s Char=%s Tentativas=%d Movidas=%d QuantidadeMovida=%d RejCapacidade=%d RollbackFalhas=%d"),
 		*GetNameSafe(LootBagActor),
-		*GetNameSafe(DeadCharacter),
+		*GetNameSafe(DeadActor),
 		AttemptedTransfers,
 		MovedTransfers,
 		MovedQuantity,

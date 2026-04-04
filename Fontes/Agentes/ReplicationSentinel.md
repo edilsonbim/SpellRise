@@ -7,7 +7,7 @@ Engenheiro de rede e replicação. Responsável por RPC, ownership, payload, `On
 - tocar `UFUNCTION(Server/Client/NetMulticast)`;
 - tocar `UPROPERTY(Replicated...)`, `GetLifetimeReplicatedProps` ou `OnRep`;
 - revisar ownership, relevancy, payload overflow, `FBitReader::SetOverflowed` ou serialização;
-- revisar `PlayerController`, `PlayerState`, `Character`, projectile, respawn, chat, persistence ou building mode em rede.
+- revisar `PlayerController`, `PlayerState`, `Pawn/Avatar`, projectile, respawn, chat, persistence ou building mode em rede.
 
 ## Entradas mínimas
 - arquivos alterados;

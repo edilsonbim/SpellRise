@@ -1,18 +1,20 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "GameFramework/Pawn.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
-#include "SpellRise/Components/FallDamageComponent.h"
+#include "SpellRise/Components/FallDamageMoverComponent.h"
 
 class UInputMappingContext;
 class UInputAction;
 class UCameraComponent;
 class UAudioComponent;
 class USkeletalMeshComponent;
+class UCapsuleComponent;
+class UCharacterMovementComponent;
 class UAnimMontage;
 class USpellRiseAbilitySystemComponent;
 class UGameplayAbility;
@@ -27,10 +29,10 @@ class UAbilitySystemComponent;
 class ASpellRisePlayerState;
 class USpellRiseEquipmentManagerComponent;
 
-#include "SpellRiseCharacterBase.generated.h"
+#include "SpellRisePawnBase.generated.h"
 
 UENUM(BlueprintType)
-enum class ESpellRiseArchetype : uint8
+enum class ESpellRisePawnArchetype : uint8
 {
 	None UMETA(DisplayName="None"),
 	Warrior UMETA(DisplayName="Warrior"),
@@ -41,7 +43,7 @@ enum class ESpellRiseArchetype : uint8
 };
 
 USTRUCT(BlueprintType)
-struct FSpellRiseGrantedAbility
+struct FSpellRisePawnGrantedAbility
 {
 	GENERATED_BODY()
 
@@ -59,7 +61,7 @@ struct FSpellRiseGrantedAbility
 };
 
 USTRUCT()
-struct FSpellRiseServerEventRateLimitState
+struct FSpellRisePawnServerEventRateLimitState
 {
 	GENERATED_BODY()
 
@@ -74,14 +76,14 @@ struct FSpellRiseServerEventRateLimitState
 };
 
 UCLASS()
-class SPELLRISE_API ASpellRiseCharacterBase
-	: public ACharacter
+class SPELLRISE_API ASpellRisePawnBase
+	: public APawn
 	, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
 public:
-	ASpellRiseCharacterBase();
+	ASpellRisePawnBase();
 
 	virtual void PostInitializeComponents() override;
 	virtual void Tick(float DeltaTime) override;
@@ -90,10 +92,20 @@ public:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
-	virtual void Landed(const FHitResult& Hit) override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Components")
+	UCapsuleComponent* GetCapsuleComponent() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Components")
+	USkeletalMeshComponent* GetMesh() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Components")
+	UCharacterMovementComponent* GetCharacterMovement() const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Movement")
+	void LaunchPawn(const FVector& LaunchVelocity, bool bXYOverride = true, bool bZOverride = true, FName ForceMovementMode = NAME_None);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused);
@@ -102,7 +114,7 @@ public:
 	void SR_ClearAbilityInput();
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant);
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRisePawnGrantedAbility>& AbilitiesToGrant);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
@@ -113,7 +125,12 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|GAS")
 	void ServerSendGameplayEventToSelf(const FGameplayEventData& EventData);
 
-	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|GAS")
+	UFUNCTION(
+		NetMulticast,
+		Reliable,
+		BlueprintCallable,
+		Category="SpellRise|GAS",
+		meta=(DeprecatedFunction, DeprecationMessage="Nao use NetMulticast para eventos de gameplay autoritativos. Use ServerSendGameplayEventToSelf + validacao no servidor."))
 	void MultiSendGameplayEventToActor(AActor* TargetActor, const FGameplayEventData& EventData);
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
@@ -170,25 +187,25 @@ public:
 	UCameraComponent* GetActiveAimCameraComponent() const;
 
 	UPROPERTY(ReplicatedUsing=OnRep_Archetype, BlueprintReadOnly, Category="SpellRise|Archetype")
-	ESpellRiseArchetype Archetype = ESpellRiseArchetype::None;
+	ESpellRisePawnArchetype Archetype = ESpellRisePawnArchetype::None;
 
 	UFUNCTION()
-	void OnRep_Archetype(ESpellRiseArchetype OldArchetype);
+	void OnRep_Archetype(ESpellRisePawnArchetype OldArchetype);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Archetype")
-	void SetArchetype(ESpellRiseArchetype NewArchetype);
+	void SetArchetype(ESpellRisePawnArchetype NewArchetype);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Archetype")
-	void BP_OnArchetypeChanged(ESpellRiseArchetype NewArchetype, ESpellRiseArchetype OldArchetype);
+	void BP_OnArchetypeChanged(ESpellRisePawnArchetype NewArchetype, ESpellRisePawnArchetype OldArchetype);
 
 	UFUNCTION(Server, Reliable)
-	void ServerSetArchetype(ESpellRiseArchetype NewArchetype);
+	void ServerSetArchetype(ESpellRisePawnArchetype NewArchetype);
 
 	void ApplyArchetypeToPrimaries_Server();
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
-	TObjectPtr<UFallDamageComponent> FallDamageComponent = nullptr;
+	TObjectPtr<UFallDamageMoverComponent> FallDamageComponent = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement")
 	float BaseWalkSpeed = 500.f;
@@ -221,7 +238,7 @@ protected:
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Mixed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|GAS|Startup")
-	TArray<FSpellRiseGrantedAbility> StartingAbilities;
+	TArray<FSpellRisePawnGrantedAbility> StartingAbilities;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Startup")
 	TSubclassOf<UGameplayEffect> GE_RecalculateResources;
@@ -379,14 +396,14 @@ protected:
 	void EnsureAnimInstanceInitialized();
 	USkeletalMeshComponent* FindCharacterSkeletalMeshComponentByName(FName ComponentName) const;
 	UCameraComponent* FindCharacterCameraComponentByName(FName ComponentName) const;
-	void HandleArchetypeChanged(ESpellRiseArchetype OldArchetype);
+	void HandleArchetypeChanged(ESpellRisePawnArchetype OldArchetype);
 	void HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag);
 	bool IsAllowedServerEventTag(const FGameplayTag& EventTag) const;
 	bool ValidateServerGameplayEventPayload(const FGameplayEventData& EventData, FString& OutRejectReason) const;
 	bool CheckServerGameplayEventRateLimit(const FGameplayTag& EventTag, FString& OutRejectReason);
 	bool ValidateServerRpcOwnerContext(FString& OutRejectReason) const;
 	bool CheckServerRpcRateLimit(
-		FSpellRiseServerEventRateLimitState& RateState,
+		FSpellRisePawnServerEventRateLimitState& RateState,
 		float WindowSeconds,
 		int32 MaxCountPerWindow,
 		const TCHAR* RpcName,
@@ -408,7 +425,7 @@ protected:
 	float ServerGameplayEventDefaultMaxAbsMagnitude = 1.0f;
 
 	UPROPERTY(Transient)
-	TMap<FGameplayTag, FSpellRiseServerEventRateLimitState> ServerEventRateLimitByTag;
+	TMap<FGameplayTag, FSpellRisePawnServerEventRateLimitState> ServerEventRateLimitByTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="0.01"))
 	float ServerArchetypeRpcRateLimitWindowSeconds = 1.0f;
@@ -423,10 +440,10 @@ protected:
 	int32 ServerAbilitySelectionRpcRateLimitMaxCountPerWindow = 5;
 
 	UPROPERTY(Transient)
-	FSpellRiseServerEventRateLimitState ArchetypeRpcRateState;
+	FSpellRisePawnServerEventRateLimitState ArchetypeRpcRateState;
 
 	UPROPERTY(Transient)
-	FSpellRiseServerEventRateLimitState AbilitySelectionRpcRateState;
+	FSpellRisePawnServerEventRateLimitState AbilitySelectionRpcRateState;
 
 	UPROPERTY(Transient)
 	int32 ServerRejectedGameplayEvents = 0;
@@ -440,3 +457,5 @@ protected:
 	UPROPERTY(Transient)
 	double CombatLockExpireAtServerTimeSeconds = -1.0;
 };
+
+

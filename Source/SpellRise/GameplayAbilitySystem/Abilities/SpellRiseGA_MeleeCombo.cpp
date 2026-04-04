@@ -4,7 +4,7 @@
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "GameFramework/Character.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCombo, Log, All);
 
@@ -226,13 +226,13 @@ UAnimInstance* USpellRiseGA_MeleeCombo::GetComboAnimInstance() const
 		}
 	}
 
-	ACharacter* Character = Cast<ACharacter>(GetAvatarActorFromActorInfo());
-	if (!Character || !Character->GetMesh())
+	ASpellRisePawnBase* PawnBase = Cast<ASpellRisePawnBase>(GetAvatarActorFromActorInfo());
+	if (!PawnBase || !PawnBase->GetMesh())
 	{
 		return nullptr;
 	}
 
-	return Character->GetMesh()->GetAnimInstance();
+	return PawnBase->GetMesh()->GetAnimInstance();
 }
 
 void USpellRiseGA_MeleeCombo::StartComboTasks()

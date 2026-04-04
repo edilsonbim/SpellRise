@@ -4,12 +4,11 @@
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayTagContainer.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/Character.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGA_MeleeCombo.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityTagRelationshipMapping.h"
@@ -113,33 +112,27 @@ int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTa
 bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 {
 	AActor* LocalAvatarActor = GetAvatarActor();
-	ACharacter* Character = Cast<ACharacter>(LocalAvatarActor);
-	if (!Character)
+	if (!LocalAvatarActor)
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: Avatar is not Character. Avatar=%s"), *GetNameSafe(LocalAvatarActor));
+		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: Avatar nulo."));
 		return false;
 	}
 
 	TArray<USkeletalMeshComponent*> CandidateMeshes;
-	if (ASpellRiseCharacterBase* SpellRiseCharacter = Cast<ASpellRiseCharacterBase>(Character))
+	if (ASpellRisePawnBase* SpellRisePawn = Cast<ASpellRisePawnBase>(LocalAvatarActor))
 	{
-		if (USkeletalMeshComponent* VisualMesh = SpellRiseCharacter->GetVisualMeshComponent())
+		if (USkeletalMeshComponent* VisualMesh = SpellRisePawn->GetVisualMeshComponent())
 		{
 			CandidateMeshes.AddUnique(VisualMesh);
 		}
-		if (USkeletalMeshComponent* EquipMesh = SpellRiseCharacter->GetEquipmentAttachMeshComponent())
+		if (USkeletalMeshComponent* EquipMesh = SpellRisePawn->GetEquipmentAttachMeshComponent())
 		{
 			CandidateMeshes.AddUnique(EquipMesh);
 		}
 	}
 
-	if (USkeletalMeshComponent* BaseMesh = Character->GetMesh())
-	{
-		CandidateMeshes.AddUnique(BaseMesh);
-	}
-
 	TArray<USkeletalMeshComponent*> AllMeshes;
-	Character->GetComponents<USkeletalMeshComponent>(AllMeshes);
+	LocalAvatarActor->GetComponents<USkeletalMeshComponent>(AllMeshes);
 	for (USkeletalMeshComponent* MeshComp : AllMeshes)
 	{
 		CandidateMeshes.AddUnique(MeshComp);
@@ -174,7 +167,7 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 
 	if (!SelectedAnimInstance || !ActiveMontage)
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: No active montage found in candidate meshes. Character=%s"), *GetNameSafe(Character));
+		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: No active montage found in candidate meshes. Avatar=%s"), *GetNameSafe(LocalAvatarActor));
 		return false;
 	}
 
@@ -668,11 +661,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				if (!IsOwnerActorAuthoritative() && (Spec->Ability->bReplicateInputDirectly || IsComboSpec(Spec)))
-				{
-					ServerSetInputPressed(Spec->Handle);
-				}
-
 				// Ensure active abilities that rely on WaitInputPress receive replicated generic input events.
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
@@ -776,11 +764,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				if (!IsOwnerActorAuthoritative() && (Spec->Ability->bReplicateInputDirectly || IsComboSpec(Spec)))
-				{
-					ServerSetInputReleased(Spec->Handle);
-				}
-
 				// Mirror pressed behavior for abilities waiting on input release tasks.
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
@@ -847,8 +830,8 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 	Super::OnRep_ActivateAbilities();
 
 	AActor* Avatar = GetAvatarActor();
-	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Avatar);
-	if (!Character)
+	ASpellRisePawnBase* PawnBase = Cast<ASpellRisePawnBase>(Avatar);
+	if (!PawnBase)
 	{
 		return;
 	}
@@ -870,7 +853,7 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 
 	if (bAbilitiesChanged)
 	{
-		Character->SendAbilitiesChangedEvent();
+		PawnBase->SendAbilitiesChangedEvent();
 		LastActivatableAbilities = ActivatableAbilities.Items;
 	}
 }

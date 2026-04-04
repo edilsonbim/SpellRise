@@ -22,7 +22,7 @@
 #include "InventoryFunctionLibrary.h"
 #include "NarrativeItem.h"
 
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
@@ -36,7 +36,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
 namespace
 {
-	constexpr int32 PersistenceCharacterSchemaVersion = 5;
+	constexpr int32 PersistenceCharacterSchemaVersion = 6;
 	constexpr int32 PersistenceInventorySchemaVersion = 2;
 	constexpr int32 PersistenceWorldSchemaVersion = 1;
 	constexpr int32 LegacyPersistenceWorldSchemaVersion = 5;
@@ -192,6 +192,12 @@ namespace
 		if (Data.SchemaVersion <= 0)
 		{
 			OutReason = TEXT("invalid_schema");
+			return false;
+		}
+
+		if (Data.SchemaVersion < PersistenceCharacterSchemaVersion)
+		{
+			OutReason = TEXT("legacy_schema_requires_offline_migration");
 			return false;
 		}
 
@@ -572,15 +578,15 @@ namespace
 			|| ClassPath.Contains(TEXT("_Bed"), ESearchCase::IgnoreCase);
 	}
 
-	void DestroyOwnedEquipmentVisualActors(ASpellRiseCharacterBase* Character)
+	void DestroyOwnedEquipmentVisualActors(ASpellRisePawnBase* Pawn)
 	{
-		if (!Character)
+		if (!Pawn)
 		{
 			return;
 		}
 
 		TArray<UChildActorComponent*> ChildActorComps;
-		Character->GetComponents<UChildActorComponent>(ChildActorComps);
+		Pawn->GetComponents<UChildActorComponent>(ChildActorComps);
 		for (UChildActorComponent* ChildActorComp : ChildActorComps)
 		{
 			if (ChildActorComp)
@@ -590,10 +596,10 @@ namespace
 		}
 
 		TArray<AActor*> AttachedActors;
-		Character->GetAttachedActors(AttachedActors);
+		Pawn->GetAttachedActors(AttachedActors);
 		for (AActor* AttachedActor : AttachedActors)
 		{
-			if (AttachedActor && AttachedActor->GetOwner() == Character)
+			if (AttachedActor && AttachedActor->GetOwner() == Pawn)
 			{
 				AttachedActor->Destroy();
 			}
@@ -812,7 +818,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 		return false;
 	}
 
-	const bool bApplied = ApplyCharacterDataToController(Controller, *CachedData);
+	const bool bApplied = ApplyPawnDataToController(Controller, *CachedData);
 	if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 	{
 		SRPlayerState->SetPersistenceProfileApplied(true);
@@ -859,7 +865,7 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 
 	const double SaveStartSeconds = FPlatformTime::Seconds();
 	FSpellRiseCharacterSaveData SaveData;
-	if (!CollectCharacterData(Controller, SteamId64, SaveData))
+	if (!CollectPawnData(Controller, SteamId64, SaveData))
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] PersistentId=%s Controller=%s Reason=collect_failed"), *SteamId64, *GetNameSafe(Controller));
 		return false;
@@ -1447,7 +1453,7 @@ namespace
 	}
 }
 
-bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controller, const FString& SteamId64, FSpellRiseCharacterSaveData& OutData) const
+bool USpellRisePersistenceSubsystem::CollectPawnData(AController* Controller, const FString& SteamId64, FSpellRiseCharacterSaveData& OutData) const
 {
 	if (!Controller || !Controller->PlayerState)
 	{
@@ -1458,9 +1464,9 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 		return false;
 	}
 
-	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Controller->GetPawn());
+	ASpellRisePawnBase* Pawn = Cast<ASpellRisePawnBase>(Controller->GetPawn());
 	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
-	if (!Character || !SRPlayerState)
+	if (!Pawn || !SRPlayerState)
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCollectRejected] PersistentId=%s Controller=%s Reason=missing_character_or_playerstate"), *SteamId64, *GetNameSafe(Controller));
 		return false;
@@ -1477,8 +1483,8 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	OutData.SchemaVersion = PersistenceCharacterSchemaVersion;
 	OutData.SteamId64 = SteamId64;
 	OutData.PlayerDisplayName = Controller->PlayerState->GetPlayerName();
-	OutData.CharacterTransform = Character->GetActorTransform();
-	OutData.ArchetypeValue = static_cast<uint8>(Character->Archetype);
+	OutData.CharacterTransform = Pawn->GetActorTransform();
+	OutData.ArchetypeValue = static_cast<uint8>(Pawn->Archetype);
 
 	if (!IsFiniteTransform(OutData.CharacterTransform))
 	{
@@ -1512,7 +1518,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	}
 
 	TArray<FNarrativeInventoryBinding> Bindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, Bindings);
+	GatherNarrativeInventoryBindings(Pawn, ESpellRiseSaveOwnerScope::Character, Bindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, Bindings);
 
 	for (const FNarrativeInventoryBinding& Binding : Bindings)
@@ -1564,7 +1570,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	return true;
 }
 
-bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController* Controller, const FSpellRiseCharacterSaveData& Data)
+bool USpellRisePersistenceSubsystem::ApplyPawnDataToController(AController* Controller, const FSpellRiseCharacterSaveData& Data)
 {
 	if (!Controller || !Controller->PlayerState)
 	{
@@ -1585,9 +1591,9 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		return false;
 	}
 
-	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Controller->GetPawn());
+	ASpellRisePawnBase* Pawn = Cast<ASpellRisePawnBase>(Controller->GetPawn());
 	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
-	if (!Character || !SRPlayerState)
+	if (!Pawn || !SRPlayerState)
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] PersistentId=%s Controller=%s Reason=missing_character_or_playerstate"), *SteamId64, *GetNameSafe(Controller));
 		return false;
@@ -1606,7 +1612,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][LoadName] PersistentId=%s Name=%s"), *SteamId64, *Data.PlayerDisplayName);
 	}
 
-	Character->Archetype = static_cast<ESpellRiseArchetype>(Data.ArchetypeValue);
+	Pawn->Archetype = static_cast<ESpellRisePawnArchetype>(Data.ArchetypeValue);
 
 	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), Data.Strength);
 	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), Data.Agility);
@@ -1631,7 +1637,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		FString TransformValidationReason;
 		if (ValidateWorldSpawnTransform(Controller->GetWorld(), Data.CharacterTransform, TransformValidationReason))
 		{
-			Character->SetActorTransform(Data.CharacterTransform, false, nullptr, ETeleportType::TeleportPhysics);
+			Pawn->SetActorTransform(Data.CharacterTransform, false, nullptr, ETeleportType::TeleportPhysics);
 			UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ApplyCharacterTransform] PersistentId=%s Controller=%s Location=%s"),
 				*SteamId64,
 				*GetNameSafe(Controller),
@@ -1647,9 +1653,9 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		}
 	}
 
-	DestroyOwnedEquipmentVisualActors(Character);
+	DestroyOwnedEquipmentVisualActors(Pawn);
 	TArray<FNarrativeInventoryBinding> AvailableBindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, AvailableBindings);
+	GatherNarrativeInventoryBindings(Pawn, ESpellRiseSaveOwnerScope::Character, AvailableBindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, AvailableBindings);
 
 	for (const FNarrativeInventoryBinding& Binding : AvailableBindings)
@@ -1777,7 +1783,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("apply_profile_fallback"));
 	}
 
-	ReconcileCharacterVisualEquipment(Character, SRPlayerState);
+	ReconcilePawnVisualEquipment(Pawn, SRPlayerState);
 
 	return true;
 }
@@ -1789,9 +1795,9 @@ void USpellRisePersistenceSubsystem::EnsureDefaultItemsForControllerIfNeeded(ACo
 		return;
 	}
 
-	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Controller->GetPawn());
+	ASpellRisePawnBase* Pawn = Cast<ASpellRisePawnBase>(Controller->GetPawn());
 	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
-	if (!Character || !SRPlayerState)
+	if (!Pawn || !SRPlayerState)
 	{
 		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][DefaultItemsSkipped] Controller=%s Context=%s Reason=missing_character_or_playerstate"),
 			*GetNameSafe(Controller),
@@ -1800,7 +1806,7 @@ void USpellRisePersistenceSubsystem::EnsureDefaultItemsForControllerIfNeeded(ACo
 	}
 
 	TArray<FNarrativeInventoryBinding> Bindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, Bindings);
+	GatherNarrativeInventoryBindings(Pawn, ESpellRiseSaveOwnerScope::Character, Bindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, Bindings);
 
 	for (const FNarrativeInventoryBinding& Binding : Bindings)
@@ -1873,15 +1879,15 @@ void USpellRisePersistenceSubsystem::MergeInventorySnapshotIntoCharacterData(con
 	}
 }
 
-void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRiseCharacterBase* Character, ASpellRisePlayerState* PlayerState) const
+void USpellRisePersistenceSubsystem::ReconcilePawnVisualEquipment(ASpellRisePawnBase* Pawn, ASpellRisePlayerState* PlayerState) const
 {
-	if (!Character)
+	if (!Pawn)
 	{
 		return;
 	}
 
 	TArray<FNarrativeInventoryBinding> CandidateBindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, CandidateBindings);
+	GatherNarrativeInventoryBindings(Pawn, ESpellRiseSaveOwnerScope::Character, CandidateBindings);
 	GatherNarrativeInventoryBindings(PlayerState, ESpellRiseSaveOwnerScope::PlayerState, CandidateBindings);
 
 	for (const FNarrativeInventoryBinding& Binding : CandidateBindings)
@@ -1914,7 +1920,7 @@ void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRis
 	}
 
 	InvokeNoParamFunctionIfExists(
-		Character,
+		Pawn,
 		{
 			TEXT("RefreshEquipment"),
 			TEXT("RefreshEquipmentSERVER"),
@@ -1926,7 +1932,7 @@ void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRis
 			TEXT("SyncEquipmentVisualsSERVER")
 		});
 
-	Character->ForceNetUpdate();
+	Pawn->ForceNetUpdate();
 	if (PlayerState)
 	{
 		PlayerState->ForceNetUpdate();
@@ -1977,3 +1983,5 @@ AActor* USpellRisePersistenceSubsystem::ResolveSavedBedActor(UWorld* World, cons
 
 	return nullptr;
 }
+
+

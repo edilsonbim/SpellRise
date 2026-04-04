@@ -5,7 +5,7 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
@@ -14,6 +14,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseGameplayAbilityRuntime, Log, All);
 USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
+	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	bReplicateInputDirectly = false;
 	CastDurationMagnitudeTag = FGameplayTag::RequestGameplayTag(TEXT("Data.CastDuration"), false);
 }
@@ -133,9 +134,9 @@ USpellRiseAbilitySystemComponent* USpellRiseGameplayAbility::GetSpellRiseAbility
 	return Cast<USpellRiseAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
 }
 
-ASpellRiseCharacterBase* USpellRiseGameplayAbility::GetSpellRiseCharacterFromActorInfo() const
+ASpellRisePawnBase* USpellRiseGameplayAbility::GetSpellRisePawnFromActorInfo() const
 {
-	return Cast<ASpellRiseCharacterBase>(GetAvatarActorFromActorInfo());
+	return Cast<ASpellRisePawnBase>(GetAvatarActorFromActorInfo());
 }
 
 AController* USpellRiseGameplayAbility::GetControllerFromActorInfo() const
@@ -255,14 +256,7 @@ void USpellRiseGameplayAbility::ActivateAbility(
 	switch (CastType)
 	{
 	case ESpellRiseAbilityCastType::Instant:
-		if (TryCommitSpellAbility())
-		{
-			ExecuteSpellFromCurrentMode();
-		}
-		else
-		{
-			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-		}
+		ExecuteSpellFromCurrentMode();
 		break;
 
 	case ESpellRiseAbilityCastType::Cast:
@@ -312,9 +306,9 @@ void USpellRiseGameplayAbility::EndAbility(
 		{
 			if (SpellRiseASC->SR_IsSelectedSpellAbilityHandle(Handle))
 			{
-				if (ASpellRiseCharacterBase* SpellRiseCharacter = Cast<ASpellRiseCharacterBase>(ActorInfo->AvatarActor.Get()))
+				if (ASpellRisePawnBase* SpellRisePawn = Cast<ASpellRisePawnBase>(ActorInfo->AvatarActor.Get()))
 				{
-					SpellRiseCharacter->ClearSelectedAbility();
+					SpellRisePawn->ClearSelectedAbility();
 				}
 				else
 				{
@@ -370,6 +364,9 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 
 	if (CastType == ESpellRiseAbilityCastType::Cast && !bHasExecutedSpell)
 	{
+		// Regra de UX:
+		// - soltou antes do fim do cast: executa automaticamente ao terminar.
+		// - manteve pressionado até o cast terminar: executa ao soltar.
 		if (bAwaitingReleaseAfterCastComplete)
 		{
 			bAwaitingReleaseAfterCastComplete = false;
@@ -386,23 +383,35 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 
 bool USpellRiseGameplayAbility::TryCommitSpellAbility()
 {
-	if (!bCommitAbilityOnActivate)
-	{
-		return true;
-	}
+	FGameplayTagContainer FailureTags;
+	const bool bCommitOk = CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, &FailureTags);
 
-	const bool bCommitted = CommitAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo);
-	if (!bCommitted)
+	if (!bCommitOk)
 	{
 		UE_LOG(
 			LogSpellRiseGameplayAbilityRuntime,
 			Warning,
-			TEXT("[GAS][AbilityCommitDenied] ability=%s castType=%d"),
+			TEXT("[GAS][CommitFailed] ability=%s castType=%d authority=%d local=%d failureTags=%s"),
 			*GetNameSafe(this),
-			static_cast<int32>(CastType));
+			static_cast<int32>(CastType),
+			HasServerAuthority() ? 1 : 0,
+			IsLocallyControlledAbility() ? 1 : 0,
+			*FailureTags.ToString());
+		NativeOnSpellCommitFailed(FailureTags);
+	}
+	else
+	{
+		UE_LOG(
+			LogSpellRiseGameplayAbilityRuntime,
+			Verbose,
+			TEXT("[GAS][CommitOk] ability=%s castType=%d authority=%d local=%d"),
+			*GetNameSafe(this),
+			static_cast<int32>(CastType),
+			HasServerAuthority() ? 1 : 0,
+			IsLocallyControlledAbility() ? 1 : 0);
 	}
 
-	return bCommitted;
+	return bCommitOk;
 }
 
 void USpellRiseGameplayAbility::ApplyCastingEffect()
@@ -556,12 +565,6 @@ void USpellRiseGameplayAbility::NotifyHUDCastStopped() const
 
 void USpellRiseGameplayAbility::StartCastFlow()
 {
-	if (!TryCommitSpellAbility())
-	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
-		return;
-	}
-
 	UE_LOG(
 		LogSpellRiseGameplayAbilityRuntime,
 		Verbose,
@@ -627,20 +630,40 @@ void USpellRiseGameplayAbility::FinishCastFlow()
 		}
 	}
 
+	// Cast stage ended; remove cast-only visual/runtime effects even if ability keeps running.
+	RemoveCastingEffect();
+	RemoveCastingBarEffect();
+	NotifyHUDCastStopped();
+
 	ExecuteSpellFromCurrentMode();
 }
 
 void USpellRiseGameplayAbility::StartChannelFlow()
 {
-	if (!TryCommitSpellAbility())
-	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
-		return;
-	}
-
 	bIsChanneling = true;
 	NativeOnChannelStarted();
-	NativeOnSpellExecuted();
+
+	if (!bCommitAbilityEveryChannelTick)
+	{
+		if (!TryCommitSpellAbility())
+		{
+			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+			return;
+		}
+
+		NativeOnSpellExecuted();
+	}
+	else
+	{
+		// Channel with commit-per-tick must also validate/commit on the first execution.
+		if (!TryCommitSpellAbility())
+		{
+			EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+			return;
+		}
+
+		NativeOnSpellExecuted();
+	}
 
 	if (ChannelInterval <= 0.0f)
 	{
@@ -665,7 +688,7 @@ void USpellRiseGameplayAbility::TickChannelFlow()
 		return;
 	}
 
-	if (bCommitAbilityEveryChannelTick && !CommitAbilityCost(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo))
+	if (bCommitAbilityEveryChannelTick && !TryCommitSpellAbility())
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
@@ -704,13 +727,14 @@ void USpellRiseGameplayAbility::ExecuteSpellFromCurrentMode()
 		*GetNameSafe(this),
 		static_cast<int32>(CastType));
 
+	if (!TryCommitSpellAbility())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
 	bHasExecutedSpell = true;
 	NativeOnSpellExecuted();
-
-	if (bEndAbilityAfterExecution && CastType != ESpellRiseAbilityCastType::Channel)
-	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
-	}
 }
 
 void USpellRiseGameplayAbility::ResetSpellRuntimeState()
@@ -751,12 +775,14 @@ float USpellRiseGameplayAbility::ResolveElapsedCastTime() const
 void USpellRiseGameplayAbility::HandleCastFinished()
 {
 	CastElapsedTime = ResolveElapsedCastTime();
-
 	bIsCasting = false;
 
 	if (bIsAbilityInputPressed)
 	{
 		bAwaitingReleaseAfterCastComplete = true;
+		RemoveCastingEffect();
+		RemoveCastingBarEffect();
+		NotifyHUDCastStopped();
 		return;
 	}
 
@@ -786,4 +812,9 @@ void USpellRiseGameplayAbility::NativeOnChannelStarted()
 void USpellRiseGameplayAbility::NativeOnChannelStopped(bool bWasCancelled)
 {
 	K2_OnChannelStopped(bWasCancelled);
+}
+
+void USpellRiseGameplayAbility::NativeOnSpellCommitFailed(const FGameplayTagContainer& FailureTags)
+{
+	K2_OnSpellCommitFailed(FailureTags);
 }

@@ -20,7 +20,7 @@ class UGameplayEffect;
 class UGameplayAbility;
 class USpellRiseAbilitySystemComponent;
 class UCatalystAttributeSet;
-class ASpellRiseCharacterBase;
+class ASpellRisePawnBase;
 
 /**
  * Component that implements SpellRise's catalyst mechanic.  It handles adding catalyst charges
@@ -42,7 +42,7 @@ protected:
 public:
     /**
      * Gameplay effect used to add catalyst charge.  Should increment the CatalystCharge attribute
-     * defined on UCatalystAttributeSet.  Assign this in the Blueprint defaults of the character.
+     * defined on UCatalystAttributeSet.  Assign this in the Blueprint defaults of the pawn.
      */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
     TSubclassOf<UGameplayEffect> GE_CatalystAddCharge;
@@ -103,11 +103,11 @@ private:
     /** Whether we've bound the charge change delegate. */
     bool bCatalystListenerBound = false;
 
-    /** Ability system component of our owning character. */
+    /** Ability system component of our owning pawn. */
     UPROPERTY(Transient)
     TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent;
 
-    /** Owning SpellRise character. */
+    /** Owning SpellRise pawn. */
     UPROPERTY(Transient)
-    TObjectPtr<ASpellRiseCharacterBase> OwnerCharacter;
+    TObjectPtr<ASpellRisePawnBase> OwnerPawn;
 };

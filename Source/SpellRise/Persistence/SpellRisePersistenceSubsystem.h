@@ -8,6 +8,7 @@
 
 class AController;
 class APlayerState;
+class ASpellRisePawnBase;
 class UWorld;
 UCLASS()
 class SPELLRISE_API USpellRisePersistenceSubsystem : public UGameInstanceSubsystem
@@ -40,14 +41,14 @@ private:
 	FString ResolveSteamIdFromController(const AController* Controller) const;
 	FString ResolveWorldId(const UWorld* World) const;
 
-	bool CollectCharacterData(AController* Controller, const FString& SteamId64, FSpellRiseCharacterSaveData& OutData) const;
-	bool ApplyCharacterDataToController(AController* Controller, const FSpellRiseCharacterSaveData& Data);
+	bool CollectPawnData(AController* Controller, const FString& SteamId64, FSpellRiseCharacterSaveData& OutData) const;
+	bool ApplyPawnDataToController(AController* Controller, const FSpellRiseCharacterSaveData& Data);
 	void EnsureDefaultItemsForControllerIfNeeded(AController* Controller, const TCHAR* ContextTag);
 	void BuildInventorySnapshotFromCharacterData(const FSpellRiseCharacterSaveData& CharacterData, const FString& SteamId64, FSpellRiseInventorySaveData& OutInventoryData) const;
 	void MergeInventorySnapshotIntoCharacterData(const FSpellRiseInventorySaveData& InventoryData, FSpellRiseCharacterSaveData& InOutCharacterData) const;
 	void RecordPersistenceTelemetry(const TCHAR* Operation, bool bSuccess, double LatencyMs, const TCHAR* Reason);
 	AActor* ResolveSavedBedActor(UWorld* World, const FSpellRiseCharacterSaveData& Data) const;
-	void ReconcileCharacterVisualEquipment(class ASpellRiseCharacterBase* Character, class ASpellRisePlayerState* PlayerState) const;
+	void ReconcilePawnVisualEquipment(class ASpellRisePawnBase* Pawn, class ASpellRisePlayerState* PlayerState) const;
 
 	TUniquePtr<ISpellRisePersistenceProvider> Provider;
 	TMap<FString, FSpellRiseCharacterSaveData> CachedCharacterDataBySteamId;
