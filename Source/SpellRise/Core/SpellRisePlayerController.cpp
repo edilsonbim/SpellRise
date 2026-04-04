@@ -16,15 +16,18 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "InteractionComponent.h"
+#include "InventoryComponent.h"
+#include "InventoryFunctionLibrary.h"
 #include "Misc/DateTime.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
+#include "NarrativeItem.h"
 #include "UObject/UnrealType.h"
 
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
@@ -468,11 +471,265 @@ namespace
 			UE_LOG(
 				LogSpellRisePlayerControllerRuntime,
 				Log,
-				TEXT("[Input][IMC] Removed Context=%s Priority=%d"),
-				ContextLabel,
-				Priority);
+			TEXT("[Input][IMC] Removed Context=%s Priority=%d"),
+			ContextLabel,
+			Priority);
 		}
 	}
+
+	UNarrativeInventoryComponent* ResolveInventoryFromObject(UObject* Candidate)
+	{
+		if (!IsValid(Candidate))
+		{
+			return nullptr;
+		}
+
+		if (UNarrativeInventoryComponent* Inventory = Cast<UNarrativeInventoryComponent>(Candidate))
+		{
+			return Inventory;
+		}
+
+		if (AActor* AsActor = Cast<AActor>(Candidate))
+		{
+			if (UNarrativeInventoryComponent* Inventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(AsActor))
+			{
+				return Inventory;
+			}
+
+			return AsActor->FindComponentByClass<UNarrativeInventoryComponent>();
+		}
+
+		if (UActorComponent* AsComponent = Cast<UActorComponent>(Candidate))
+		{
+			if (AActor* OwnerActor = AsComponent->GetOwner())
+			{
+				if (UNarrativeInventoryComponent* Inventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwnerActor))
+				{
+					return Inventory;
+				}
+
+				return OwnerActor->FindComponentByClass<UNarrativeInventoryComponent>();
+			}
+		}
+
+		return nullptr;
+	}
+
+	bool IsInventoryOwnedByController(const ASpellRisePlayerController* Controller, const UNarrativeInventoryComponent* Inventory)
+	{
+		if (!Controller || !Inventory)
+		{
+			return false;
+		}
+
+		if (Inventory->GetOwningController() == Controller)
+		{
+			return true;
+		}
+
+		const APawn* ControlledPawn = Controller->GetPawn();
+		if (Inventory->GetOwningPawn() == ControlledPawn)
+		{
+			return true;
+		}
+
+		const AActor* OwnerActor = Inventory->GetOwner();
+		return OwnerActor == Controller || OwnerActor == ControlledPawn || OwnerActor == Controller->PlayerState;
+	}
+
+	bool IsPlayerOwnedInventory(const UNarrativeInventoryComponent* Inventory)
+	{
+		if (!Inventory)
+		{
+			return false;
+		}
+
+		const AActor* OwnerActor = Inventory->GetOwner();
+		if (!OwnerActor)
+		{
+			return false;
+		}
+
+		return
+			OwnerActor->IsA<APawn>() ||
+			OwnerActor->IsA<APlayerController>() ||
+			OwnerActor->IsA<APlayerState>() ||
+			Inventory->GetOwningController() != nullptr ||
+			Inventory->GetOwningPawn() != nullptr;
+	}
+
+	UNarrativeInventoryComponent* GetLootSourceReflective(const UNarrativeInventoryComponent* Inventory)
+	{
+		if (!Inventory)
+		{
+			return nullptr;
+		}
+
+		static const FObjectProperty* LootSourceProperty = FindFProperty<FObjectProperty>(
+			UNarrativeInventoryComponent::StaticClass(),
+			TEXT("LootSource"));
+		if (!LootSourceProperty)
+		{
+			return nullptr;
+		}
+
+		return Cast<UNarrativeInventoryComponent>(
+			LootSourceProperty->GetObjectPropertyValue_InContainer(Inventory));
+	}
+
+	void CollectOwnedInventories(const ASpellRisePlayerController* Controller, TArray<UNarrativeInventoryComponent*>& OutOwnedInventories)
+	{
+		if (!Controller)
+		{
+			return;
+		}
+
+		const auto AddFromOwner = [&OutOwnedInventories](AActor* OwnerActor)
+		{
+			if (!IsValid(OwnerActor))
+			{
+				return;
+			}
+
+			if (UNarrativeInventoryComponent* PrimaryInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwnerActor))
+			{
+				OutOwnedInventories.AddUnique(PrimaryInventory);
+			}
+
+			TArray<UNarrativeInventoryComponent*> InventoryComponents;
+			OwnerActor->GetComponents<UNarrativeInventoryComponent>(InventoryComponents);
+			for (UNarrativeInventoryComponent* Inventory : InventoryComponents)
+			{
+				OutOwnedInventories.AddUnique(Inventory);
+			}
+		};
+
+		AddFromOwner(const_cast<ASpellRisePlayerController*>(Controller));
+		AddFromOwner(Controller->GetPawn());
+		AddFromOwner(Controller->PlayerState);
+	}
+
+	bool IsInventoryCloseToControllerPawn(const ASpellRisePlayerController* Controller, const UNarrativeInventoryComponent* Inventory, float MaxDistance)
+	{
+		if (!Controller || !Inventory)
+		{
+			return false;
+		}
+
+		const APawn* ControlledPawn = Controller->GetPawn();
+		const AActor* InventoryOwner = Inventory->GetOwner();
+		if (!ControlledPawn || !InventoryOwner)
+		{
+			return false;
+		}
+
+		const float DistSq = FVector::DistSquared(
+			ControlledPawn->GetActorLocation(),
+			InventoryOwner->GetActorLocation());
+		return DistSq <= FMath::Square(FMath::Max(50.0f, MaxDistance));
+	}
+
+	bool IsInventoryAccessibleToController(
+		const ASpellRisePlayerController* Controller,
+		const UNarrativeInventoryComponent* Inventory,
+		float MaxDistanceForWorldInventory)
+	{
+		if (!Controller || !Inventory)
+		{
+			return false;
+		}
+
+		if (IsInventoryOwnedByController(Controller, Inventory))
+		{
+			return true;
+		}
+
+		// Mantem compatibilidade com fluxo Narrative de loot aberto via LootSource.
+		TArray<UNarrativeInventoryComponent*> OwnedInventories;
+		CollectOwnedInventories(Controller, OwnedInventories);
+		for (const UNarrativeInventoryComponent* OwnedInventory : OwnedInventories)
+		{
+			if (GetLootSourceReflective(OwnedInventory) == Inventory)
+			{
+				return true;
+			}
+		}
+
+		// Fallback seguro: inventario de mundo perto do pawn controlado.
+		return IsInventoryCloseToControllerPawn(Controller, Inventory, MaxDistanceForWorldInventory);
+	}
+
+	void SanitizeOwnedLootSources(ASpellRisePlayerController* Controller)
+	{
+		if (!Controller || !Controller->HasAuthority())
+		{
+			return;
+		}
+
+		TArray<UNarrativeInventoryComponent*> OwnedInventories;
+		CollectOwnedInventories(Controller, OwnedInventories);
+
+		int32 ClearedCount = 0;
+		for (UNarrativeInventoryComponent* OwnedInventory : OwnedInventories)
+		{
+			if (!OwnedInventory)
+			{
+				continue;
+			}
+
+			UNarrativeInventoryComponent* CurrentLootSource = GetLootSourceReflective(OwnedInventory);
+			if (!CurrentLootSource)
+			{
+				continue;
+			}
+
+			const AActor* SourceOwner = CurrentLootSource->GetOwner();
+			const bool bInvalidSource =
+				!IsValid(CurrentLootSource) ||
+				!IsValid(SourceOwner) ||
+				SourceOwner->IsActorBeingDestroyed() ||
+				IsPlayerOwnedInventory(CurrentLootSource);
+
+			if (!bInvalidSource)
+			{
+				continue;
+			}
+
+			OwnedInventory->SetLootSource(nullptr);
+			ClearedCount++;
+		}
+
+		if (ClearedCount > 0)
+		{
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Log,
+				TEXT("[Inventory][Server][LootSourceSanitized] Controller=%s Cleared=%d"),
+				*GetNameSafe(Controller),
+				ClearedCount);
+		}
+	}
+
+	void RollbackAddedQuantity(UNarrativeInventoryComponent* Inventory, TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToRollback)
+	{
+		if (!Inventory || !ItemClass || QuantityToRollback <= 0)
+		{
+			return;
+		}
+
+		TArray<UNarrativeItem*> Stacks = Inventory->FindItemsOfClass(ItemClass, false);
+		for (UNarrativeItem* Stack : Stacks)
+		{
+			if (!Stack || QuantityToRollback <= 0)
+			{
+				continue;
+			}
+
+			const int32 Removed = Inventory->ConsumeItem(Stack, QuantityToRollback);
+			QuantityToRollback -= FMath::Max(0, Removed);
+		}
+	}
+
 }
 
 ASpellRisePlayerController::ASpellRisePlayerController()
@@ -596,52 +853,63 @@ void ASpellRisePlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	FString LocalPawnRuntimeSkipReason;
-	const bool bCanRunHUDFlow = CanRunLocalPawnRuntime(GetPawn(), &LocalPawnRuntimeSkipReason);
-	if (bCanRunHUDFlow)
+	FString LocalHUDFlowSkipReason;
+	if (CanRunLocalHUDFlow(&LocalHUDFlowSkipReason))
 	{
+		SetupEnhancedInput();
+		RefreshEnhancedInputContexts();
 		EnsureCombatHUDCreated();
 		UpdateCombatHUDVisibility();
-		TryBindHUDToCurrentASC();
 
-		const bool bPersistenceReady = IsPersistenceProfileReady();
-		if (bPersistenceReady)
+		FString LocalPawnRuntimeSkipReason;
+		if (CanRunLocalPawnRuntime(GetPawn(), &LocalPawnRuntimeSkipReason))
 		{
-			if (!bLastKnownPersistenceProfileReady)
-			{
-				BroadcastResourcesToHUD();
-				BroadcastAbilitySlotsToHUD();
-			}
-		}
-		bLastKnownPersistenceProfileReady = bPersistenceReady;
+			TryBindHUDToCurrentASC();
 
-		if (const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; NowSeconds >= NextHUDAbilitiesRefreshTimeSeconds)
-		{
-			NextHUDAbilitiesRefreshTimeSeconds = NowSeconds + HUDAbilitiesRefreshIntervalSeconds;
+			const bool bPersistenceReady = IsPersistenceProfileReady();
 			if (bPersistenceReady)
 			{
-				BroadcastAbilitySlotsToHUD();
+				if (!bLastKnownPersistenceProfileReady)
+				{
+					BroadcastResourcesToHUD();
+					BroadcastAbilitySlotsToHUD();
+				}
+			}
+			bLastKnownPersistenceProfileReady = bPersistenceReady;
+
+			if (const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; NowSeconds >= NextHUDAbilitiesRefreshTimeSeconds)
+			{
+				NextHUDAbilitiesRefreshTimeSeconds = NowSeconds + HUDAbilitiesRefreshIntervalSeconds;
+				if (bPersistenceReady)
+				{
+					BroadcastAbilitySlotsToHUD();
+				}
+			}
+
+			if (const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; NowSeconds >= NextHUDTargetRefreshTimeSeconds)
+			{
+				NextHUDTargetRefreshTimeSeconds = NowSeconds + HUDTargetRefreshIntervalSeconds;
+
+				FSpellRiseAimTraceResult AimResult;
+				if (GetCurrentAimTraceResult(AimResult))
+				{
+					BroadcastTargetToHUD(AimResult);
+				}
+				else if (CombatHUDWidget)
+				{
+					CombatHUDWidget->BP_OnTargetUpdated(false, nullptr, 0.f);
+				}
 			}
 		}
-
-		if (const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0; NowSeconds >= NextHUDTargetRefreshTimeSeconds)
+		else
 		{
-			NextHUDTargetRefreshTimeSeconds = NowSeconds + HUDTargetRefreshIntervalSeconds;
-
-			FSpellRiseAimTraceResult AimResult;
-			if (GetCurrentAimTraceResult(AimResult))
-			{
-				BroadcastTargetToHUD(AimResult);
-			}
-			else if (CombatHUDWidget)
-			{
-				CombatHUDWidget->BP_OnTargetUpdated(false, nullptr, 0.f);
-			}
+			LogASCBindSkipReason(LocalPawnRuntimeSkipReason);
+			bLastKnownPersistenceProfileReady = false;
 		}
 	}
 	else
 	{
-		LogASCBindSkipReason(LocalPawnRuntimeSkipReason);
+		LogASCBindSkipReason(LocalHUDFlowSkipReason);
 		bLastKnownPersistenceProfileReady = false;
 	}
 
@@ -839,9 +1107,9 @@ void ASpellRisePlayerController::SetupEnhancedInput()
 	int32 MappingPriority = DefaultMappingPriority;
 	if (!MappingContextToApply)
 	{
-		if (const ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
+		if (const ASpellRisePawnBase* ControlledPawnBase = Cast<ASpellRisePawnBase>(GetPawn()))
 		{
-			MappingContextToApply = const_cast<UInputMappingContext*>(ControlledCharacter->GetDefaultInputMappingContext());
+			MappingContextToApply = const_cast<UInputMappingContext*>(ControlledPawnBase->GetDefaultInputMappingContext());
 			MappingPriority = 0;
 		}
 	}
@@ -1018,37 +1286,331 @@ void ASpellRisePlayerController::ServerSR_ForceDeath_Implementation()
 
 void ASpellRisePlayerController::InventorySplitSlotSERVER_Implementation(UObject* FromContainer, int32 Slot, int32 Amount)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UNarrativeInventoryComponent* SourceInventory = ResolveInventoryFromObject(FromContainer);
+	if (!SourceInventory)
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Warning,
+			TEXT("[Inventory][Server][SplitReject] Controller=%s Reason=invalid_source Source=%s Slot=%d Amount=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(FromContainer),
+			Slot,
+			Amount);
+		return;
+	}
+
+	if (!IsInventoryOwnedByController(this, SourceInventory))
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Warning,
+			TEXT("[Inventory][Server][SplitReject] Controller=%s Reason=source_not_owned Source=%s SourceOwner=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			*GetNameSafe(SourceInventory->GetOwner()));
+		return;
+	}
+
+	const TArray<UNarrativeItem*> Items = SourceInventory->GetItems();
+	if (!Items.IsValidIndex(Slot))
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[Inventory][Server][SplitReject] Controller=%s Reason=slot_out_of_range Source=%s Slot=%d Items=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			Slot,
+			Items.Num());
+		return;
+	}
+
+	UNarrativeItem* SourceItem = Items[Slot];
+	if (!SourceItem || !SourceItem->CanBeRemoved())
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[Inventory][Server][SplitReject] Controller=%s Reason=item_invalid_or_not_removable Source=%s Slot=%d Item=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			Slot,
+			*GetNameSafe(SourceItem));
+		return;
+	}
+
+	const int32 CurrentQuantity = SourceItem->GetQuantity();
+	const int32 RequestedAmount = FMath::Clamp(Amount, 1, CurrentQuantity - 1);
+	if (CurrentQuantity <= 1 || RequestedAmount <= 0)
+	{
+		return;
+	}
+
+	const FItemAddResult AddResult = SourceInventory->TryAddItemFromClass(SourceItem->GetClass(), RequestedAmount, false);
+	if (AddResult.AmountGiven <= 0)
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[Inventory][Server][SplitReject] Controller=%s Reason=add_failed Source=%s ItemClass=%s Requested=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			*GetNameSafe(SourceItem->GetClass()),
+			RequestedAmount);
+		return;
+	}
+
+	const int32 ConsumedAmount = SourceInventory->ConsumeItem(SourceItem, AddResult.AmountGiven);
+	if (ConsumedAmount < AddResult.AmountGiven)
+	{
+		RollbackAddedQuantity(SourceInventory, SourceItem->GetClass(), AddResult.AmountGiven - ConsumedAmount);
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Warning,
+			TEXT("[Inventory][Server][SplitRollback] Controller=%s Source=%s Item=%s Added=%d Consumed=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			*GetNameSafe(SourceItem),
+			AddResult.AmountGiven,
+			ConsumedAmount);
+		return;
+	}
+
 	UE_LOG(
 		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Inventory][Server] InventorySplitSlotSERVER chamado sem implementacao ativa. Controller=%s FromContainer=%s Slot=%d Amount=%d"),
+		Verbose,
+		TEXT("[Inventory][Server][SplitOk] Controller=%s Source=%s Item=%s SplitAmount=%d"),
 		*GetNameSafe(this),
-		*GetNameSafe(FromContainer),
-		Slot,
-		Amount);
+		*GetNameSafe(SourceInventory),
+		*GetNameSafe(SourceItem),
+		ConsumedAmount);
 }
 
 void ASpellRisePlayerController::OnInventorySlotDropSERVER_Implementation(UObject* FromContainer, UObject* ToInventoryComponent, int32 FromIndex, int32 ToIndex)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UNarrativeInventoryComponent* SourceInventory = ResolveInventoryFromObject(FromContainer);
+	UNarrativeInventoryComponent* TargetInventory = ResolveInventoryFromObject(ToInventoryComponent);
+	if (!SourceInventory || !TargetInventory || SourceInventory == TargetInventory)
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[Inventory][Server][DropReject] Controller=%s Reason=invalid_source_or_target Source=%s Target=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			*GetNameSafe(TargetInventory));
+		return;
+	}
+
+	const bool bSourceOwned = IsInventoryOwnedByController(this, SourceInventory);
+	const bool bTargetOwned = IsInventoryOwnedByController(this, TargetInventory);
+	const bool bSourceAccessible = IsInventoryAccessibleToController(this, SourceInventory, 500.0f);
+	const bool bTargetAccessible = IsInventoryAccessibleToController(this, TargetInventory, 500.0f);
+
+	if (!bSourceAccessible || !bTargetAccessible)
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Warning,
+			TEXT("[Inventory][Server][DropReject] Controller=%s Reason=inventory_not_accessible Source=%s Target=%s SourceOwned=%d TargetOwned=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			*GetNameSafe(TargetInventory),
+			bSourceOwned ? 1 : 0,
+			bTargetOwned ? 1 : 0);
+		return;
+	}
+
+	const TArray<UNarrativeItem*> SourceItems = SourceInventory->GetItems();
+	if (!SourceItems.IsValidIndex(FromIndex))
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[Inventory][Server][DropReject] Controller=%s Reason=source_index_out_of_range Source=%s FromIndex=%d Items=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			FromIndex,
+			SourceItems.Num());
+		return;
+	}
+
+	UNarrativeItem* SourceItem = SourceItems[FromIndex];
+	if (!SourceItem || !SourceItem->CanBeRemoved() || SourceItem->GetQuantity() <= 0)
+	{
+		return;
+	}
+
+	const int32 RequestedQuantity = SourceItem->GetQuantity();
+	FText ErrorText;
+
+	if (bSourceOwned && !bTargetOwned)
+	{
+		bool bStored = false;
+		if (TargetInventory->AllowStoreItem(SourceInventory, SourceItem->GetClass(), RequestedQuantity, ErrorText))
+		{
+			const FItemAddResult StoreResult = TargetInventory->PerformStoreItem(SourceInventory, SourceItem->GetClass(), RequestedQuantity);
+			bStored = StoreResult.AmountGiven > 0;
+		}
+
+		if (bStored)
+		{
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Verbose,
+				TEXT("[Inventory][Server][DropStore] Controller=%s Source=%s Target=%s Item=%s Qty=%d ToIndex=%d Ok=1"),
+				*GetNameSafe(this),
+				*GetNameSafe(SourceInventory),
+				*GetNameSafe(TargetInventory),
+				*GetNameSafe(SourceItem),
+				RequestedQuantity,
+				ToIndex);
+		}
+		else
+		{
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Warning,
+				TEXT("[Inventory][Server][DropStore] Controller=%s Source=%s Target=%s Item=%s Qty=%d ToIndex=%d Ok=0 Error=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(SourceInventory),
+				*GetNameSafe(TargetInventory),
+				*GetNameSafe(SourceItem),
+				RequestedQuantity,
+				ToIndex,
+				*ErrorText.ToString());
+		}
+		return;
+	}
+
+	if (!bSourceOwned && bTargetOwned)
+	{
+		bool bLooted = false;
+		if (SourceInventory->AllowLootItem(TargetInventory, SourceItem->GetClass(), RequestedQuantity, ErrorText))
+		{
+			const FItemAddResult LootResult = SourceInventory->PerformLootItem(TargetInventory, SourceItem->GetClass(), RequestedQuantity);
+			bLooted = LootResult.AmountGiven > 0;
+		}
+
+		if (bLooted)
+		{
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Verbose,
+				TEXT("[Inventory][Server][DropLoot] Controller=%s Source=%s Target=%s Item=%s Qty=%d ToIndex=%d Ok=1"),
+				*GetNameSafe(this),
+				*GetNameSafe(SourceInventory),
+				*GetNameSafe(TargetInventory),
+				*GetNameSafe(SourceItem),
+				RequestedQuantity,
+				ToIndex);
+		}
+		else
+		{
+			UE_LOG(
+				LogSpellRisePlayerControllerRuntime,
+				Warning,
+				TEXT("[Inventory][Server][DropLoot] Controller=%s Source=%s Target=%s Item=%s Qty=%d ToIndex=%d Ok=0 Error=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(SourceInventory),
+				*GetNameSafe(TargetInventory),
+				*GetNameSafe(SourceItem),
+				RequestedQuantity,
+				ToIndex,
+				*ErrorText.ToString());
+		}
+		return;
+	}
+
+	// Transferencia entre inventarios possuidos pelo mesmo player.
+	const FItemAddResult AddResult = TargetInventory->TryAddItemFromClass(SourceItem->GetClass(), RequestedQuantity, false);
+	if (AddResult.AmountGiven <= 0)
+	{
+		return;
+	}
+
+	const int32 ConsumedAmount = SourceInventory->ConsumeItem(SourceItem, AddResult.AmountGiven);
+	if (ConsumedAmount < AddResult.AmountGiven)
+	{
+		RollbackAddedQuantity(TargetInventory, SourceItem->GetClass(), AddResult.AmountGiven - ConsumedAmount);
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Warning,
+			TEXT("[Inventory][Server][DropRollback] Controller=%s Source=%s Target=%s Item=%s Added=%d Consumed=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SourceInventory),
+			*GetNameSafe(TargetInventory),
+			*GetNameSafe(SourceItem),
+			AddResult.AmountGiven,
+			ConsumedAmount);
+		return;
+	}
+
 	UE_LOG(
 		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Inventory][Server] OnInventorySlotDropSERVER chamado sem implementacao ativa. Controller=%s FromContainer=%s ToInventoryComponent=%s FromIndex=%d ToIndex=%d"),
+		Verbose,
+		TEXT("[Inventory][Server][DropOwnedOk] Controller=%s Source=%s Target=%s Item=%s Moved=%d ToIndex=%d"),
 		*GetNameSafe(this),
-		*GetNameSafe(FromContainer),
-		*GetNameSafe(ToInventoryComponent),
-		FromIndex,
+		*GetNameSafe(SourceInventory),
+		*GetNameSafe(TargetInventory),
+		*GetNameSafe(SourceItem),
+		ConsumedAmount,
 		ToIndex);
 }
 
 void ASpellRisePlayerController::Route_InventorySortBy_SERVER_Implementation(UObject* InventoryRef, int32 SortBy)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UNarrativeInventoryComponent* Inventory = ResolveInventoryFromObject(InventoryRef);
+	if (!Inventory)
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[Inventory][Server][SortReject] Controller=%s Reason=invalid_inventory InventoryRef=%s SortBy=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(InventoryRef),
+			SortBy);
+		return;
+	}
+
+	if (!IsInventoryOwnedByController(this, Inventory))
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Warning,
+			TEXT("[Inventory][Server][SortReject] Controller=%s Reason=inventory_not_owned Inventory=%s Owner=%s SortBy=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(Inventory),
+			*GetNameSafe(Inventory->GetOwner()),
+			SortBy);
+		return;
+	}
+
+	// Narrative Inventory nao expõe API nativa de reorder persistente server-side.
+	// Mantemos o RPC como no-op seguro para evitar trust indevido e divergencia de estado.
+	Inventory->ClientRefreshInventory();
 	UE_LOG(
 		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Inventory][Server] Route_InventorySortBy_SERVER chamado sem implementacao ativa. Controller=%s InventoryRef=%s SortBy=%d"),
+		Verbose,
+		TEXT("[Inventory][Server][SortNoOp] Controller=%s Inventory=%s SortBy=%d"),
 		*GetNameSafe(this),
-		*GetNameSafe(InventoryRef),
+		*GetNameSafe(Inventory),
 		SortBy);
 }
 
@@ -1060,32 +1622,32 @@ void ASpellRisePlayerController::ExecuteForceDeath_Server()
 		return;
 	}
 
-	ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn());
-	if (!IsValid(ControlledCharacter))
+	APawn* ControlledPawn = GetPawn();
+	if (!IsValid(ControlledPawn))
 	{
 		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Pawn invalido para %s"), *GetNameSafe(this));
 		return;
 	}
 
-	if (ControlledCharacter->IsDead())
+	if (IsControlledCharacterDead())
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Ignorado (personagem ja morto). Char=%s"), *GetNameSafe(ControlledCharacter));
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Ignorado (personagem ja morto). Pawn=%s"), *GetNameSafe(ControlledPawn));
 		return;
 	}
 
-	UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent();
+	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
 	if (!IsValid(ASC))
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Error, TEXT("[Debug][ForceDeath] ASC ausente. Char=%s"), *GetNameSafe(ControlledCharacter));
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Error, TEXT("[Debug][ForceDeath] ASC ausente. Pawn=%s"), *GetNameSafe(ControlledPawn));
 		return;
 	}
 
 	UE_LOG(
 		LogSpellRisePlayerControllerRuntime,
 		Warning,
-		TEXT("[Debug][ForceDeath] Forcando Health=0 no servidor. Controller=%s Char=%s"),
+		TEXT("[Debug][ForceDeath] Forcando Health=0 no servidor. Controller=%s Pawn=%s"),
 		*GetNameSafe(this),
-		*GetNameSafe(ControlledCharacter));
+		*GetNameSafe(ControlledPawn));
 
 	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), 0.f);
 }
@@ -1310,9 +1872,9 @@ void ASpellRisePlayerController::BroadcastAbilitySlotsToHUD()
 
 	const FGameplayAbilityActorInfo* ActorInfo = ASC->AbilityActorInfo.Get();
 	FGameplayTag SelectedTag;
-	if (const ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
+	if (const ASpellRisePawnBase* ControlledPawnBase = Cast<ASpellRisePawnBase>(GetPawn()))
 	{
-		SelectedTag = ControlledCharacter->GetSelectedAbilityInputTag();
+		SelectedTag = ControlledPawnBase->GetSelectedAbilityInputTag();
 	}
 
 	TArray<FSpellRiseAbilitySlotView> Slots;
@@ -1523,6 +2085,16 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 {
 	const TCHAR* SafeSource = SourceLabel ? SourceLabel : TEXT("Unknown");
 
+	if (HasAuthority())
+	{
+		SanitizeOwnedLootSources(this);
+	}
+
+	if (NewPawn)
+	{
+		SetCombatHUDSuppressedByDeath(false);
+	}
+
 	UE_LOG(
 		LogSpellRisePlayerControllerRuntime,
 		Log,
@@ -1534,7 +2106,7 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 		HasAuthority() ? 1 : 0);
 
 	FString LocalFlowSkipReason;
-	if (CanRunLocalPawnRuntime(NewPawn, &LocalFlowSkipReason))
+	if (CanRunLocalHUDFlow(&LocalFlowSkipReason))
 	{
 		SetupEnhancedInput();
 		RefreshEnhancedInputContexts();
@@ -1650,13 +2222,17 @@ USpellRiseAbilitySystemComponent* ASpellRisePlayerController::GetSpellRiseASCFro
 
 bool ASpellRisePlayerController::IsControlledCharacterDead() const
 {
-	const ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn());
-	return ControlledCharacter && ControlledCharacter->IsDead();
+	if (const ASpellRisePawnBase* ControlledPawnBase = Cast<ASpellRisePawnBase>(GetPawn()))
+	{
+		return ControlledPawnBase->IsDead();
+	}
+
+	return false;
 }
 
 bool ASpellRisePlayerController::IsGameplayInputBlocked() const
 {
-	return IsControlledCharacterDead() || ShouldEnableUIInputContext();
+	return IsControlledCharacterDead();
 }
 
 void ASpellRisePlayerController::SendAbilityInputTagPressed(FGameplayTag InputTag)
@@ -1702,9 +2278,9 @@ void ASpellRisePlayerController::HandleAbilitySlotPressed(int32 SlotIndex)
 		return;
 	}
 
-	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
+	if (ASpellRisePawnBase* ControlledPawnBase = Cast<ASpellRisePawnBase>(GetPawn()))
 	{
-		ControlledCharacter->AbilityWheelInputPressed(SlotIndex);
+		ControlledPawnBase->AbilityWheelInputPressed(SlotIndex);
 		return;
 	}
 
@@ -1718,9 +2294,9 @@ void ASpellRisePlayerController::HandleAbilitySlotReleased(int32 SlotIndex)
 		return;
 	}
 
-	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
+	if (ASpellRisePawnBase* ControlledPawnBase = Cast<ASpellRisePawnBase>(GetPawn()))
 	{
-		ControlledCharacter->AbilityWheelInputReleased(SlotIndex);
+		ControlledPawnBase->AbilityWheelInputReleased(SlotIndex);
 		return;
 	}
 
@@ -1771,7 +2347,7 @@ void ASpellRisePlayerController::OnSecondaryReleased()
 
 void ASpellRisePlayerController::OnInteractPressed()
 {
-	if (IsGameplayInputBlocked())
+	if (IsControlledCharacterDead())
 	{
 		UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Input][Interact] Rejeitado por bloqueio de gameplay. Controller=%s Pawn=%s"), *GetNameSafe(this), *GetNameSafe(GetPawn()));
 		return;
@@ -1787,7 +2363,7 @@ void ASpellRisePlayerController::OnInteractPressed()
 
 void ASpellRisePlayerController::OnInteractReleased()
 {
-	if (IsGameplayInputBlocked())
+	if (IsControlledCharacterDead())
 	{
 		UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Input][Interact] Release rejeitado por bloqueio de gameplay. Controller=%s Pawn=%s"), *GetNameSafe(this), *GetNameSafe(GetPawn()));
 		return;
@@ -1854,9 +2430,9 @@ void ASpellRisePlayerController::OnClearSelectionPressed()
 		return;
 	}
 
-	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
+	if (ASpellRisePawnBase* ControlledPawnBase = Cast<ASpellRisePawnBase>(GetPawn()))
 	{
-		ControlledCharacter->ClearSelectedAbility();
+		ControlledPawnBase->ClearSelectedAbility();
 	}
 }
 
@@ -1902,11 +2478,6 @@ bool ASpellRisePlayerController::ShouldEnableUIInputContext() const
 	return bShowMouseCursor || bEnableClickEvents || bEnableMouseOverEvents;
 }
 
-bool ASpellRisePlayerController::IsConstructionModeActive() const
-{
-	// Compatibilidade temporaria para chamadas legadas: build mode removido deste controller.
-	return false;
-}
 
 void ASpellRisePlayerController::ShowDamageNumber(
 	float Damage,
@@ -2387,3 +2958,4 @@ void ASpellRisePlayerController::CollectAimIgnoredActors(TArray<AActor*>& OutAct
 		OutActorsToIgnore.AddUnique(ViewTargetActor);
 	}
 }
+

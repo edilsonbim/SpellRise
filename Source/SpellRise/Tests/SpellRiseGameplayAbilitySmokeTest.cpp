@@ -19,6 +19,7 @@ bool FSpellRiseAbilityInputBroadcastSmokeTest::RunTest(const FString& Parameters
 	ClientAvatar->AddToRoot();
 
 	FGameplayAbilityActorInfo ClientActorInfo;
+	ClientActorInfo.OwnerActor = ClientAvatar;
 	ClientActorInfo.AvatarActor = ClientAvatar;
 
 	TestTrue("Cliente deve permitir eventos de input locais", TestAbility->IsInputEventAllowedForActorInfo(&ClientActorInfo));
@@ -29,6 +30,7 @@ bool FSpellRiseAbilityInputBroadcastSmokeTest::RunTest(const FString& Parameters
 	ServerAvatar->AddToRoot();
 
 	FGameplayAbilityActorInfo ServerActorInfo;
+	ServerActorInfo.OwnerActor = ServerAvatar;
 	ServerActorInfo.AvatarActor = ServerAvatar;
 
 	TestFalse("Servidor dedicado não deve permitir eventos de input locais", TestAbility->IsInputEventAllowedForActorInfo(&ServerActorInfo));

@@ -104,9 +104,6 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
 	void BP_OnChatMessageReceived(const FSpellRiseChatMessage& Message);
 
-	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
-	bool IsConstructionModeActive() const;
-
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;

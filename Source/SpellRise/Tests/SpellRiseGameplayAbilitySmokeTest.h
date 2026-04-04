@@ -13,7 +13,8 @@ class SPELLRISE_API USpellRiseAbilityBroadcastSmokeTestAbility : public USpellRi
 public:
 	bool IsInputEventAllowedForActorInfo(const FGameplayAbilityActorInfo* ActorInfo) const
 	{
-		return ActorInfo && ActorInfo->IsLocallyControlled();
+		const AActor* AvatarActor = ActorInfo ? ActorInfo->AvatarActor.Get() : nullptr;
+		return AvatarActor && AvatarActor->GetLocalRole() == ROLE_AutonomousProxy;
 	}
 };
 

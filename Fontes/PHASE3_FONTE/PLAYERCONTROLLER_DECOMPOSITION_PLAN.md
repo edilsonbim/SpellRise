@@ -17,7 +17,7 @@ Primary target of this phase:
   - owner-only delivery;
   - wrong owner;
   - should move to `PlayerState`;
-  - should move to `Character`;
+  - should move to `Pawn/Avatar`;
   - should move to component/subsystem.
 - Freeze new controller feature growth until this audit is closed.
 
@@ -27,7 +27,7 @@ Primary target of this phase:
 - owner-centric combat/backlog style feeds;
 - persistence-facing player state.
 
-#### Move to `Character`
+#### Move to `Pawn/Avatar`
 - avatar-dependent local hooks;
 - pawn-driven input interpretation;
 - interaction state that depends on possessed pawn context.

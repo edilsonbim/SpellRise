@@ -30,7 +30,7 @@ Current project state still reports multiplayer instability with replication/ser
 - death / respawn decision;
 - loot decision;
 - attribute mutation;
-- replicated gameplay state that belongs naturally to `PlayerState`, `Character`, `GameState`, or dedicated components.
+- replicated gameplay state that belongs naturally to `PlayerState`, `Pawn/Avatar`, `GameState`, or dedicated components.
 
 ## Recommended boundaries
 
@@ -40,7 +40,7 @@ Current project state still reports multiplayer instability with replication/ser
 - durable replicated player feeds;
 - persistence-facing player identity state.
 
-#### To Character
+#### To Pawn/Avatar
 - avatar-specific local gameplay hooks;
 - pawn-scoped interaction with movement/combat presentation;
 - aim/input interpretation that is avatar-dependent.

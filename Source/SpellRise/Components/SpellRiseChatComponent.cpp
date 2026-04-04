@@ -2,6 +2,8 @@
 
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/DateTime.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
@@ -45,6 +47,33 @@ namespace
 		}
 
 		return nullptr;
+	}
+
+	static FName ResolveAuthoritativeSenderName(const UActorComponent* ChatComponent, const FName& FallbackName)
+	{
+		if (!ChatComponent)
+		{
+			return FallbackName;
+		}
+
+		const AActor* Owner = ChatComponent->GetOwner();
+		if (!Owner)
+		{
+			return FallbackName;
+		}
+
+		const AController* OwnerController = Cast<AController>(Owner);
+		const APawn* OwnerPawn = Cast<APawn>(Owner);
+		const APlayerState* OwnerPlayerState =
+			OwnerController ? OwnerController->PlayerState :
+			(OwnerPawn ? OwnerPawn->GetPlayerState() : Cast<APlayerState>(Owner));
+
+		if (OwnerPlayerState && !OwnerPlayerState->GetPlayerName().IsEmpty())
+		{
+			return FName(*OwnerPlayerState->GetPlayerName());
+		}
+
+		return FallbackName;
 	}
 
 	static bool TryParseNameCommand(const FString& MessageText, FString& OutNewName)
@@ -188,7 +217,7 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 	}
 
 	FSpellRiseChatMessage Message;
-	Message.Name = Name;
+	Message.Name = ResolveAuthoritativeSenderName(this, Name);
 	Message.Text = Text;
 	Message.TimeText = TimeText;
 	Message.Channel = Channel;

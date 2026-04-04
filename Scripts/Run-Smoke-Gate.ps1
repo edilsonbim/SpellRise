@@ -16,6 +16,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Join-Path $PSScriptRoot ".."
 $ProjectPath = (Resolve-Path (Join-Path $ProjectRoot "SpellRise.uproject")).Path
 $SmokeScript = (Resolve-Path (Join-Path $PSScriptRoot "Run-Smoke-DS.ps1")).Path
+$LegacyGateScript = (Resolve-Path (Join-Path $PSScriptRoot "Check-NoCharacterLegacy.ps1")).Path
 
 if (!(Test-Path $ProjectPath)) {
     Write-Error "SpellRise.uproject nao encontrado em: $ProjectPath"
@@ -25,6 +26,13 @@ if (!(Test-Path $ProjectPath)) {
 if (!(Test-Path $SmokeScript)) {
     Write-Error "Run-Smoke-DS.ps1 nao encontrado em: $SmokeScript"
     exit 1
+}
+
+Write-Host "[GATE] Validando proibicao de legado Character..."
+& powershell -ExecutionPolicy Bypass -File $LegacyGateScript -ProjectRoot $ProjectRoot
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Gate anti-legado falhou com codigo $LASTEXITCODE"
+    exit $LASTEXITCODE
 }
 
 if (-not $NoBuild.IsPresent) {

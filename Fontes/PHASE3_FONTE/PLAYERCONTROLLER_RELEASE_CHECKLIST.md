@@ -12,7 +12,7 @@ Use this checklist for any change touching:
 - [ ] This change keeps `PlayerController` as a thin coordinator.
 - [ ] No authoritative gameplay state was added to controller runtime.
 - [ ] Any reconnect-relevant player state lives in `PlayerState`.
-- [ ] Any pawn-specific runtime state lives in `Character` or pawn-owned component.
+- [ ] Any pawn-specific runtime state lives in `ASpellRisePawnBase` or pawn-owned component.
 - [ ] Any local-only feature was isolated into a component/subsystem when appropriate.
 
 ## 2. RPC and replication review

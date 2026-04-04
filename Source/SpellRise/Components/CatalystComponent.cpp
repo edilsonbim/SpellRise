@@ -3,7 +3,7 @@
 #include "SpellRise/Components/CatalystComponent.h"
 
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
-#include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRisePawnBase.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 
@@ -36,7 +36,7 @@ void UCatalystComponent::BeginPlay()
     Super::BeginPlay();
 
     // Cache references to the owner character and ability system component
-    OwnerCharacter = Cast<ASpellRiseCharacterBase>(GetOwner());
+    OwnerPawn = Cast<ASpellRisePawnBase>(GetOwner());
     ResolveAbilitySystemComponent();
 
     // If catalyst is enabled on the server, bind to attribute changes
@@ -48,18 +48,18 @@ void UCatalystComponent::BeginPlay()
 
 bool UCatalystComponent::ResolveAbilitySystemComponent()
 {
-    if (!OwnerCharacter)
+    if (!OwnerPawn)
     {
-        OwnerCharacter = Cast<ASpellRiseCharacterBase>(GetOwner());
+        OwnerPawn = Cast<ASpellRisePawnBase>(GetOwner());
     }
 
-    if (!OwnerCharacter)
+    if (!OwnerPawn)
     {
         return false;
     }
 
     USpellRiseAbilitySystemComponent* ResolvedASC =
-        Cast<USpellRiseAbilitySystemComponent>(OwnerCharacter->GetAbilitySystemComponent());
+        Cast<USpellRiseAbilitySystemComponent>(OwnerPawn->GetAbilitySystemComponent());
 
     if (AbilitySystemComponent != ResolvedASC)
     {
@@ -160,7 +160,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
     AActor* SourceActor = AbilitySystemComponent->GetAvatarActor();
     if (!SourceActor)
     {
-        SourceActor = OwnerCharacter ? Cast<AActor>(OwnerCharacter) : GetOwner();
+        SourceActor = OwnerPawn ? Cast<AActor>(OwnerPawn) : GetOwner();
     }
 
     if (!SourceActor || !TargetActor || TargetActor == SourceActor)
@@ -227,7 +227,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorAc
     AActor* VictimActor = AbilitySystemComponent->GetAvatarActor();
     if (!VictimActor)
     {
-        VictimActor = OwnerCharacter ? Cast<AActor>(OwnerCharacter) : GetOwner();
+        VictimActor = OwnerPawn ? Cast<AActor>(OwnerPawn) : GetOwner();
     }
 
     if (!VictimActor)
@@ -332,13 +332,14 @@ void UCatalystComponent::TryProcCatalystIfReady()
         GCatalystRuntimeCounters.ProcActivated,
         CurrentCharge);
 
-    if (bActivated && OwnerCharacter)
+    if (bActivated && OwnerPawn)
     {
         int32 Tier = 1;
-        if (const UCatalystAttributeSet* CatAS = OwnerCharacter->GetCatalystAttributeSet())
+        if (const UCatalystAttributeSet* CatAS = OwnerPawn->GetCatalystAttributeSet())
         {
             Tier = FMath::Clamp(FMath::RoundToInt(CatAS->GetCatalystLevel()), 1, 3);
         }
-        OwnerCharacter->MultiOnCatalystProc(Tier);
+        OwnerPawn->MultiOnCatalystProc(Tier);
     }
 }
+

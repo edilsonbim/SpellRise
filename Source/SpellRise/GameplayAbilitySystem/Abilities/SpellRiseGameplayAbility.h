@@ -8,7 +8,7 @@
 #include "SpellRiseGameplayAbility.generated.h"
 
 class AController;
-class ASpellRiseCharacterBase;
+class ASpellRisePawnBase;
 class UAbilitySystemComponent;
 class USpellRiseAbilitySystemComponent;
 
@@ -60,14 +60,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.01", EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	float ChannelInterval = 0.25f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
-	bool bCommitAbilityOnActivate = true;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bCommitAbilityEveryChannelTick = true;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
-	bool bEndAbilityAfterExecution = true;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bEndChannelOnInputRelease = true;
@@ -119,7 +113,7 @@ public:
 	USpellRiseAbilitySystemComponent* GetSpellRiseAbilitySystemComponentFromActorInfo() const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
-	ASpellRiseCharacterBase* GetSpellRiseCharacterFromActorInfo() const;
+	ASpellRisePawnBase* GetSpellRisePawnFromActorInfo() const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
 	AController* GetControllerFromActorInfo() const;
@@ -192,8 +186,16 @@ protected:
 	virtual void NativeOnCastStarted();
 	virtual void NativeOnChannelStarted();
 	virtual void NativeOnChannelStopped(bool bWasCancelled);
+	virtual void NativeOnSpellCommitFailed(const FGameplayTagContainer& FailureTags);
 
 protected:
+	/**
+	 * Dispare o efeito do spell aqui (projétil, dano, VFX de impacto), não no Event ActivateAbility do Blueprint.
+	 * O C++ não chama EndAbility após este evento; no Blueprint, chame End Ability quando o spell terminar (Instant/Cast).
+	 * Channel: primeiro tick e cada ChannelInterval; com bEndChannelOnInputRelease, o C++ encerra a ability ao soltar o input.
+	 * - Instant: após commit, no mesmo fluxo que ActivateAbility.
+	 * - Cast: se soltar antes do fim do cast, executa ao terminar; se mantiver pressionado até terminar, executa no release.
+	 */
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnSpellExecuted")
 	void K2_OnSpellExecuted();
 
@@ -205,6 +207,9 @@ protected:
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnChannelStopped")
 	void K2_OnChannelStopped(bool bWasCancelled);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Ability", DisplayName="OnSpellCommitFailed")
+	void K2_OnSpellCommitFailed(const FGameplayTagContainer& FailureTags);
 
 protected:
 	/** Estado local/transiente de input da spec ativa. */
@@ -223,6 +228,9 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	float CastElapsedTime = 0.0f;
 
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bAwaitingReleaseAfterCastComplete = false;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
 	TSubclassOf<UGameplayEffect> CastingGameplayEffectClass;
 
@@ -231,9 +239,6 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(Categories="Data", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
 	FGameplayTag CastDurationMagnitudeTag;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
-	bool bAwaitingReleaseAfterCastComplete = false;
 
 	FTimerHandle CastTimerHandle;
 	FTimerHandle ChannelTimerHandle;

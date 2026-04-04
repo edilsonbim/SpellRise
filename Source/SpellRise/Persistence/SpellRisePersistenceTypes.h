@@ -72,7 +72,7 @@ struct FSpellRiseCharacterSaveData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 SchemaVersion = 5;
+	int32 SchemaVersion = 6;
 
 	UPROPERTY()
 	FString SteamId64;

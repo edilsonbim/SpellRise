@@ -3,7 +3,7 @@
 ## Topologia principal
 - `ASpellRiseGameModeBase` define `GameState`, `PlayerController` e `PlayerState` custom.
 - O owner autoritativo do GAS é `ASpellRisePlayerState`.
-- `ASpellRiseCharacterBase` consome `ASC` e `AttributeSets` do `PlayerState`.
+- `ASpellRisePawnBase` consome `ASC` e `AttributeSets` do `PlayerState`.
 
 ## GAS Layout
 ### Ability System

@@ -4,7 +4,6 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "SpellRiseFullLootSubsystem.generated.h"
 
-class ASpellRiseCharacterBase;
 class UNarrativeInventoryComponent;
 
 UCLASS()
@@ -16,7 +15,7 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	void HandleCharacterDeath(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride);
+	void HandleCharacterDeath(AActor* DeadActor, TSubclassOf<AActor> LootBagClassOverride);
 
 private:
 	struct FTrackedLootBag
@@ -77,7 +76,7 @@ private:
 	TArray<FTrackedLootBag> TrackedLootBags;
 
 	void RegisterTrackedLootBag(AActor* BagActor, UNarrativeInventoryComponent* InventoryComponent);
-	void ProcessCharacterDeathNow(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride, const FVector& DeathLocation);
+	void ProcessCharacterDeathNow(AActor* DeadActor, TSubclassOf<AActor> LootBagClassOverride, const FVector& DeathLocation);
 	void GatherEligibleInventoryComponents(AActor* OwnerActor, bool bOwnerIsPlayerState, TArray<UNarrativeInventoryComponent*>& OutInventoryComponents) const;
 	bool IsInventoryComponentEligibleForDeathLoot(const UNarrativeInventoryComponent* InventoryComponent, bool bOwnerIsPlayerState, FString& OutRejectReason) const;
 	void EnsureMonitorTimer();
