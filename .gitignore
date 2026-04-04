@@ -26,9 +26,7 @@ Server/
 *.rar
 
 # Large project assets kept outside GitHub
-Content/
 Images/
-Plugins/*/Content/
 
 # Local/runtime data
 Database/
