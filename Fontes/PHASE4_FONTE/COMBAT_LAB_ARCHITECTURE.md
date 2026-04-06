@@ -34,8 +34,12 @@ Use this order inside the lab workflow:
 
 If current behavior conflicts with documented runtime, flag the conflict explicitly before recording a baseline.
 
+Runtime truth rule:
+- Gameplay state authority is only `ASC + GameplayEffects + GameplayTags` on server.
+- Any mirrored state outside ASC is observational/presentation only.
+
 ## Non-negotiable runtime contract
-- Dedicated Server is the primary authority target.
+- Dedicated Server hosts the authoritative ASC runtime.
 - Combat remains server-authoritative.
 - GAS owner remains PlayerState.
 - ASC and AttributeSets remain on PlayerState.

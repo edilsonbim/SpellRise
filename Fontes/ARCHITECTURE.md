@@ -5,6 +5,11 @@
 - O owner autoritativo do GAS é `ASpellRisePlayerState`.
 - `ASpellRiseCharacterBase` consome `ASC` e `AttributeSets` do `PlayerState`.
 
+## Fonte de verdade de gameplay (única)
+- Estado autoritativo de gameplay: `USpellRiseAbilitySystemComponent` + `GameplayEffects` + `GameplayTags`.
+- O servidor é a única autoridade que pode mutar esse estado.
+- Variáveis fora do ASC (ex.: caches/UI/espelhos locais) não podem decidir resultado final de gameplay.
+
 ## GAS Layout
 ### Ability System
 - `USpellRiseAbilitySystemComponent` no `PlayerState`.

@@ -87,6 +87,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	void SR_ClearSelectedSpellAbility();
 
+	/** Sync local selected spell cache from an input tag replicated/owned outside ASC (UI helper only). */
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void SR_SetSelectedSpellAbilityByInputTag(FGameplayTag InputTag);
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	bool SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const;
 

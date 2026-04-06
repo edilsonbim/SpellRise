@@ -234,6 +234,7 @@ void ASpellRiseCharacterBase::BeginPlay()
 	Super::BeginPlay();
 
 	ResetLocalDeathPresentation();
+	SyncDeadStateFromASC(TEXT("BeginPlay"));
 
 	if (CatalystComponent)
 	{
@@ -245,7 +246,7 @@ void ASpellRiseCharacterBase::BeginPlay()
 
 	InitASCActorInfo();
 	BindASCDelegates();
-	SetCharacterInputEnabled(!bIsDead);
+	SetCharacterInputEnabled(!IsDead());
 
 	TArray<UNavigationMarkerComponent*> NavigationMarkers;
 	GetComponents<UNavigationMarkerComponent>(NavigationMarkers);
@@ -566,11 +567,11 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 
 	if (bShouldEquip)
 	{
-		EquipmentManager->EquipItem(EquippableItem);
+		EquipmentManager->RequestEquipItem(EquippableItem);
 	}
 	else
 	{
-		EquipmentManager->UnequipItem(EquippableItem);
+		EquipmentManager->RequestUnequipItem(EquippableItem);
 	}
 }
 
@@ -597,7 +598,7 @@ void ASpellRiseCharacterBase::ServerSetArchetype_Implementation(ESpellRiseArchet
 		return;
 	}
 
-	if (bIsDead)
+	if (IsDead())
 	{
 		AuditRejectedServerRpc(TEXT("ServerSetArchetype"), TEXT("character_is_dead"));
 		return;
@@ -694,7 +695,7 @@ void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FG
 		return;
 	}
 
-	if (bIsDead)
+	if (IsDead())
 	{
 		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), TEXT("character_is_dead"));
 		return;
@@ -838,7 +839,48 @@ void ASpellRiseCharacterBase::HandleArchetypeChanged(ESpellRiseArchetype OldArch
 
 void ASpellRiseCharacterBase::HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag)
 {
+	SyncASCSelectedSpellFromReplicatedTag();
 	BP_OnSelectedAbilityInputTagChanged(SelectedAbilityInputTag, OldTag);
+}
+
+bool ASpellRiseCharacterBase::IsDead() const
+{
+	if (const USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC())
+	{
+		if (DeadStateTag.IsValid())
+		{
+			return ASC->HasMatchingGameplayTag(DeadStateTag);
+		}
+	}
+
+	return bIsDead;
+}
+
+void ASpellRiseCharacterBase::SyncDeadStateFromASC(const TCHAR* Context)
+{
+	const bool bOldMirror = bIsDead;
+	const bool bDerivedDead = IsDead();
+	bIsDead = bDerivedDead;
+
+	if (bOldMirror != bIsDead)
+	{
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Verbose,
+			TEXT("[GAS][DeadStateSync] Char=%s Context=%s MirrorOld=%d MirrorNew=%d"),
+			*GetNameSafe(this),
+			Context ? Context : TEXT("Unknown"),
+			bOldMirror ? 1 : 0,
+			bIsDead ? 1 : 0);
+	}
+}
+
+void ASpellRiseCharacterBase::SyncASCSelectedSpellFromReplicatedTag()
+{
+	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASC())
+	{
+		SRASC->SR_SetSelectedSpellAbilityByInputTag(SelectedAbilityInputTag);
+	}
 }
 
 void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
@@ -960,8 +1002,9 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 
 	InitASCActorInfo();
 	BindASCDelegates();
+	SyncDeadStateFromASC(TEXT("PossessedBy"));
 	ResetLocalDeathPresentation();
-	SetCharacterInputEnabled(!bIsDead);
+	SetCharacterInputEnabled(!IsDead());
 
 	if (!GetSpellRiseASC())
 	{
@@ -1010,8 +1053,9 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 
 	InitASCActorInfo();
 	BindASCDelegates();
+	SyncDeadStateFromASC(TEXT("OnRep_PlayerState"));
 	ResetLocalDeathPresentation();
-	SetCharacterInputEnabled(!bIsDead);
+	SetCharacterInputEnabled(!IsDead());
 
 	if (!GetSpellRiseASC())
 	{
@@ -1150,7 +1194,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 		TriggerLocalDamageScreenEffect();
 	}
 
-	if (bIsDead)
+	if (IsDead())
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] OnHealthChanged ignorado (ja morto). Char=%s"), *GetNameSafe(this));
 		return;
@@ -1218,6 +1262,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 	}
 
 	GetSpellRiseASC()->CancelAllAbilities();
+	SyncDeadStateFromASC(TEXT("OnHealthChanged"));
 	ScheduleRespawn_Server();
 }
 
@@ -1412,6 +1457,7 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 
 	bIsDead = false;
 	bFullLootProcessedForCurrentDeath = false;
+	SyncDeadStateFromASC(TEXT("ResetDeathStateAndResources_Server"));
 
 	const float MaxHealthValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute());
 	const float MaxManaValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxManaAttribute());
@@ -1845,12 +1891,12 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 		*GetNameSafe(this),
 		*CallbackTag.ToString(),
 		NewCount,
-		bIsDead ? 1 : 0,
+		IsDead() ? 1 : 0,
 		bFullLootProcessedForCurrentDeath ? 1 : 0);
 
 	if (NewCount > 0)
 	{
-		if (!bIsDead)
+		if (!IsDead())
 		{
 			bIsDead = true;
 		}
@@ -1883,10 +1929,12 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 			HandleDeath();
 		}
 
+		SyncDeadStateFromASC(TEXT("OnDeadTagChanged"));
 		return;
 	}
 
 	bIsDead = false;
+	SyncDeadStateFromASC(TEXT("OnDeadTagChanged"));
 	bFullLootProcessedForCurrentDeath = false;
 	CombatLockExpireAtServerTimeSeconds = -1.0;
 	ResetLocalDeathPresentation();
@@ -2460,7 +2508,7 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 
 void ASpellRiseCharacterBase::MultiPlayHitReactionMontage_Implementation(float PlayRate)
 {
-	if (bIsDead || !HitReactionMontage)
+	if (IsDead() || !HitReactionMontage)
 	{
 		return;
 	}

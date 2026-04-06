@@ -223,15 +223,6 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	float CastElapsedTime = 0.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
-	TSubclassOf<UGameplayEffect> CastingGameplayEffectClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
-	TSubclassOf<UGameplayEffect> CastingBarGameplayEffectClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(Categories="Data", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
-	FGameplayTag CastDurationMagnitudeTag;
-
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bAwaitingReleaseAfterCastComplete = false;
 
@@ -240,4 +231,14 @@ protected:
 	FActiveGameplayEffectHandle CastingGameplayEffectHandle;
 	FActiveGameplayEffectHandle CastingBarGameplayEffectHandle;
 	double CastStartTimeSeconds = 0.0;
+
+private:
+	UPROPERTY()
+	TSubclassOf<UGameplayEffect> CastingGameplayEffectClass;
+
+	UPROPERTY()
+	TSubclassOf<UGameplayEffect> CastingBarGameplayEffectClass;
+
+	UPROPERTY()
+	FGameplayTag CastDurationMagnitudeTag;
 };
