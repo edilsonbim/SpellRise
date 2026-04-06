@@ -105,3 +105,20 @@
 - Issue: chat de fall damage ainda pode resolver causer/instigator de forma ambígua.
 - Reproduction: sofrer fall damage em multiplayer e comparar mensagem de chat com evento real.
 - Owner: Combat/Feedback
+
+### BUG-2026-04-06-035
+- Date: 2026-04-06
+- Severity: High
+- Status: In Progress
+- Area: Inventory / Drop / Dedicated Server
+- Issue: ao dropar item por UI no cliente conectado em DS, o item e removido do inventario, mas pickup nao aparece no mundo.
+- Reproduction: abrir `WBP_ItemInspector`, executar `Drop Item` em sessao DS+Client.
+- Expected: remocao autoritativa + spawn do `BP_BasicItemPickup` replicado com `ItemClass` e `QuantityToGive` validos.
+- Actual: item removido, mas sem pickup visivel/funcional em cliente; logs apontam `Item Class` nulo no pickup.
+- Root Cause: inicializacao do `BP_BasicItemPickup` ainda recebe classe nula em parte do fluxo (construction/event graph), apesar do request autoritativo estar ativo.
+- Fix: em andamento (server request em C++ + fallback de classe + inicializacao refletida; precisa fechar binding final do `ItemClass` no runtime do pickup).
+- Tested On: 2026-04-06
+- Standalone: Parcial
+- Listen Server: Nao validado neste ciclo
+- Dedicated Server: Falha reprodutivel em cliente
+- Owner: Multiplayer/Inventory

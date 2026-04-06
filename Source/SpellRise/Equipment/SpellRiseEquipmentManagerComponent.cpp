@@ -3,8 +3,10 @@
 #include "Engine/ActorChannel.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/UnrealType.h"
+#include "UObject/SoftObjectPath.h"
 #include "EquippableItem.h"
 #include "EquipmentComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -102,6 +104,7 @@ USpellRiseEquipmentManagerComponent::USpellRiseEquipmentManagerComponent(const F
 {
 	SetIsReplicatedByDefault(true);
 	QuickWeaponSlots.SetNum(2);
+	DropPickupActorClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C")));
 }
 
 void USpellRiseEquipmentManagerComponent::BeginPlay()
@@ -276,6 +279,23 @@ bool USpellRiseEquipmentManagerComponent::RequestAssignQuickWeaponSlot(UEquippab
 	return true;
 }
 
+bool USpellRiseEquipmentManagerComponent::RequestDropItem(UNarrativeItem* Item, int32 QuantityToDrop)
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor)
+	{
+		return false;
+	}
+
+	if (OwnerActor->HasAuthority())
+	{
+		return DropItem_Server(Item, QuantityToDrop);
+	}
+
+	ServerRequestDropItem(Item, QuantityToDrop);
+	return true;
+}
+
 void USpellRiseEquipmentManagerComponent::ServerRequestActivateQuickWeaponSlot_Implementation(int32 QuickSlotIndex)
 {
 	ActivateQuickWeaponSlot_Server(QuickSlotIndex);
@@ -284,6 +304,11 @@ void USpellRiseEquipmentManagerComponent::ServerRequestActivateQuickWeaponSlot_I
 void USpellRiseEquipmentManagerComponent::ServerRequestAssignQuickWeaponSlot_Implementation(UEquippableItem* Item, int32 QuickSlotIndex)
 {
 	AssignQuickWeaponSlot_Server(Item, QuickSlotIndex);
+}
+
+void USpellRiseEquipmentManagerComponent::ServerRequestDropItem_Implementation(UNarrativeItem* Item, int32 QuantityToDrop)
+{
+	DropItem_Server(Item, QuantityToDrop);
 }
 
 bool USpellRiseEquipmentManagerComponent::EquipItem(UEquippableItem* Item)
@@ -995,6 +1020,297 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
+bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, int32 QuantityToDrop)
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor || !OwnerActor->HasAuthority() || !Item)
+	{
+		return false;
+	}
+
+	UNarrativeInventoryComponent* OwnerInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwnerActor);
+	if (!OwnerInventory || Item->OwningInventory != OwnerInventory)
+	{
+		return false;
+	}
+
+	if (!Item->CanBeRemoved())
+	{
+		return false;
+	}
+
+	const int32 StackQuantity = FMath::Max(1, Item->GetQuantity());
+	const int32 SafeDropQuantity = FMath::Clamp(QuantityToDrop, 1, StackQuantity);
+
+	APawn* OwnerPawn = Cast<APawn>(OwnerActor);
+	const FVector Origin = OwnerPawn ? OwnerPawn->GetActorLocation() : OwnerActor->GetActorLocation();
+	const FVector Forward = OwnerPawn ? OwnerPawn->GetActorForwardVector() : OwnerActor->GetActorForwardVector();
+	const FVector SpawnLocation = Origin + Forward * DropSpawnForwardDistance;
+	const FRotator SpawnRotation = OwnerPawn ? OwnerPawn->GetActorRotation() : OwnerActor->GetActorRotation();
+	const TSubclassOf<UNarrativeItem> ItemClass = Item->GetClass();
+
+	// For equippables we only support full-stack drop; this keeps quick-slot state deterministic.
+	if (UEquippableItem* EquippableItem = Cast<UEquippableItem>(Item))
+	{
+		if (SafeDropQuantity < StackQuantity)
+		{
+			return false;
+		}
+
+		const int32 SlotIndex = FindQuickSlotByItem(EquippableItem);
+		if (SlotIndex != INDEX_NONE)
+		{
+			RemoveQuickWeaponSlot_Server(SlotIndex, true);
+		}
+	}
+
+	// Ensure pickup class exists before mutating inventory.
+	UClass* DropPickupClass = DropPickupActorClass.LoadSynchronous();
+	if (!DropPickupClass)
+	{
+		// Fallback primario: pickup padrao do plugin Narrative Inventory.
+		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+	}
+	if (!DropPickupClass)
+	{
+		// Fallback secundario: pickup custom em /Game.
+		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/Game/UI/InventorySystem/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+	}
+	if (!DropPickupClass)
+	{
+		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][DropItem] DropPickupActorClass invalida. Owner=%s"), *GetNameSafe(GetOwner()));
+		return false;
+	}
+
+	bool bRemoved = false;
+	if (SafeDropQuantity >= StackQuantity)
+	{
+		bRemoved = OwnerInventory->RemoveItem(Item);
+	}
+	else
+	{
+		Item->SetQuantity(StackQuantity - SafeDropQuantity);
+		bRemoved = true;
+	}
+
+	if (!bRemoved)
+	{
+		return false;
+	}
+
+	if (!SpawnPickupActorForDroppedItem_Server(ItemClass, SafeDropQuantity, SpawnLocation, SpawnRotation))
+	{
+		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][DropItem] Pickup spawn failed after removal. Owner=%s ItemClass=%s Qty=%d"),
+			*GetNameSafe(OwnerActor), *GetNameSafe(*ItemClass), SafeDropQuantity);
+	}
+
+	return true;
+}
+
+bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !ItemClass || QuantityToDrop <= 0)
+	{
+		return false;
+	}
+
+	UClass* DropPickupClass = DropPickupActorClass.LoadSynchronous();
+	if (!DropPickupClass)
+	{
+		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+	}
+	if (!DropPickupClass)
+	{
+		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/Game/UI/InventorySystem/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+	}
+	if (!DropPickupClass)
+	{
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	FTransform SpawnTransform(SpawnRotation, SpawnLocation);
+	AActor* PickupActor = World->SpawnActorDeferred<AActor>(
+		DropPickupClass,
+		SpawnTransform,
+		GetOwner(),
+		Cast<APawn>(GetOwner()),
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn,
+		ESpawnActorScaleMethod::OverrideRootScale);
+	if (!PickupActor)
+	{
+		return false;
+	}
+
+	// Configure common BP pickup properties by reflection to keep this generic and data-driven.
+	auto TrySetItemClassPropertyByName = [&](const FName PropertyName) -> bool
+	{
+		if (FProperty* ItemClassProperty = PickupActor->GetClass()->FindPropertyByName(PropertyName))
+		{
+			if (FClassProperty* ClassProperty = CastField<FClassProperty>(ItemClassProperty))
+			{
+				void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(PickupActor);
+				ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
+				return true;
+			}
+
+			if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(ItemClassProperty))
+			{
+				void* ValuePtr = ObjectProperty->ContainerPtrToValuePtr<void>(PickupActor);
+				ObjectProperty->SetObjectPropertyValue(ValuePtr, *ItemClass);
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	auto TrySetItemClassPropertyByType = [&]() -> bool
+	{
+		for (TFieldIterator<FProperty> It(PickupActor->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
+		{
+			FProperty* Property = *It;
+			if (FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
+			{
+				UClass* MetaClass = ClassProperty->MetaClass;
+				if (MetaClass && MetaClass->IsChildOf(UNarrativeItem::StaticClass()))
+				{
+					void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(PickupActor);
+					ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
+					return true;
+				}
+			}
+		}
+
+		return false;
+	};
+
+	auto TrySetQuantityProperty = [&](const FName PropertyName) -> bool
+	{
+		if (FProperty* QuantityProperty = PickupActor->GetClass()->FindPropertyByName(PropertyName))
+		{
+			if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(QuantityProperty))
+			{
+				void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(PickupActor);
+				NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	auto TrySetQuantityPropertyByType = [&]() -> bool
+	{
+		for (TFieldIterator<FProperty> It(PickupActor->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
+		{
+			FProperty* Property = *It;
+			if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
+			{
+				const FString PropertyName = Property->GetName();
+				if (PropertyName.Contains(TEXT("Quantity"), ESearchCase::IgnoreCase))
+				{
+					void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(PickupActor);
+					NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
+					return true;
+				}
+			}
+		}
+
+		return false;
+	};
+
+	const bool bSetItemClass =
+		TrySetItemClassPropertyByName(TEXT("ItemClass")) ||
+		TrySetItemClassPropertyByName(TEXT("Item Class")) ||
+		TrySetItemClassPropertyByName(TEXT("Class")) ||
+		TrySetItemClassPropertyByType();
+
+	const bool bSetQuantity =
+		TrySetQuantityProperty(TEXT("QuantityToGive")) ||
+		TrySetQuantityProperty(TEXT("Quantity to Give")) ||
+		TrySetQuantityProperty(TEXT("Quantity")) ||
+		TrySetQuantityPropertyByType();
+
+	// Some pickup blueprints expose a custom Initialize(Class, Quantity) event.
+	if (UFunction* InitializeFunction = PickupActor->FindFunction(TEXT("Initialize")))
+	{
+		uint8* ParamsBuffer = static_cast<uint8*>(FMemory_Alloca(InitializeFunction->ParmsSize));
+		FMemory::Memzero(ParamsBuffer, InitializeFunction->ParmsSize);
+
+		if (FProperty* ClassParam = InitializeFunction->FindPropertyByName(TEXT("Class")))
+		{
+			if (FClassProperty* ClassProperty = CastField<FClassProperty>(ClassParam))
+			{
+				void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
+				ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
+			}
+			else if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(ClassParam))
+			{
+				void* ValuePtr = ObjectProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
+				ObjectProperty->SetObjectPropertyValue(ValuePtr, *ItemClass);
+			}
+		}
+		else
+		{
+			for (TFieldIterator<FProperty> It(InitializeFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
+			{
+				if (FClassProperty* ClassProperty = CastField<FClassProperty>(*It))
+				{
+					UClass* MetaClass = ClassProperty->MetaClass;
+					if (MetaClass && MetaClass->IsChildOf(UNarrativeItem::StaticClass()))
+					{
+						void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
+						ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
+						break;
+					}
+				}
+			}
+		}
+
+		if (FProperty* QuantityParam = InitializeFunction->FindPropertyByName(TEXT("Quantity")))
+		{
+			if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(QuantityParam))
+			{
+				void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
+				NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
+			}
+		}
+		else
+		{
+			for (TFieldIterator<FProperty> It(InitializeFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
+			{
+				if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(*It))
+				{
+					void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
+					NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
+					break;
+				}
+			}
+		}
+
+		PickupActor->ProcessEvent(InitializeFunction, ParamsBuffer);
+	}
+
+	UGameplayStatics::FinishSpawningActor(PickupActor, SpawnTransform);
+
+	UE_LOG(LogSpellRiseEquipmentReplication, Warning,
+		TEXT("[Equipment][DropSpawn] Owner=%s Pickup=%s ItemClass=%s Qty=%d SetItemClass=%d SetQuantity=%d"),
+		*GetNameSafe(GetOwner()),
+		*GetNameSafe(PickupActor),
+		*GetNameSafe(*ItemClass),
+		QuantityToDrop,
+		bSetItemClass ? 1 : 0,
+		bSetQuantity ? 1 : 0);
+
+	return true;
+}
+
 AActor* USpellRiseEquipmentManagerComponent::GetOrSpawnWeaponActorForItem(UEquippableItem* Item)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !Item)
@@ -1137,6 +1453,10 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 		return;
 	}
 
+	// Defensive cleanup for cases where inventory systems replace item instances
+	// and the actor map still holds a stale key.
+	DestroyWeaponActorForItem(RemovedEquippableItem);
+
 	// Fallback: if references diverge after inventory mutations, purge any quick-slot item
 	// that no longer validates as owned by this actor.
 	for (int32 Index = 0; Index < QuickWeaponSlots.Num(); ++Index)
@@ -1151,6 +1471,38 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 		if (!ValidateItemOwnership(SlotItem, ValidationReason))
 		{
 			RemoveQuickWeaponSlot_Server(Index, true);
+		}
+	}
+
+	// Extra fallback by class: remove mapped weapon actors that are no longer represented
+	// in quick slots, even if the removed item came through as a different UObject instance.
+	const UClass* RemovedItemClass = RemovedEquippableItem->GetClass();
+	for (auto It = SpawnedWeaponActorsByItem.CreateIterator(); It; ++It)
+	{
+		UEquippableItem* MappedItem = It.Key().Get();
+		AActor* MappedActor = It.Value().Get();
+		if (!MappedItem || MappedItem->GetClass() != RemovedItemClass)
+		{
+			continue;
+		}
+
+		bool bStillInQuickSlots = false;
+		for (UEquippableItem* SlotItem : QuickWeaponSlots)
+		{
+			if (SlotItem == MappedItem)
+			{
+				bStillInQuickSlots = true;
+				break;
+			}
+		}
+
+		if (!bStillInQuickSlots)
+		{
+			if (IsValid(MappedActor))
+			{
+				MappedActor->Destroy();
+			}
+			It.RemoveCurrent();
 		}
 	}
 

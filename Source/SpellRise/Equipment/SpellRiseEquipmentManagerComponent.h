@@ -103,6 +103,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	bool RequestAssignQuickWeaponSlot(UEquippableItem* Item, int32 QuickSlotIndex);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
+	bool RequestDropItem(UNarrativeItem* Item, int32 QuantityToDrop);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	UEquippableItem* GetQuickWeaponItemByIndex(int32 QuickSlotIndex) const;
 
@@ -138,6 +141,9 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestAssignQuickWeaponSlot(UEquippableItem* Item, int32 QuickSlotIndex);
 
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDropItem(UNarrativeItem* Item, int32 QuantityToDrop);
+
 	bool ValidateItemOwnership(UEquippableItem* Item, FString& OutReason) const;
 	uint8 ResolveItemSlot(UEquippableItem* Item) const;
 	UEquipmentComponent* ResolveEquipmentComponent() const;
@@ -157,6 +163,8 @@ private:
 	bool ActivateQuickWeaponSlot_Server(int32 QuickSlotIndex);
 	bool AssignQuickWeaponSlot_Server(UEquippableItem* Item, int32 QuickSlotIndex);
 	void RemoveQuickWeaponSlot_Server(int32 QuickSlotIndex, bool bDestroyWeaponActor);
+	bool DropItem_Server(UNarrativeItem* Item, int32 QuantityToDrop);
+	bool SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation);
 	AActor* GetOrSpawnWeaponActorForItem(UEquippableItem* Item);
 	void DestroyWeaponActorForItem(UEquippableItem* Item);
 	void RefreshQuickSlotVisual_Server(int32 QuickSlotIndex, bool bEquipped);
@@ -188,4 +196,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNarrativeInventoryComponent> CachedInventoryComponent = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Drop")
+	TSoftClassPtr<AActor> DropPickupActorClass;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Drop", meta=(ClampMin="50.0", UIMin="50.0"))
+	float DropSpawnForwardDistance = 150.0f;
 };
