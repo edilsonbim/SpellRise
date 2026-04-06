@@ -21,6 +21,7 @@ Se houver conflito entre legado e documentação atual, sinalizar o conflito e s
 - UE 5.7.
 - Dedicated Server obrigatório.
 - Combate server-authoritative.
+- Fonte de verdade única de gameplay: `ASC + GameplayEffects + GameplayTags` no servidor.
 - Full Loot, Free Target, sem auto-aim e sem tab target.
 - GAS owner autoritativo = `PlayerState`.
 - `ASC` e `AttributeSets` vivem no `PlayerState`.
@@ -28,6 +29,7 @@ Se houver conflito entre legado e documentação atual, sinalizar o conflito e s
 - `ASC` usa replication mode `Mixed`.
 - Primários canônicos: `STR`, `AGI`, `INT`, `WIS`.
 - Cliente nunca decide dano final, custo, cooldown, recurso, morte, loot ou mutação autoritativa.
+- Qualquer variável espelho fora do ASC não deve ser usada como autoridade de gameplay.
 
 ## Time de agentes
 ### 1. BuildGuardian

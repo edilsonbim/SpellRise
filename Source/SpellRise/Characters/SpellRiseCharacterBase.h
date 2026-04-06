@@ -117,7 +117,7 @@ public:
 	void MultiSendGameplayEventToActor(AActor* TargetActor, const FGameplayEventData& EventData);
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
-	bool IsDead() const { return bIsDead; }
+	bool IsDead() const;
 
 	const UInputMappingContext* GetDefaultInputMappingContext() const { return IMC_Default; }
 
@@ -381,6 +381,8 @@ protected:
 	UCameraComponent* FindCharacterCameraComponentByName(FName ComponentName) const;
 	void HandleArchetypeChanged(ESpellRiseArchetype OldArchetype);
 	void HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag);
+	void SyncDeadStateFromASC(const TCHAR* Context);
+	void SyncASCSelectedSpellFromReplicatedTag();
 	bool IsAllowedServerEventTag(const FGameplayTag& EventTag) const;
 	bool ValidateServerGameplayEventPayload(const FGameplayEventData& EventData, FString& OutRejectReason) const;
 	bool CheckServerGameplayEventRateLimit(const FGameplayTag& EventTag, FString& OutRejectReason);

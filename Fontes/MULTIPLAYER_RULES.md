@@ -4,11 +4,12 @@
 Definir contrato único de authority, prediction, RPC, replicação e critérios de aceitação para multiplayer de produção.
 
 ## Princípios obrigatórios
-- Dedicated Server é fonte de verdade.
+- Fonte de verdade de gameplay: `ASC + GameplayEffects + GameplayTags` no servidor.
 - Cliente só prevê para UX e nunca decide resultado final de gameplay.
 - Multicast é só apresentação.
 - Toda mutação autoritativa exige validação de ownership, contexto e anti-spam.
 - ASC no `PlayerState` em `Mixed`.
+- Qualquer estado duplicado fora do ASC é apenas espelho de apresentação, nunca autoridade.
 
 ## Matriz de replicação por sistema
 

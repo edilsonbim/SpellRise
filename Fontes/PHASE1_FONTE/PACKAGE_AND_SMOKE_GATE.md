@@ -30,6 +30,10 @@ Aplicar obrigatoriamente quando a mudança tocar qualquer um destes pontos:
 
 Se houver conflito entre legado e documentação atual, registrar no review e seguir os documentos.
 
+Definição operacional fixa:
+- Fonte de verdade de gameplay em runtime = `ASC + GameplayEffects + GameplayTags` no servidor.
+- Qualquer estado fora do ASC é somente suporte de UX/telemetria e não pode decidir resultado final.
+
 ## Política fixa
 - Toda build, cook, package e smoke deve usar somente a Unreal Source.
 - Client e Server devem ser gerados no mesmo ciclo de build/package.

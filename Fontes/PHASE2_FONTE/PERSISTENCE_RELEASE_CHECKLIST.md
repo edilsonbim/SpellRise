@@ -6,7 +6,7 @@ Checklist operacional para qualquer mudança que toque save/load, inventário pe
 ## 1. Pré-check
 - [ ] Mudança descreve escopo de persistência afetado.
 - [ ] Server vs Client está explícito.
-- [ ] Fonte de verdade revisada: `PROJECT_STATE.md`, `ARCHITECTURE.md`, `SECURITY_MODEL.md`, `BACKLOG.md`, `ROADMAP.md`.
+- [ ] Fonte de verdade revisada: runtime de gameplay segue apenas `ASC + GameplayEffects + GameplayTags` no servidor.
 - [ ] Caminho DB-first e fallback estão documentados para a mudança.
 - [ ] Impacto em auth/session está declarado.
 

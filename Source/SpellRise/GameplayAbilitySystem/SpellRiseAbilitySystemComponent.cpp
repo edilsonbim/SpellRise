@@ -557,6 +557,34 @@ void USpellRiseAbilitySystemComponent::SR_ClearSelectedSpellAbility()
 	SelectedSpellSpecHandle = FGameplayAbilitySpecHandle();
 }
 
+void USpellRiseAbilitySystemComponent::SR_SetSelectedSpellAbilityByInputTag(FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid())
+	{
+		SR_ClearSelectedSpellAbility();
+		return;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (!AbilitySpecMatchesInputTag(Spec, InputTag))
+		{
+			continue;
+		}
+
+		if (const USpellRiseGameplayAbility* SpellAbility = Cast<USpellRiseGameplayAbility>(Spec.Ability))
+		{
+			if (!SpellAbility->FiresFromOwnInputTag())
+			{
+				SelectedSpellSpecHandle = Spec.Handle;
+				return;
+			}
+		}
+	}
+
+	SR_ClearSelectedSpellAbility();
+}
+
 bool USpellRiseAbilitySystemComponent::SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const
 {
 	return AbilityHandle.IsValid()
