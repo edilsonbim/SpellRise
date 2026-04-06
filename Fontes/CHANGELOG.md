@@ -26,3 +26,10 @@
 - bootstrap/auth Steam em DS;
 - persistência de produção ainda incompleta;
 - contrato final de rede do building mode ainda pendente.
+
+### Inventory / Equipment / Drop (2026-04-06)
+- Fluxo de equip/unequip via inventory + quick slots consolidado com `SpellRiseEquipmentManagerComponent`.
+- Ajustes de sync visual entre preview (`WBP_PlayerPreview`) e estado de quick slots.
+- Implementado caminho C++ para request de drop com limpeza de vínculos de equipamento antes da remoção do item.
+- Incluídas tentativas de robustez para spawn de pickup no servidor (fallback de classe + inicialização refletida).
+- Pendente: validação final do spawn do pickup em cliente DS no fluxo de drop (ver BUG-2026-04-06-035).

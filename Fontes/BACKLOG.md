@@ -44,3 +44,7 @@ Toda dívida nova ou alterada deve registrar:
 - owner;
 - data alvo;
 - critério objetivo de saída.
+
+## Hotfix em andamento (2026-04-06)
+- Fechar BUG-2026-04-06-035: garantir spawn replicado de pickup no drop de cliente em DS com `ItemClass` valido no `BP_BasicItemPickup`.
+- Revalidar fluxo completo de drop em Standalone, Listen e DS+Client apos ajuste final.
