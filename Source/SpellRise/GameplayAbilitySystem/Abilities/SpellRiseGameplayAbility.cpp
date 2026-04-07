@@ -363,6 +363,18 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
 {
+	UE_LOG(
+		LogSpellRiseGameplayAbilityRuntime,
+		Verbose,
+		TEXT("[GAS][InputReleased] ability=%s castType=%d isActive=%d hasExecuted=%d isCasting=%d awaitingRelease=%d policy=%d"),
+		*GetNameSafe(this),
+		static_cast<int32>(CastType),
+		IsActive() ? 1 : 0,
+		bHasExecutedSpell ? 1 : 0,
+		bIsCasting ? 1 : 0,
+		bAwaitingReleaseAfterCastComplete ? 1 : 0,
+		static_cast<int32>(CastCompletionPolicy));
+
 	if (!IsActive())
 	{
 		return;
@@ -370,7 +382,7 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 
 	if (CastType == ESpellRiseAbilityCastType::Cast && !bHasExecutedSpell)
 	{
-		if (bAwaitingReleaseAfterCastComplete)
+		if (CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete && bAwaitingReleaseAfterCastComplete)
 		{
 			bAwaitingReleaseAfterCastComplete = false;
 			FinishCastFlow();
@@ -754,9 +766,15 @@ void USpellRiseGameplayAbility::HandleCastFinished()
 
 	bIsCasting = false;
 
-	if (bIsAbilityInputPressed)
+	if (CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete && bIsAbilityInputPressed)
 	{
 		bAwaitingReleaseAfterCastComplete = true;
+		UE_LOG(
+			LogSpellRiseGameplayAbilityRuntime,
+			Verbose,
+			TEXT("[CAST] Cast finished, waiting input release ability=%s elapsed=%.2f"),
+			*GetNameSafe(this),
+			CastElapsedTime);
 		return;
 	}
 
@@ -770,6 +788,17 @@ void USpellRiseGameplayAbility::HandleChannelTick()
 
 void USpellRiseGameplayAbility::NativeOnSpellExecuted()
 {
+	if (bExecuteSpellLogicOnAuthorityOnly && !HasServerAuthority())
+	{
+		UE_LOG(
+			LogSpellRiseGameplayAbilityRuntime,
+			Verbose,
+			TEXT("[GAS][SpellExecuteSkipped] ability=%s reason=authority_only local=%d"),
+			*GetNameSafe(this),
+			IsLocallyControlledAbility() ? 1 : 0);
+		return;
+	}
+
 	K2_OnSpellExecuted();
 }
 

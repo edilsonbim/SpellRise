@@ -396,6 +396,7 @@ protected:
 	void AuditRejectedServerRpc(const TCHAR* RpcName, const FString& RejectReason);
 	void AuditRejectedServerGameplayEvent(const FGameplayTag& EventTag, const FString& RejectReason);
 	float ResolveMaxAbsServerEventMagnitude(const FGameplayTag& EventTag) const;
+	bool CanIssueOwnerServerRpc(FString& OutRejectReason) const;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|GameplayEvent")
 	FGameplayTagContainer AllowedServerEventTags;
