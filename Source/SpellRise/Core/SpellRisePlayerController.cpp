@@ -433,6 +433,56 @@ namespace
 		return InputTag.ToString().StartsWith(TEXT("InputTag.Ability."));
 	}
 
+	bool SR_CanSendPawnOwnedInputRpc(const APlayerController* PlayerController, const APawn* Pawn, FString* OutReason = nullptr)
+	{
+		if (!PlayerController)
+		{
+			if (OutReason)
+			{
+				*OutReason = TEXT("missing_player_controller");
+			}
+			return false;
+		}
+
+		if (!PlayerController->IsLocalController())
+		{
+			if (OutReason)
+			{
+				*OutReason = TEXT("controller_not_local");
+			}
+			return false;
+		}
+
+		if (!Pawn)
+		{
+			if (OutReason)
+			{
+				*OutReason = TEXT("missing_pawn");
+			}
+			return false;
+		}
+
+		if (Pawn->GetController() != PlayerController)
+		{
+			if (OutReason)
+			{
+				*OutReason = TEXT("pawn_controller_mismatch");
+			}
+			return false;
+		}
+
+		if (!Pawn->IsLocallyControlled())
+		{
+			if (OutReason)
+			{
+				*OutReason = TEXT("pawn_not_locally_controlled");
+			}
+			return false;
+		}
+
+		return true;
+	}
+
 	void UpdateEnhancedInputContext(
 		UEnhancedInputLocalPlayerSubsystem* Subsystem,
 		UInputMappingContext* Context,
@@ -1589,40 +1639,8 @@ void ASpellRisePlayerController::OnAttackPressed()
 
 	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[GAS][Input] OnAttackPressed"));
 
-	// Unified pipeline (AAA/Lyra-style): always route attack as gameplay-input-tag first.
-	// This keeps combo continuation (WaitInputPress) on the same active spec flow.
+	// Single GAS path: attack input is always routed by gameplay tag.
 	SendAbilityInputTagPressed(InputTag_Primary());
-
-	USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASCFromPawn();
-	if (SRASC && SRASC->SR_GetSpellRiseAbilityForInputTag(InputTag_Primary()))
-	{
-		return;
-	}
-
-	// Legacy fallback for old setups that still rely on direct class activation.
-	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn)
-	{
-		return;
-	}
-
-	UAbilitySystemComponent* ASC = UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ControlledPawn);
-	if (!ASC)
-	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[SpellRise] AttackPressed: ASC is null on Pawn=%s"), *GetNameSafe(ControlledPawn));
-		return;
-	}
-
-	if (!AttackAbilityClass)
-	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[SpellRise] AttackPressed: AttackAbilityClass is null and no InputTag.Ability.Primary mapping found."));
-		return;
-	}
-
-	const bool bActivated = ASC->TryActivateAbilityByClass(AttackAbilityClass);
-	UE_LOG(LogSpellRisePlayerControllerRuntime, VeryVerbose, TEXT("[SpellRise] AttackPressed(FallbackClass): TryActivate=%d Ability=%s"),
-		bActivated ? 1 : 0,
-		*GetNameSafe(AttackAbilityClass.Get()));
 }
 
 void ASpellRisePlayerController::OnAttackReleased()
@@ -1639,8 +1657,17 @@ void ASpellRisePlayerController::OnAttackReleased()
 USpellRiseAbilitySystemComponent* ASpellRisePlayerController::GetSpellRiseASCFromPawn() const
 {
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn)
+	FString SkipReason;
+	if (!SR_CanSendPawnOwnedInputRpc(this, ControlledPawn, &SkipReason))
 	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[GAS][InputGuard] ASC lookup skipped reason=%s PC=%s Pawn=%s PawnController=%s"),
+			*SkipReason,
+			*GetNameSafe(this),
+			*GetNameSafe(ControlledPawn),
+			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
 		return nullptr;
 	}
 
@@ -1671,6 +1698,22 @@ void ASpellRisePlayerController::SendAbilityInputTagPressed(FGameplayTag InputTa
 		return;
 	}
 
+	APawn* ControlledPawn = GetPawn();
+	FString SkipReason;
+	if (!SR_CanSendPawnOwnedInputRpc(this, ControlledPawn, &SkipReason))
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[GAS][InputGuard] Press ignored tag=%s reason=%s PC=%s Pawn=%s PawnController=%s"),
+			*InputTag.ToString(),
+			*SkipReason,
+			*GetNameSafe(this),
+			*GetNameSafe(ControlledPawn),
+			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
+		return;
+	}
+
 	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASCFromPawn())
 	{
 		SRASC->SR_AbilityInputTagPressed(InputTag);
@@ -1686,6 +1729,22 @@ void ASpellRisePlayerController::SendAbilityInputTagReleased(FGameplayTag InputT
 
 	if (!InputTag.IsValid())
 	{
+		return;
+	}
+
+	APawn* ControlledPawn = GetPawn();
+	FString SkipReason;
+	if (!SR_CanSendPawnOwnedInputRpc(this, ControlledPawn, &SkipReason))
+	{
+		UE_LOG(
+			LogSpellRisePlayerControllerRuntime,
+			Verbose,
+			TEXT("[GAS][InputGuard] Release ignored tag=%s reason=%s PC=%s Pawn=%s PawnController=%s"),
+			*InputTag.ToString(),
+			*SkipReason,
+			*GetNameSafe(this),
+			*GetNameSafe(ControlledPawn),
+			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
 		return;
 	}
 
@@ -1705,10 +1764,7 @@ void ASpellRisePlayerController::HandleAbilitySlotPressed(int32 SlotIndex)
 	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
 	{
 		ControlledCharacter->AbilityWheelInputPressed(SlotIndex);
-		return;
 	}
-
-	SendAbilityInputTagPressed(InputTag_AbilitySlot(SlotIndex));
 }
 
 void ASpellRisePlayerController::HandleAbilitySlotReleased(int32 SlotIndex)
@@ -1721,10 +1777,7 @@ void ASpellRisePlayerController::HandleAbilitySlotReleased(int32 SlotIndex)
 	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
 	{
 		ControlledCharacter->AbilityWheelInputReleased(SlotIndex);
-		return;
 	}
-
-	SendAbilityInputTagReleased(InputTag_AbilitySlot(SlotIndex));
 }
 
 void ASpellRisePlayerController::OnPrimaryPressed()

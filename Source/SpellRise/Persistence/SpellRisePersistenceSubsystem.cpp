@@ -61,6 +61,16 @@ namespace
 		return TEXT("file");
 	}
 
+	bool IsPostgresRequiredWithoutFallback()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("SRPersistenceRequirePostgres"));
+	}
+
+	bool IsNoSteamPersistenceModeActive()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
+	}
+
 	struct FPersistenceInventoryStats
 	{
 		int32 ComponentCount = 0;
@@ -630,6 +640,7 @@ void USpellRisePersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collec
 	Super::Initialize(Collection);
 
 	const FString RequestedProvider = GetRequestedPersistenceProvider();
+	const bool bRequirePostgresNoFallback = IsPostgresRequiredWithoutFallback();
 	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ProviderInit] Requested=%s"), *RequestedProvider);
 
 	TUniquePtr<ISpellRisePersistenceProvider> SelectedProvider;
@@ -638,8 +649,15 @@ void USpellRisePersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collec
 		SelectedProvider = MakeUnique<FSpellRisePostgresPersistenceProvider>();
 		if (!SelectedProvider->IsReady())
 		{
-			UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ProviderInit] Postgres provider not ready, falling back to file provider."));
-			SelectedProvider.Reset();
+			if (bRequirePostgresNoFallback)
+			{
+				UE_LOG(LogSpellRisePersistence, Fatal, TEXT("[Persistence][ProviderInitFatal] Postgres provider not ready and fallback is disabled. Flags: SRPersistenceRequirePostgres=1"));
+			}
+			else
+			{
+				UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ProviderInit] Postgres provider not ready, falling back to file provider."));
+				SelectedProvider.Reset();
+			}
 		}
 	}
 
@@ -683,6 +701,12 @@ void USpellRisePersistenceSubsystem::Deinitialize()
 
 bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* Controller)
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][PreloadSkipped] Controller=%s Reason=nosteam_mode"), *GetNameSafe(Controller));
+		return false;
+	}
+
 	if (!Provider || !Controller)
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][PreloadRejected] Controller=%s Reason=%s"),
@@ -778,6 +802,20 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 
 bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AController* Controller)
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ApplySkipped] Controller=%s Reason=nosteam_mode"), *GetNameSafe(Controller));
+		if (Controller)
+		{
+			EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("nosteam_mode"));
+			if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
+			{
+				SRPlayerState->SetPersistenceProfileApplied(true);
+			}
+		}
+		return false;
+	}
+
 	if (!Controller)
 	{
 		return false;
@@ -830,6 +868,12 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 
 bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Controller)
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][SaveSkipped] Controller=%s Reason=nosteam_mode"), *GetNameSafe(Controller));
+		return false;
+	}
+
 	if (!Provider || !Controller)
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] Controller=%s Reason=%s"),
@@ -965,6 +1009,12 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 
 bool USpellRisePersistenceSubsystem::SaveWorld(UWorld* World)
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][SaveWorldSkipped] World=%s Reason=nosteam_mode"), *GetNameSafe(World));
+		return false;
+	}
+
 	if (!Provider || !World)
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveWorldRejected] World=%s Reason=%s"),
@@ -1015,6 +1065,12 @@ bool USpellRisePersistenceSubsystem::SaveWorld(UWorld* World)
 
 bool USpellRisePersistenceSubsystem::LoadWorld(UWorld* World)
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][LoadWorldSkipped] World=%s Reason=nosteam_mode"), *GetNameSafe(World));
+		return false;
+	}
+
 	if (!Provider || !World)
 	{
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][LoadWorldRejected] World=%s Reason=%s"),
@@ -1062,6 +1118,12 @@ bool USpellRisePersistenceSubsystem::LoadWorld(UWorld* World)
 
 bool USpellRisePersistenceSubsystem::BuildRespawnTransformForController(AController* Controller, FTransform& OutSpawnTransform) const
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformMiss] Controller=%s Reason=nosteam_mode"), *GetNameSafe(Controller));
+		return false;
+	}
+
 	if (!Controller || !Controller->PlayerState)
 	{
 		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformMiss] Controller=%s Reason=%s"),

@@ -21,6 +21,13 @@ enum class ESpellRiseAbilityCastType : uint8
 };
 
 UENUM(BlueprintType)
+enum class ESpellRiseCastCompletionPolicy : uint8
+{
+	AutoFireOnCastComplete = 0 UMETA(DisplayName="Auto Fire On Cast Complete"),
+	WaitReleaseAfterCastComplete = 1 UMETA(DisplayName="Wait Release After Cast Complete")
+};
+
+UENUM(BlueprintType)
 enum class ESpellRiseCueTriggerMode : uint8
 {
 	Execute = 0 UMETA(DisplayName="Execute (Instant)"),
@@ -57,6 +64,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.0", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
 	float CastTime = 0.0f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	ESpellRiseCastCompletionPolicy CastCompletionPolicy = ESpellRiseCastCompletionPolicy::AutoFireOnCastComplete;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.01", EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	float ChannelInterval = 0.25f;
 
@@ -68,6 +78,10 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
 	bool bEndAbilityAfterExecution = true;
+
+	/** If true, K2_OnSpellExecuted only runs on server authority. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Networking")
+	bool bExecuteSpellLogicOnAuthorityOnly = true;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bEndChannelOnInputRelease = true;

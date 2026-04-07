@@ -212,6 +212,7 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	AllowedServerEventTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.End"), false));
 	AllowedServerEventTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.HitScan.Start"), false));
 	AllowedServerEventTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.HitScan.End"), false));
+	AllowedServerEventTags.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Event.ShootProjectile"), false));
 
 	static ConstructorHelpers::FObjectFinder<UAnimMontage> HitReactionMontageFinder(
 		TEXT("/Game/Combat/Animations/Montage_HitReaction.Montage_HitReaction"));
@@ -586,6 +587,20 @@ void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
 		return;
 	}
 
+	FString RejectReason;
+	if (!CanIssueOwnerServerRpc(RejectReason))
+	{
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Verbose,
+			TEXT("[RPC][ClientGuard] SetArchetype skipped reason=%s Char=%s Controller=%s Owner=%s"),
+			*RejectReason,
+			*GetNameSafe(this),
+			*GetNameSafe(GetController()),
+			*GetNameSafe(GetOwner()));
+		return;
+	}
+
 	ServerSetArchetype(NewArchetype);
 }
 
@@ -745,7 +760,23 @@ void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 
 	if (!HasAuthority())
 	{
+		FString RejectReason;
+		if (!CanIssueOwnerServerRpc(RejectReason))
+		{
+			UE_LOG(
+				LogSpellRiseCharacterRuntime,
+				Verbose,
+				TEXT("[RPC][ClientGuard] SelectAbilitySlot skipped reason=%s Char=%s Controller=%s Owner=%s Slot=%d"),
+				*RejectReason,
+				*GetNameSafe(this),
+				*GetNameSafe(GetController()),
+				*GetNameSafe(GetOwner()),
+				SlotIndex);
+		}
+		else
+		{
 		ServerSetSelectedAbilityInputTag(NewTag);
+		}
 	}
 
 	const FGameplayTag OldTag = SelectedAbilityInputTag;
@@ -814,7 +845,22 @@ void ASpellRiseCharacterBase::ClearSelectedAbility()
 
 	if (!HasAuthority())
 	{
-		ServerSetSelectedAbilityInputTag(NewTag);
+		FString RejectReason;
+		if (!CanIssueOwnerServerRpc(RejectReason))
+		{
+			UE_LOG(
+				LogSpellRiseCharacterRuntime,
+				Verbose,
+				TEXT("[RPC][ClientGuard] ClearSelectedAbility skipped reason=%s Char=%s Controller=%s Owner=%s"),
+				*RejectReason,
+				*GetNameSafe(this),
+				*GetNameSafe(GetController()),
+				*GetNameSafe(GetOwner()));
+		}
+		else
+		{
+			ServerSetSelectedAbilityInputTag(NewTag);
+		}
 	}
 
 	const FGameplayTag OldTag = SelectedAbilityInputTag;
@@ -1755,6 +1801,37 @@ bool ASpellRiseCharacterBase::ValidateServerRpcOwnerContext(FString& OutRejectRe
 	if (!GetPlayerState() || OwnerController->PlayerState != GetPlayerState())
 	{
 		OutRejectReason = TEXT("owner_playerstate_context_mismatch");
+		return false;
+	}
+
+	return true;
+}
+
+bool ASpellRiseCharacterBase::CanIssueOwnerServerRpc(FString& OutRejectReason) const
+{
+	if (!IsLocallyControlled())
+	{
+		OutRejectReason = TEXT("character_not_locally_controlled");
+		return false;
+	}
+
+	const AController* OwnerController = GetController();
+	const APlayerController* OwnerPC = Cast<APlayerController>(OwnerController);
+	if (!OwnerPC)
+	{
+		OutRejectReason = TEXT("missing_player_controller_context");
+		return false;
+	}
+
+	if (!OwnerPC->IsLocalController())
+	{
+		OutRejectReason = TEXT("controller_not_local");
+		return false;
+	}
+
+	if (OwnerController->GetPawn() != this)
+	{
+		OutRejectReason = TEXT("controller_pawn_mismatch");
 		return false;
 	}
 

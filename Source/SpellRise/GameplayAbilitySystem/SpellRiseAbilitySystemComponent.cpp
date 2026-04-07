@@ -323,6 +323,8 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 		return;
 	}
 
+	UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed] ASC=%s Tag=%s"), *GetNameSafe(this), *InputTag.ToString());
+
 	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
 	{
 		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
@@ -358,6 +360,8 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 		return;
 	}
 
+	UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased] ASC=%s Tag=%s"), *GetNameSafe(this), *InputTag.ToString());
+
 	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
 	{
 		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
@@ -376,22 +380,6 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 		InputReleasedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.Remove(Handle);
 	}
-}
-
-void USpellRiseAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
-{
-	Super::AbilitySpecInputPressed(Spec);
-
-	InputPressedSpecHandles.AddUnique(Spec.Handle);
-	InputHeldSpecHandles.AddUnique(Spec.Handle);
-}
-
-void USpellRiseAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
-{
-	Super::AbilitySpecInputReleased(Spec);
-
-	InputReleasedSpecHandles.AddUnique(Spec.Handle);
-	InputHeldSpecHandles.Remove(Spec.Handle);
 }
 
 void USpellRiseAbilitySystemComponent::SR_ClearAbilityInput()
@@ -594,11 +582,10 @@ bool USpellRiseAbilitySystemComponent::SR_IsSelectedSpellAbilityHandle(FGameplay
 
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)
 {
-	// SpellRise does not support gameplay pause; keep processing input even if a caller
-	// passes a paused state from legacy call sites.
+	// SpellRise does not support gameplay pause and this function does not use frame delta.
+	(void)DeltaTime;
 	(void)bGamePaused;
 
-	const FGameplayTag ComboAbilityTag = FGameplayTag::RequestGameplayTag(TEXT("GameplayAbility.MeleeAttack.Combo"), false);
 	const auto GetSpecPredictionKey = [](const FGameplayAbilitySpec* Spec) -> FPredictionKey
 	{
 		if (!Spec)
@@ -617,19 +604,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		return FPredictionKey();
 	};
 
-	const auto IsComboSpec = [&](const FGameplayAbilitySpec* Spec) -> bool
-	{
-		if (!Spec || !Spec->Ability || !ComboAbilityTag.IsValid())
-		{
-			return false;
-		}
-
-		return Spec->Ability->AbilityTags.HasTagExact(ComboAbilityTag);
-	};
-	const auto IsNativeComboSpec = [&](const FGameplayAbilitySpec* Spec) -> bool
-	{
-		return Spec && Cast<USpellRiseGA_MeleeCombo>(Spec->Ability) != nullptr;
-	};
 	const auto LogActivationFailure = [&](const FGameplayAbilitySpec* Spec)
 	{
 		if (!Spec || !Spec->Ability)
@@ -653,14 +627,12 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		UE_LOG(
 			LogSpellRiseASCCombo,
 			Warning,
-			TEXT("[GAS][TryActivateFailed] Ability=%s Handle=%s InputPressed=%d IsActive=%d FailureTags=%s Local=%d Authority=%d"),
+			TEXT("[GAS][TryActivateFailed] Ability=%s Handle=%s InputPressed=%d IsActive=%d FailureTags=%s"),
 			*GetNameSafe(Spec->Ability),
 			*Spec->Handle.ToString(),
 			Spec->InputPressed ? 1 : 0,
 			Spec->IsActive() ? 1 : 0,
-			*FailureTags.ToString(),
-			IsOwnerActorAuthoritative() ? 0 : 1,
-			IsOwnerActorAuthoritative() ? 1 : 0);
+			*FailureTags.ToString());
 	};
 
 	AActor* Avatar = GetAvatarActor();
@@ -696,39 +668,12 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				if (!IsOwnerActorAuthoritative() && (Spec->Ability->bReplicateInputDirectly || IsComboSpec(Spec)))
-				{
-					ServerSetInputPressed(Spec->Handle);
-				}
-
-				// Ensure active abilities that rely on WaitInputPress receive replicated generic input events.
+				// Ensure active abilities waiting on press edge events keep working.
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
 					EAbilityGenericReplicatedEvent::InputPressed,
 					Spec->Handle,
 					PredictionKey);
-
-				if (IsComboSpec(Spec) && !IsNativeComboSpec(Spec))
-				{
-					static const FGameplayTag ComboStartTag = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Start"), false);
-					static const FGameplayTag ComboInputTag = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Input"), false);
-					if (AActor* LocalAvatarActor = GetAvatarActor())
-					{
-						FGameplayEventData StartData;
-						StartData.EventTag = ComboStartTag;
-						StartData.Instigator = LocalAvatarActor;
-						StartData.Target = LocalAvatarActor;
-						UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(LocalAvatarActor, ComboStartTag, StartData);
-
-						FGameplayEventData InputData;
-						InputData.EventTag = ComboInputTag;
-						InputData.Instigator = LocalAvatarActor;
-						InputData.Target = LocalAvatarActor;
-						UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(LocalAvatarActor, ComboInputTag, InputData);
-
-						UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboInput] Active combo press forwarded. Ability=%s Handle=%s"), *GetNameSafe(Spec->Ability), *Spec->Handle.ToString());
-					}
-				}
 			}
 			else
 			{
@@ -758,13 +703,8 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				// Native combo handles buffered presses explicitly; do not spam InputPressed every held tick.
-				if (IsNativeComboSpec(Spec))
-				{
-					continue;
-				}
-
-				Super::AbilitySpecInputPressed(*Spec);
+				// Keep held state in spec only; replicated input events are emitted on edge transitions.
+				continue;
 			}
 		}
 	}
@@ -804,11 +744,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				if (!IsOwnerActorAuthoritative() && (Spec->Ability->bReplicateInputDirectly || IsComboSpec(Spec)))
-				{
-					ServerSetInputReleased(Spec->Handle);
-				}
-
 				// Mirror pressed behavior for abilities waiting on input release tasks.
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(

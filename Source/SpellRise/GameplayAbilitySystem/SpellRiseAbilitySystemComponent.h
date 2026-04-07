@@ -50,10 +50,6 @@ protected:
 	void OnGameplayEffectRemovedFromSelf(const FActiveGameplayEffect& ActiveEffect);
 	bool TryAdvanceActiveComboMontage();
 
-	// Hooks chamados internamente
-	virtual void AbilitySpecInputPressed(FGameplayAbilitySpec& Spec) override;
-	virtual void AbilitySpecInputReleased(FGameplayAbilitySpec& Spec) override;
-
 public:
 	// =========================================================
 	// Input public API
