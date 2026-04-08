@@ -79,10 +79,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
 	bool bEndAbilityAfterExecution = true;
 
-	/** If true, K2_OnSpellExecuted only runs on server authority. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Networking")
-	bool bExecuteSpellLogicOnAuthorityOnly = true;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bEndChannelOnInputRelease = true;
 
