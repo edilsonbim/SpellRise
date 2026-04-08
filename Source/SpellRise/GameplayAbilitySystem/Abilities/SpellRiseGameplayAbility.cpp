@@ -788,17 +788,6 @@ void USpellRiseGameplayAbility::HandleChannelTick()
 
 void USpellRiseGameplayAbility::NativeOnSpellExecuted()
 {
-	if (bExecuteSpellLogicOnAuthorityOnly && !HasServerAuthority())
-	{
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Verbose,
-			TEXT("[GAS][SpellExecuteSkipped] ability=%s reason=authority_only local=%d"),
-			*GetNameSafe(this),
-			IsLocallyControlledAbility() ? 1 : 0);
-		return;
-	}
-
 	K2_OnSpellExecuted();
 }
 

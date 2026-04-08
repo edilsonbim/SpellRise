@@ -1,6 +1,7 @@
 #include "SpellRiseAbilitySystemComponent.h"
 
 #include "GameplayEffect.h"
+#include "Abilities/GameplayAbility.h"
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayTagContainer.h"
 #include "GameFramework/Pawn.h"
@@ -436,6 +437,15 @@ void USpellRiseAbilitySystemComponent::MarkSpecInputPressed(FGameplayAbilitySpec
 {
 	Spec.InputPressed = true;
 
+	// For ServerOnly abilities, spec may not be locally active; still forward input edge.
+	if (!IsOwnerActorAuthoritative() && Spec.Ability)
+	{
+		if (Spec.Ability->GetNetExecutionPolicy() != EGameplayAbilityNetExecutionPolicy::LocalOnly)
+		{
+			ServerSetInputPressed(Spec.Handle);
+		}
+	}
+
 	if (Spec.IsActive())
 	{
 		Super::AbilitySpecInputPressed(Spec);
@@ -445,6 +455,15 @@ void USpellRiseAbilitySystemComponent::MarkSpecInputPressed(FGameplayAbilitySpec
 void USpellRiseAbilitySystemComponent::MarkSpecInputReleased(FGameplayAbilitySpec& Spec)
 {
 	Spec.InputPressed = false;
+
+	// For ServerOnly abilities, spec may not be locally active; still forward input edge.
+	if (!IsOwnerActorAuthoritative() && Spec.Ability)
+	{
+		if (Spec.Ability->GetNetExecutionPolicy() != EGameplayAbilityNetExecutionPolicy::LocalOnly)
+		{
+			ServerSetInputReleased(Spec.Handle);
+		}
+	}
 
 	if (Spec.IsActive())
 	{
