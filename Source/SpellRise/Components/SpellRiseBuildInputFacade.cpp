@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Blueprint/UserWidget.h"
+#include "Framework/Application/SlateApplication.h"
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/Components/SpellRiseNarrativeBuildBridge.h"
@@ -13,6 +14,21 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseBuildInputFacade, Log, All);
 
 namespace
 {
+	FString GetSlateFocusWidgetDescription()
+	{
+		if (!FSlateApplication::IsInitialized())
+		{
+			return TEXT("SlateUninitialized");
+		}
+
+		if (TSharedPtr<SWidget> FocusedWidget = FSlateApplication::Get().GetUserFocusedWidget(0))
+		{
+			return FString::Printf(TEXT("%s|%s"), *FocusedWidget->ToString(), *FocusedWidget->GetTypeAsString());
+		}
+
+		return TEXT("NoSlateFocus");
+	}
+
 	bool SetBoolCompatibleProperty(FProperty* Property, void* ValuePtr, bool bValue)
 	{
 		if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
@@ -142,6 +158,15 @@ void USpellRiseBuildInputFacade::HandleOwningPawnReady()
 		CallNoParamFunction(BuildingComponent, TEXT("HideBuildingMenu"));
 	}
 
+	UE_LOG(
+		LogSpellRiseBuildInputFacade,
+		Log,
+		TEXT("[BuildInput][StartupSync] Owner=%s Pawn=%s Focus=%s MouseCursor=%d"),
+		*GetNameSafe(GetOwner()),
+		*GetNameSafe(OwnerController->GetPawn()),
+		*GetSlateFocusWidgetDescription(),
+		OwnerController->bShowMouseCursor ? 1 : 0);
+
 	bStartupMenuSyncDone = true;
 }
 
@@ -159,6 +184,14 @@ void USpellRiseBuildInputFacade::SetConstructionModeActive(bool bInConstructionM
 	{
 		CallNoParamFunction(BuildingComponent, TEXT("AutoInitComponent"));
 	}
+
+	UE_LOG(
+		LogSpellRiseBuildInputFacade,
+		Log,
+		TEXT("[BuildInput][ModeActive] Owner=%s Active=%d Focus=%s"),
+		*GetNameSafe(GetOwner()),
+		bConstructionModeActive ? 1 : 0,
+		*GetSlateFocusWidgetDescription());
 }
 
 void USpellRiseBuildInputFacade::SetConstructionModifierHeld(bool bIsHeld)
@@ -198,6 +231,17 @@ void USpellRiseBuildInputFacade::OnBuildMenuPressed()
 		PC->SetShowMouseCursor(true);
 		PC->bEnableClickEvents = true;
 		PC->bEnableMouseOverEvents = true;
+
+		UE_LOG(
+			LogSpellRiseBuildInputFacade,
+			Log,
+			TEXT("[BuildInput][MenuOpen] Owner=%s Pawn=%s Focus=%s Cursor=%d Click=%d Over=%d"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(PC->GetPawn()),
+			*GetSlateFocusWidgetDescription(),
+			PC->bShowMouseCursor ? 1 : 0,
+			PC->bEnableClickEvents ? 1 : 0,
+			PC->bEnableMouseOverEvents ? 1 : 0);
 	}
 }
 
@@ -228,6 +272,17 @@ void USpellRiseBuildInputFacade::OnBuildMenuReleased()
 		PC->SetShowMouseCursor(false);
 		PC->bEnableClickEvents = bCachedClickEvents;
 		PC->bEnableMouseOverEvents = bCachedMouseOverEvents;
+
+		UE_LOG(
+			LogSpellRiseBuildInputFacade,
+			Log,
+			TEXT("[BuildInput][MenuClose] Owner=%s Pawn=%s Focus=%s Cursor=%d Click=%d Over=%d"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(PC->GetPawn()),
+			*GetSlateFocusWidgetDescription(),
+			PC->bShowMouseCursor ? 1 : 0,
+			PC->bEnableClickEvents ? 1 : 0,
+			PC->bEnableMouseOverEvents ? 1 : 0);
 	}
 }
 

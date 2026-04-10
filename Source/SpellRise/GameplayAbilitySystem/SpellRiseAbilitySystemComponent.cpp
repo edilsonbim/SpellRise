@@ -330,6 +330,10 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 	{
 		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
 		{
+			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed][PrimarySelected] ASC=%s Handle=%s Ability=%s"),
+				*GetNameSafe(this),
+				*SelectedSpec->Handle.ToString(),
+				*GetNameSafe(SelectedSpec->Ability));
 			InputPressedSpecHandles.AddUnique(SelectedSpec->Handle);
 			InputHeldSpecHandles.AddUnique(SelectedSpec->Handle);
 			return;
@@ -346,9 +350,19 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 		if (SpellAbility && !SpellAbility->FiresFromOwnInputTag())
 		{
 			SelectedSpellSpecHandle = Handle;
+			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed][SelectOnly] ASC=%s Handle=%s Ability=%s Tag=%s"),
+				*GetNameSafe(this),
+				*Handle.ToString(),
+				*GetNameSafe(Spec->Ability),
+				*InputTag.ToString());
 			continue;
 		}
 
+		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed][Queue] ASC=%s Handle=%s Ability=%s Tag=%s"),
+			*GetNameSafe(this),
+			*Handle.ToString(),
+			*GetNameSafe(Spec->Ability),
+			*InputTag.ToString());
 		InputPressedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.AddUnique(Handle);
 	}
@@ -367,6 +381,19 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 	{
 		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
 		{
+			if (!InputHeldSpecHandles.Contains(SelectedSpec->Handle))
+			{
+				UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][PrimarySelectedIgnored] ASC=%s Handle=%s Ability=%s Reason=not_held"),
+					*GetNameSafe(this),
+					*SelectedSpec->Handle.ToString(),
+					*GetNameSafe(SelectedSpec->Ability));
+				return;
+			}
+
+			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][PrimarySelected] ASC=%s Handle=%s Ability=%s"),
+				*GetNameSafe(this),
+				*SelectedSpec->Handle.ToString(),
+				*GetNameSafe(SelectedSpec->Ability));
 			InputReleasedSpecHandles.AddUnique(SelectedSpec->Handle);
 			InputHeldSpecHandles.Remove(SelectedSpec->Handle);
 			return;
@@ -378,6 +405,22 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 
 	for (const FGameplayAbilitySpecHandle& Handle : MatchingHandles)
 	{
+		const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+		if (!InputHeldSpecHandles.Contains(Handle))
+		{
+			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][Ignored] ASC=%s Handle=%s Ability=%s Tag=%s Reason=not_held"),
+				*GetNameSafe(this),
+				*Handle.ToString(),
+				*GetNameSafe(Spec ? Spec->Ability : nullptr),
+				*InputTag.ToString());
+			continue;
+		}
+
+		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][Queue] ASC=%s Handle=%s Ability=%s Tag=%s"),
+			*GetNameSafe(this),
+			*Handle.ToString(),
+			*GetNameSafe(Spec ? Spec->Ability : nullptr),
+			*InputTag.ToString());
 		InputReleasedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.Remove(Handle);
 	}
@@ -659,6 +702,9 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 	if (!AvatarPawn || !AvatarPawn->IsLocallyControlled())
 	{
+		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ProcessInput] ASC=%s skipped reason=not_locally_controlled Avatar=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(Avatar));
 		SR_ClearAbilityInput();
 		return;
 	}
@@ -684,6 +730,11 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			}
 
 			MarkSpecInputPressed(*Spec);
+			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ProcessInput][Pressed] ASC=%s Handle=%s Ability=%s Active=%d"),
+				*GetNameSafe(this),
+				*Spec->Handle.ToString(),
+				*GetNameSafe(Spec->Ability),
+				Spec->IsActive() ? 1 : 0);
 
 			if (Spec->IsActive())
 			{
@@ -760,6 +811,11 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			}
 
 			MarkSpecInputReleased(*Spec);
+			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ProcessInput][Released] ASC=%s Handle=%s Ability=%s Active=%d"),
+				*GetNameSafe(this),
+				*Spec->Handle.ToString(),
+				*GetNameSafe(Spec->Ability),
+				Spec->IsActive() ? 1 : 0);
 
 			if (Spec->IsActive())
 			{

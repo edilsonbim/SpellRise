@@ -65,7 +65,26 @@ public:
 	float CastTime = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
-	ESpellRiseCastCompletionPolicy CastCompletionPolicy = ESpellRiseCastCompletionPolicy::AutoFireOnCastComplete;
+	ESpellRiseCastCompletionPolicy CastCompletionPolicy = ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete;
+
+	/**
+	 * Quando verdadeiro (padrão), habilidades Cast só executam o feitiço após soltar o input depois do CastTime,
+	 * mesmo que o asset ainda tenha CastCompletionPolicy=AutoFire serializado no Blueprint.
+	 * Desligue por habilidade se quiser disparo automático ao fim da barra.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	bool bRequireInputReleaseAfterCastTime = true;
+
+	/** Se soltar durante a barra de conjuração, cancela o cast (evita estado preso com gate pós-cast). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	bool bCancelCastWhenInputReleasedDuringCastTime = true;
+
+	/**
+	 * Ignora cancelamento por release nos primeiros segundos após iniciar o cast.
+	 * Evita Completed/Canceled espúrios do Enhanced Input (ou duplo bind) logo após Started.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.0", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
+	float CastCancelReleaseGraceSeconds = 0.12f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.01", EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	float ChannelInterval = 0.25f;
@@ -177,6 +196,9 @@ protected:
 	void ExecuteSpellFromCurrentMode();
 	void ResetSpellRuntimeState();
 	float ResolveElapsedCastTime() const;
+	bool ShouldUseInputReleaseAfterCastWindow() const;
+	void BeginAwaitingInputReleaseAfterCastWindow();
+	void TryFinishCastIfAwaitingAndInputNotHeld();
 	void ApplyCastingEffect();
 	void ApplyCastingBarEffect();
 	void RemoveCastingEffect();
@@ -186,6 +208,10 @@ protected:
 
 	UFUNCTION()
 	void HandleCastFinished();
+
+	/** Poll leve enquanto espera soltar após o cast: detecta spec/input já soltos sem segundo clique. */
+	UFUNCTION()
+	void PollAwaitingReleaseAfterCastRepeating();
 
 	UFUNCTION()
 	void HandleChannelTick();
@@ -236,11 +262,22 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bAwaitingReleaseAfterCastComplete = false;
 
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bHasReceivedInputReleaseSinceCastStart = false;
+
+	/** CastTime já terminou; próximo release válido dispara o feitiço (gate pós-barra). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bCastElapsedTimeCompleted = false;
+
 	FTimerHandle CastTimerHandle;
 	FTimerHandle ChannelTimerHandle;
+	FTimerHandle AwaitingReleasePollHandle;
 	FActiveGameplayEffectHandle CastingGameplayEffectHandle;
 	FActiveGameplayEffectHandle CastingBarGameplayEffectHandle;
 	double CastStartTimeSeconds = 0.0;
+
+	/** A partir deste tempo de mundo, releases durante o cast podem cancelar (após CastCancelReleaseGraceSeconds). */
+	double CastCancelReleaseAllowedFromWorldTime = 0.0;
 
 private:
 	UPROPERTY()
