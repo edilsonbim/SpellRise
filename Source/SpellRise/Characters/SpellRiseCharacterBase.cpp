@@ -931,10 +931,28 @@ void ASpellRiseCharacterBase::SyncASCSelectedSpellFromReplicatedTag()
 
 void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bGamePaused)
 {
-	if (GetSpellRiseASC())
+	USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASC();
+	if (!SRASC)
 	{
-		GetSpellRiseASC()->SR_ProcessAbilityInput(DeltaSeconds, bGamePaused);
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Verbose,
+			TEXT("[GAS][ProcessAbilityInput] skipped: missing ASC Character=%s PlayerState=%s Controller=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(GetPlayerState()),
+			*GetNameSafe(GetController()));
+		return;
 	}
+
+	UE_LOG(
+		LogSpellRiseCharacterRuntime,
+		Verbose,
+		TEXT("[GAS][ProcessAbilityInput] Character=%s ASC=%s Local=%d Authority=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(SRASC),
+		IsLocallyControlled() ? 1 : 0,
+		HasAuthority() ? 1 : 0);
+	SRASC->SR_ProcessAbilityInput(DeltaSeconds, bGamePaused);
 }
 
 void ASpellRiseCharacterBase::SR_ClearAbilityInput()
@@ -959,6 +977,16 @@ USpellRiseAbilitySystemComponent* ASpellRiseCharacterBase::GetSpellRiseASC() con
 void ASpellRiseCharacterBase::InitASCActorInfo()
 {
 	USpellRiseAbilitySystemComponent* PreviousASC = GetSpellRiseASC();
+	ASpellRisePlayerState* SRPlayerStateBeforeInit = GetPlayerState<ASpellRisePlayerState>();
+	UE_LOG(
+		LogSpellRiseCharacterRuntime,
+		Verbose,
+		TEXT("[GAS][InitASCActorInfo] Character=%s PlayerState=%s ASC=%s Local=%d Authority=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(SRPlayerStateBeforeInit),
+		*GetNameSafe(PreviousASC),
+		IsLocallyControlled() ? 1 : 0,
+		HasAuthority() ? 1 : 0);
 
 	if (!InitializeAbilitySystemFromPlayerState())
 	{
@@ -1594,6 +1622,13 @@ void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
 
 	if (!GetSpellRiseASC())
 	{
+		UE_LOG(
+			LogSpellRiseCharacterRuntime,
+			Verbose,
+			TEXT("[GAS][AbilitiesChanged] retry init before send Character=%s PlayerState=%s Controller=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(GetPlayerState()),
+			*GetNameSafe(GetController()));
 		InitASCActorInfo();
 	}
 
@@ -1608,6 +1643,13 @@ void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
 			*GetNameSafe(GetController()));
 		return;
 	}
+
+	UE_LOG(
+		LogSpellRiseCharacterRuntime,
+		Verbose,
+		TEXT("[GAS][AbilitiesChanged] Send Character=%s Receiver=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetPlayerState() ? Cast<AActor>(GetPlayerState()) : Cast<AActor>(this)));
 
 	FGameplayEventData EventData;
 	EventData.EventTag = SpellRiseTags::Event_Abilities_Changed();

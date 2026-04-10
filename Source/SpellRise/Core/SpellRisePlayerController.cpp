@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "InputAction.h"
@@ -592,6 +593,7 @@ void ASpellRisePlayerController::BeginPlay()
 		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=SetInputModeGameOnly"));
 		FInputModeGameOnly Mode;
 		SetInputMode(Mode);
+		LogInputFocusSnapshot(TEXT("BeginPlay.SetInputModeGameOnly"));
 	}
 
 	UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=SetupEnhancedInput"));
@@ -688,6 +690,8 @@ void ASpellRisePlayerController::Tick(float DeltaSeconds)
 				CombatHUDWidget->BP_OnTargetUpdated(false, nullptr, 0.f);
 			}
 		}
+
+		LogInputFocusSnapshot(TEXT("Tick.HUDFlow"));
 	}
 	else
 	{
@@ -1591,6 +1595,7 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 		EnsureCombatHUDCreated();
 		UpdateCombatHUDVisibility();
 		TryBindHUDToCurrentASC();
+		LogInputFocusSnapshot(SourceLabel ? SourceLabel : TEXT("HandlePawnChangedRuntime"));
 	}
 	else
 	{
@@ -1714,10 +1719,72 @@ void ASpellRisePlayerController::SendAbilityInputTagPressed(FGameplayTag InputTa
 		return;
 	}
 
+	UE_LOG(
+		LogSpellRisePlayerControllerRuntime,
+		Verbose,
+		TEXT("[GAS][InputRoute] Action=Pressed Tag=%s PC=%s Pawn=%s Local=%d Authority=%d"),
+		*InputTag.ToString(),
+		*GetNameSafe(this),
+		*GetNameSafe(ControlledPawn),
+		IsLocalController() ? 1 : 0,
+		HasAuthority() ? 1 : 0);
+
 	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASCFromPawn())
 	{
 		SRASC->SR_AbilityInputTagPressed(InputTag);
 	}
+}
+
+void ASpellRisePlayerController::LogInputFocusSnapshot(const TCHAR* SourceLabel)
+{
+	const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	if (NowSeconds > 0.0 && (NowSeconds - LastInputFocusSnapshotTimeSeconds) < 0.35)
+	{
+		return;
+	}
+
+	FString FocusWidgetName(TEXT("NoSlateFocus"));
+	FString FocusWidgetClass(TEXT("None"));
+
+	if (FSlateApplication::IsInitialized())
+	{
+		if (TSharedPtr<SWidget> FocusedWidget = FSlateApplication::Get().GetUserFocusedWidget(0))
+		{
+			FocusWidgetName = FocusedWidget->ToString();
+			FocusWidgetClass = FocusedWidget->GetTypeAsString();
+		}
+	}
+
+	const FString Signature = FString::Printf(
+		TEXT("%d|%d|%d|%s|%s|%s|%s"),
+		bShowMouseCursor ? 1 : 0,
+		bEnableClickEvents ? 1 : 0,
+		bEnableMouseOverEvents ? 1 : 0,
+		*FocusWidgetName,
+		*FocusWidgetClass,
+		*GetNameSafe(GetPawn()),
+		*GetNameSafe(this));
+
+	if (Signature == LastInputFocusSnapshotSignature)
+	{
+		return;
+	}
+
+	LastInputFocusSnapshotSignature = Signature;
+	LastInputFocusSnapshotTimeSeconds = NowSeconds;
+
+	UE_LOG(
+		LogSpellRisePlayerControllerRuntime,
+		Log,
+		TEXT("[Input][FocusSnapshot] Source=%s Controller=%s Pawn=%s Cursor=%d Click=%d Over=%d FocusWidget=%s FocusClass=%s"),
+		SourceLabel ? SourceLabel : TEXT("Unknown"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetPawn()),
+		bShowMouseCursor ? 1 : 0,
+		bEnableClickEvents ? 1 : 0,
+		bEnableMouseOverEvents ? 1 : 0,
+		*FocusWidgetName,
+		*FocusWidgetClass);
 }
 
 void ASpellRisePlayerController::SendAbilityInputTagReleased(FGameplayTag InputTag)
@@ -1747,6 +1814,16 @@ void ASpellRisePlayerController::SendAbilityInputTagReleased(FGameplayTag InputT
 			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
 		return;
 	}
+
+	UE_LOG(
+		LogSpellRisePlayerControllerRuntime,
+		Verbose,
+		TEXT("[GAS][InputRoute] Action=Released Tag=%s PC=%s Pawn=%s Local=%d Authority=%d"),
+		*InputTag.ToString(),
+		*GetNameSafe(this),
+		*GetNameSafe(ControlledPawn),
+		IsLocalController() ? 1 : 0,
+		HasAuthority() ? 1 : 0);
 
 	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASCFromPawn())
 	{

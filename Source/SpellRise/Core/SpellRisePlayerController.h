@@ -252,6 +252,7 @@ protected:
 	void OnAbility8Released();
 
 private:
+	void LogInputFocusSnapshot(const TCHAR* SourceLabel);
 	bool CanRunLocalHUDFlow(FString* OutSkipReason = nullptr) const;
 	bool CanRunLocalPawnRuntime(APawn* CandidatePawn, FString* OutSkipReason = nullptr) const;
 	void LogASCBindSkipReason(const FString& SkipReason);
@@ -318,6 +319,11 @@ private:
 	TWeakObjectPtr<USpellRiseAbilitySystemComponent> HUDObservedASC;
 	FDelegateHandle HUDHealthChangedHandle;
 	FDelegateHandle HUDManaChangedHandle;
+	UPROPERTY(Transient)
+	double LastInputFocusSnapshotTimeSeconds = 0.0;
+
+	UPROPERTY(Transient)
+	FString LastInputFocusSnapshotSignature;
 	FDelegateHandle HUDStaminaChangedHandle;
 
 	double NextHUDAbilitiesRefreshTimeSeconds = 0.0;
