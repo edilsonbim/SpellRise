@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
 #include "GameFramework/PlayerController.h"
@@ -83,11 +85,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|HUD")
 	void SetCombatHUDSuppressedByDeath(bool bSuppressed);
 
-	UFUNCTION(Exec, Category="SpellRise|Debug")
-	void SR_ForceDeath();
-
-	UFUNCTION(Server, Reliable, Category="SpellRise|Debug")
-	void ServerSR_ForceDeath();
 
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Inventory")
 	void InventorySplitSlotSERVER(UObject* FromContainer, int32 Slot, int32 Amount);
@@ -279,7 +276,6 @@ private:
 	bool IsGameplayInputBlocked() const;
 	bool IsPersistenceProfileReady() const;
 	UNarrativeInteractionComponent* ResolveNarrativeInteractionComponent() const;
-	void ExecuteForceDeath_Server();
 
 	bool BuildAimTraceResult(
 		FSpellRiseAimTraceResult& OutResult,
@@ -329,9 +325,6 @@ private:
 	double NextHUDAbilitiesRefreshTimeSeconds = 0.0;
 	double NextHUDTargetRefreshTimeSeconds = 0.0;
 	bool bLastKnownPersistenceProfileReady = false;
-	bool bAutoForceDeathFromCommandLine = false;
-	bool bAutoForceDeathTriggered = false;
-	double AutoForceDeathTriggerAtServerTimeSeconds = -1.0;
 
 	UPROPERTY(Transient)
 	bool bLoggedHUDCreateAttempt = false;

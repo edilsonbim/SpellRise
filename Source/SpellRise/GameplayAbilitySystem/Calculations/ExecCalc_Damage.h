@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "GameplayEffectExecutionCalculation.h"
 #include "ExecCalc_Damage.generated.h"
@@ -16,7 +18,7 @@ public:
 	{
 		FCaptureDefs();
 
-		// --- Source (Derived) ---
+
 		FGameplayEffectAttributeCaptureDefinition MeleeDamageMultiplierDef;
 		FGameplayEffectAttributeCaptureDefinition BowDamageMultiplierDef;
 		FGameplayEffectAttributeCaptureDefinition SpellDamageMultiplierDef;
@@ -26,7 +28,7 @@ public:
 
 		FGameplayEffectAttributeCaptureDefinition ArmorPenetrationDef;
 
-		// --- Target (Resistances) ---
+
 		FGameplayEffectAttributeCaptureDefinition SlashingResDef;
 		FGameplayEffectAttributeCaptureDefinition BashingResDef;
 		FGameplayEffectAttributeCaptureDefinition PiercingResDef;

@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRisePlayerController.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -502,12 +503,6 @@ namespace
 			if (!bHasContext)
 			{
 				Subsystem->AddMappingContext(Context, Priority);
-				UE_LOG(
-					LogSpellRisePlayerControllerRuntime,
-					Log,
-					TEXT("[Input][IMC] Applied Context=%s Priority=%d"),
-					ContextLabel,
-					Priority);
 			}
 
 			return;
@@ -516,12 +511,6 @@ namespace
 		if (bHasContext)
 		{
 			Subsystem->RemoveMappingContext(Context);
-			UE_LOG(
-				LogSpellRisePlayerControllerRuntime,
-				Log,
-				TEXT("[Input][IMC] Removed Context=%s Priority=%d"),
-				ContextLabel,
-				Priority);
 		}
 	}
 }
@@ -572,7 +561,6 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 		if (bFoundChannel && IsCombatChannelDescriptor(ChannelName, ChannelValue))
 		{
 			ClientMessage(TEXT("Canal Combat e somente leitura."));
-			UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Chat] Blocked SendChatToSERVER to combat channel from %s"), *GetNameSafe(this));
 			return;
 		}
 	}
@@ -583,65 +571,40 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 void ASpellRisePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=BeginPlayStart Controller=%s Class=%s Local=%d"),
-		*GetNameSafe(this),
-		*GetClass()->GetName(),
-		IsLocalController() ? 1 : 0);
-
 	if (IsLocalController())
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=SetInputModeGameOnly"));
 		FInputModeGameOnly Mode;
 		SetInputMode(Mode);
 		LogInputFocusSnapshot(TEXT("BeginPlay.SetInputModeGameOnly"));
 	}
 
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=SetupEnhancedInput"));
 	SetupEnhancedInput();
 
 	FString LocalFlowSkipReason;
 	if (CanRunLocalPawnRuntime(GetPawn(), &LocalFlowSkipReason))
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=HUDFlowReady"));
 		EnsureCombatHUDCreated();
 		UpdateCombatHUDVisibility();
 		TryBindHUDToCurrentASC();
 	}
 	else
 	{
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Log,
-			TEXT("[PC.BeginPlayStep] Step=HUDFlowSkipped Reason=%s"),
-			*LocalFlowSkipReason);
 	}
 
 	if (APawn* InitialPawn = GetPawn())
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=HandlePawnChangedRuntime PawnReady=1"));
 		HandlePawnChangedRuntime(InitialPawn, TEXT("BeginPlay"));
 	}
 	else
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=HandlePawnChangedRuntimeDeferred PawnReady=0"));
 	}
 	bLastKnownPersistenceProfileReady = IsPersistenceProfileReady();
 	if (bLastKnownPersistenceProfileReady)
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Log, TEXT("[PC.BeginPlayStep] Step=InitialHUDBroadcast"));
 		BroadcastResourcesToHUD();
 		BroadcastAbilitySlotsToHUD();
 	}
 
-#if !UE_BUILD_SHIPPING
-	bAutoForceDeathFromCommandLine = FParse::Param(FCommandLine::Get(), TEXT("SRForceDeathOnBeginPlay"));
-	bAutoForceDeathTriggered = false;
-	if (bAutoForceDeathFromCommandLine)
-	{
-		AutoForceDeathTriggerAtServerTimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() + 5.0 : 5.0;
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Flag de cmdline detectada para %s. Disparo em %.2fs"), *GetNameSafe(this), AutoForceDeathTriggerAtServerTimeSeconds);
-	}
-#endif
 }
 
 void ASpellRisePlayerController::Tick(float DeltaSeconds)
@@ -704,18 +667,6 @@ void ASpellRisePlayerController::Tick(float DeltaSeconds)
 		FlushPendingChatMessages();
 	}
 
-#if !UE_BUILD_SHIPPING
-	if (bAutoForceDeathFromCommandLine && !bAutoForceDeathTriggered)
-	{
-		UWorld* World = GetWorld();
-		const double NowSeconds = World ? World->GetTimeSeconds() : 0.0;
-		if (NowSeconds >= AutoForceDeathTriggerAtServerTimeSeconds && IsValid(GetPawn()))
-		{
-			bAutoForceDeathTriggered = true;
-			SR_ForceDeath();
-		}
-	}
-#endif
 }
 
 bool ASpellRisePlayerController::CanRunLocalHUDFlow(FString* OutSkipReason) const
@@ -809,12 +760,6 @@ void ASpellRisePlayerController::LogASCBindSkipReason(const FString& SkipReason)
 	}
 
 	LastASCBindSkipReason = SkipReason;
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[PC.ASCBind.SkipReason] Controller=%s Reason=%s"),
-		*GetNameSafe(this),
-		*SkipReason);
 }
 
 void ASpellRisePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -840,15 +785,6 @@ void ASpellRisePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	default:
 		break;
 	}
-
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[Net][ClientEndPlay] Controller=%s Local=%d Reason=%s Pawn=%s"),
-		*GetNameSafe(this),
-		IsLocalController() ? 1 : 0,
-		EndPlayReasonText,
-		*GetNameSafe(GetPawn()));
 
 	UnbindHUDFromASC();
 	CleanupCombatHUD();
@@ -902,14 +838,12 @@ void ASpellRisePlayerController::SetupEnhancedInput()
 
 	if (!MappingContextToApply)
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[SpellRise] PlayerController: nenhum MappingContext disponivel (Core/Combat/Interaction/UI/Default)."));
 		return;
 	}
 
 	if (!Subsystem->HasMappingContext(MappingContextToApply))
 	{
 		Subsystem->AddMappingContext(MappingContextToApply, MappingPriority);
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Input][IMC] Fallback MappingContext aplicado (%s)"), *GetNameSafe(MappingContextToApply));
 	}
 }
 
@@ -955,12 +889,6 @@ void ASpellRisePlayerController::EnsureCombatHUDCreated()
 		if (!LocalFlowSkipReason.Equals(LastHUDCreateFailureReason, ESearchCase::CaseSensitive))
 		{
 			LastHUDCreateFailureReason = LocalFlowSkipReason;
-			UE_LOG(
-				LogSpellRisePlayerControllerRuntime,
-				Log,
-				TEXT("[PC.HUDCreate.Fail] Controller=%s Reason=%s"),
-				*GetNameSafe(this),
-				*LocalFlowSkipReason);
 		}
 		return;
 	}
@@ -971,13 +899,6 @@ void ASpellRisePlayerController::EnsureCombatHUDCreated()
 		if (!InvalidClassReason.Equals(LastHUDCreateFailureReason, ESearchCase::CaseSensitive))
 		{
 			LastHUDCreateFailureReason = InvalidClassReason;
-			UE_LOG(
-				LogSpellRisePlayerControllerRuntime,
-				Log,
-				TEXT("[PC.HUDCreate.Fail] Controller=%s Reason=%s Class=%s"),
-				*GetNameSafe(this),
-				*InvalidClassReason,
-				*GetNameSafe(CombatHUDWidgetClass.Get()));
 		}
 		return;
 	}
@@ -985,12 +906,6 @@ void ASpellRisePlayerController::EnsureCombatHUDCreated()
 	if (!bLoggedHUDCreateAttempt)
 	{
 		bLoggedHUDCreateAttempt = true;
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Log,
-			TEXT("[PC.HUDCreate.Attempt] Controller=%s WidgetClass=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(CombatHUDWidgetClass.Get()));
 	}
 
 	CombatHUDWidget = CreateWidget<USpellRiseCombatHUDWidget>(this, CombatHUDWidgetClass);
@@ -1000,13 +915,6 @@ void ASpellRisePlayerController::EnsureCombatHUDCreated()
 		if (!CreationFailReason.Equals(LastHUDCreateFailureReason, ESearchCase::CaseSensitive))
 		{
 			LastHUDCreateFailureReason = CreationFailReason;
-			UE_LOG(
-				LogSpellRisePlayerControllerRuntime,
-				Log,
-				TEXT("[PC.HUDCreate.Fail] Controller=%s Reason=%s WidgetClass=%s"),
-				*GetNameSafe(this),
-				*CreationFailReason,
-				*GetNameSafe(CombatHUDWidgetClass.Get()));
 		}
 		return;
 	}
@@ -1016,12 +924,6 @@ void ASpellRisePlayerController::EnsureCombatHUDCreated()
 	if (!bLoggedHUDCreateSuccess)
 	{
 		bLoggedHUDCreateSuccess = true;
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Log,
-			TEXT("[PC.HUDCreate.Success] Controller=%s Widget=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(CombatHUDWidget));
 	}
 }
 
@@ -1045,104 +947,20 @@ void ASpellRisePlayerController::SetCombatHUDSuppressedByDeath(bool bSuppressed)
 	UpdateCombatHUDVisibility();
 }
 
-void ASpellRisePlayerController::SR_ForceDeath()
-{
-#if UE_BUILD_SHIPPING
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Bloqueado em build shipping. Controller=%s"), *GetNameSafe(this));
-	return;
-#else
-	if (HasAuthority())
-	{
-		ExecuteForceDeath_Server();
-		return;
-	}
 
-	ServerSR_ForceDeath();
-#endif
-}
-
-void ASpellRisePlayerController::ServerSR_ForceDeath_Implementation()
-{
-#if UE_BUILD_SHIPPING
-	return;
-#else
-	ExecuteForceDeath_Server();
-#endif
-}
 
 void ASpellRisePlayerController::InventorySplitSlotSERVER_Implementation(UObject* FromContainer, int32 Slot, int32 Amount)
 {
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Inventory][Server] InventorySplitSlotSERVER chamado sem implementacao ativa. Controller=%s FromContainer=%s Slot=%d Amount=%d"),
-		*GetNameSafe(this),
-		*GetNameSafe(FromContainer),
-		Slot,
-		Amount);
 }
 
 void ASpellRisePlayerController::OnInventorySlotDropSERVER_Implementation(UObject* FromContainer, UObject* ToInventoryComponent, int32 FromIndex, int32 ToIndex)
 {
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Inventory][Server] OnInventorySlotDropSERVER chamado sem implementacao ativa. Controller=%s FromContainer=%s ToInventoryComponent=%s FromIndex=%d ToIndex=%d"),
-		*GetNameSafe(this),
-		*GetNameSafe(FromContainer),
-		*GetNameSafe(ToInventoryComponent),
-		FromIndex,
-		ToIndex);
 }
 
 void ASpellRisePlayerController::Route_InventorySortBy_SERVER_Implementation(UObject* InventoryRef, int32 SortBy)
 {
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Inventory][Server] Route_InventorySortBy_SERVER chamado sem implementacao ativa. Controller=%s InventoryRef=%s SortBy=%d"),
-		*GetNameSafe(this),
-		*GetNameSafe(InventoryRef),
-		SortBy);
 }
 
-void ASpellRisePlayerController::ExecuteForceDeath_Server()
-{
-	if (!HasAuthority())
-	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Rejeitado sem authority. Controller=%s"), *GetNameSafe(this));
-		return;
-	}
-
-	ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn());
-	if (!IsValid(ControlledCharacter))
-	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Pawn invalido para %s"), *GetNameSafe(this));
-		return;
-	}
-
-	if (ControlledCharacter->IsDead())
-	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Debug][ForceDeath] Ignorado (personagem ja morto). Char=%s"), *GetNameSafe(ControlledCharacter));
-		return;
-	}
-
-	UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent();
-	if (!IsValid(ASC))
-	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Error, TEXT("[Debug][ForceDeath] ASC ausente. Char=%s"), *GetNameSafe(ControlledCharacter));
-		return;
-	}
-
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Warning,
-		TEXT("[Debug][ForceDeath] Forcando Health=0 no servidor. Controller=%s Char=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(ControlledCharacter));
-
-	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), 0.f);
-}
 
 void ASpellRisePlayerController::SetPlayerHUDWidgetsSuppressed(bool bSuppressed)
 {
@@ -1205,7 +1023,7 @@ bool ASpellRisePlayerController::IsPersistenceProfileReady() const
 	const ASpellRisePlayerState* SRPlayerState = ControlledPawn ? Cast<ASpellRisePlayerState>(ControlledPawn->GetPlayerState()) : nullptr;
 	if (!SRPlayerState)
 	{
-		// Fallback permissivo para cenarios sem PlayerState especializado (ex.: editor/fluxos legados).
+
 		return true;
 	}
 
@@ -1270,14 +1088,6 @@ void ASpellRisePlayerController::TryBindHUDToCurrentASC()
 		return;
 	}
 
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[PC.ASCBind.Attempt] Controller=%s Pawn=%s ASC=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(ControlledPawn),
-		*GetNameSafe(CurrentASC));
-
 	UnbindHUDFromASC();
 
 	HUDObservedASC = CurrentASC;
@@ -1289,13 +1099,6 @@ void ASpellRisePlayerController::TryBindHUDToCurrentASC()
 		.AddUObject(this, &ASpellRisePlayerController::OnResourceAttributeChanged);
 
 	LastASCBindSkipReason.Reset();
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[PC.ASCBind.Success] Controller=%s ASC=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(CurrentASC));
-
 	BroadcastResourcesToHUD();
 	BroadcastAbilitySlotsToHUD();
 }
@@ -1441,13 +1244,12 @@ void ASpellRisePlayerController::SetupInputComponent()
 	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent);
 	if (!EIC)
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Error, TEXT("[SpellRise] PlayerController: InputComponent is not EnhancedInputComponent."));
 		return;
 	}
 
 	if (!IA_Attack)
 	{
-		// Optional action; many setups drive melee via IA_Primary only.
+
 	}
 	else
 	{
@@ -1559,12 +1361,6 @@ void ASpellRisePlayerController::OnUnPossess()
 	Super::OnUnPossess();
 	HandlePawnChangedRuntime(nullptr, TEXT("OnUnPossess"));
 
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[Net][PawnChanged] Source=OnUnPossess Controller=%s PreviousPawn=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(PreviousPawn));
 }
 
 void ASpellRisePlayerController::AcknowledgePossession(APawn* InPawn)
@@ -1576,16 +1372,6 @@ void ASpellRisePlayerController::AcknowledgePossession(APawn* InPawn)
 void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const TCHAR* SourceLabel)
 {
 	const TCHAR* SafeSource = SourceLabel ? SourceLabel : TEXT("Unknown");
-
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[Net][PawnChanged] Source=%s Controller=%s Pawn=%s Local=%d HasAuthority=%d"),
-		SafeSource,
-		*GetNameSafe(this),
-		*GetNameSafe(NewPawn),
-		IsLocalController() ? 1 : 0,
-		HasAuthority() ? 1 : 0);
 
 	FString LocalFlowSkipReason;
 	if (CanRunLocalPawnRuntime(NewPawn, &LocalFlowSkipReason))
@@ -1599,13 +1385,6 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 	}
 	else
 	{
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Verbose,
-			TEXT("[Net][PawnChanged] Source=%s Controller=%s local flow skipped Reason=%s"),
-			SafeSource,
-			*GetNameSafe(this),
-			*LocalFlowSkipReason);
 	}
 
 	if (NewPawn && IsLocalController() && GetViewTarget() != NewPawn)
@@ -1614,23 +1393,9 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 		if (CanRunLocalHUDFlow(&CameraFlowSkipReason))
 		{
 			SetViewTarget(NewPawn);
-			UE_LOG(
-				LogSpellRisePlayerControllerRuntime,
-				Verbose,
-				TEXT("[Net][PawnChanged] Source=%s Controller=%s forced ViewTarget=%s"),
-				SafeSource,
-				*GetNameSafe(this),
-				*GetNameSafe(NewPawn));
 		}
 		else
 		{
-			UE_LOG(
-				LogSpellRisePlayerControllerRuntime,
-				Verbose,
-				TEXT("[Net][PawnChanged] Source=%s Controller=%s camera flow skipped Reason=%s"),
-				SafeSource,
-				*GetNameSafe(this),
-				*CameraFlowSkipReason);
 		}
 	}
 }
@@ -1642,9 +1407,12 @@ void ASpellRisePlayerController::OnAttackPressed()
 		return;
 	}
 
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[GAS][Input] OnAttackPressed"));
+	// Evita press/release duplicado quando IA_Attack e IA_Primary mapeiam o mesmo botão.
+	if (IA_Primary != nullptr)
+	{
+		return;
+	}
 
-	// Single GAS path: attack input is always routed by gameplay tag.
 	SendAbilityInputTagPressed(InputTag_Primary());
 }
 
@@ -1655,7 +1423,11 @@ void ASpellRisePlayerController::OnAttackReleased()
 		return;
 	}
 
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[GAS][Input] OnAttackReleased"));
+	if (IA_Primary != nullptr)
+	{
+		return;
+	}
+
 	SendAbilityInputTagReleased(InputTag_Primary());
 }
 
@@ -1665,14 +1437,6 @@ USpellRiseAbilitySystemComponent* ASpellRisePlayerController::GetSpellRiseASCFro
 	FString SkipReason;
 	if (!SR_CanSendPawnOwnedInputRpc(this, ControlledPawn, &SkipReason))
 	{
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Verbose,
-			TEXT("[GAS][InputGuard] ASC lookup skipped reason=%s PC=%s Pawn=%s PawnController=%s"),
-			*SkipReason,
-			*GetNameSafe(this),
-			*GetNameSafe(ControlledPawn),
-			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
 		return nullptr;
 	}
 
@@ -1707,27 +1471,8 @@ void ASpellRisePlayerController::SendAbilityInputTagPressed(FGameplayTag InputTa
 	FString SkipReason;
 	if (!SR_CanSendPawnOwnedInputRpc(this, ControlledPawn, &SkipReason))
 	{
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Verbose,
-			TEXT("[GAS][InputGuard] Press ignored tag=%s reason=%s PC=%s Pawn=%s PawnController=%s"),
-			*InputTag.ToString(),
-			*SkipReason,
-			*GetNameSafe(this),
-			*GetNameSafe(ControlledPawn),
-			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
 		return;
 	}
-
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Verbose,
-		TEXT("[GAS][InputRoute] Action=Pressed Tag=%s PC=%s Pawn=%s Local=%d Authority=%d"),
-		*InputTag.ToString(),
-		*GetNameSafe(this),
-		*GetNameSafe(ControlledPawn),
-		IsLocalController() ? 1 : 0,
-		HasAuthority() ? 1 : 0);
 
 	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASCFromPawn())
 	{
@@ -1773,18 +1518,6 @@ void ASpellRisePlayerController::LogInputFocusSnapshot(const TCHAR* SourceLabel)
 	LastInputFocusSnapshotSignature = Signature;
 	LastInputFocusSnapshotTimeSeconds = NowSeconds;
 
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Log,
-		TEXT("[Input][FocusSnapshot] Source=%s Controller=%s Pawn=%s Cursor=%d Click=%d Over=%d FocusWidget=%s FocusClass=%s"),
-		SourceLabel ? SourceLabel : TEXT("Unknown"),
-		*GetNameSafe(this),
-		*GetNameSafe(GetPawn()),
-		bShowMouseCursor ? 1 : 0,
-		bEnableClickEvents ? 1 : 0,
-		bEnableMouseOverEvents ? 1 : 0,
-		*FocusWidgetName,
-		*FocusWidgetClass);
 }
 
 void ASpellRisePlayerController::SendAbilityInputTagReleased(FGameplayTag InputTag)
@@ -1803,27 +1536,8 @@ void ASpellRisePlayerController::SendAbilityInputTagReleased(FGameplayTag InputT
 	FString SkipReason;
 	if (!SR_CanSendPawnOwnedInputRpc(this, ControlledPawn, &SkipReason))
 	{
-		UE_LOG(
-			LogSpellRisePlayerControllerRuntime,
-			Verbose,
-			TEXT("[GAS][InputGuard] Release ignored tag=%s reason=%s PC=%s Pawn=%s PawnController=%s"),
-			*InputTag.ToString(),
-			*SkipReason,
-			*GetNameSafe(this),
-			*GetNameSafe(ControlledPawn),
-			*GetNameSafe(ControlledPawn ? ControlledPawn->GetController() : nullptr));
 		return;
 	}
-
-	UE_LOG(
-		LogSpellRisePlayerControllerRuntime,
-		Verbose,
-		TEXT("[GAS][InputRoute] Action=Released Tag=%s PC=%s Pawn=%s Local=%d Authority=%d"),
-		*InputTag.ToString(),
-		*GetNameSafe(this),
-		*GetNameSafe(ControlledPawn),
-		IsLocalController() ? 1 : 0,
-		HasAuthority() ? 1 : 0);
 
 	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASCFromPawn())
 	{
@@ -1864,7 +1578,6 @@ void ASpellRisePlayerController::OnPrimaryPressed()
 		return;
 	}
 
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[GAS][Input] OnPrimaryPressed"));
 	SendAbilityInputTagPressed(InputTag_Primary());
 }
 
@@ -1875,7 +1588,6 @@ void ASpellRisePlayerController::OnPrimaryReleased()
 		return;
 	}
 
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[GAS][Input] OnPrimaryReleased"));
 	SendAbilityInputTagReleased(InputTag_Primary());
 }
 
@@ -1903,7 +1615,6 @@ void ASpellRisePlayerController::OnInteractPressed()
 {
 	if (IsGameplayInputBlocked())
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Input][Interact] Rejeitado por bloqueio de gameplay. Controller=%s Pawn=%s"), *GetNameSafe(this), *GetNameSafe(GetPawn()));
 		return;
 	}
 
@@ -1919,7 +1630,6 @@ void ASpellRisePlayerController::OnInteractReleased()
 {
 	if (IsGameplayInputBlocked())
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Input][Interact] Release rejeitado por bloqueio de gameplay. Controller=%s Pawn=%s"), *GetNameSafe(this), *GetNameSafe(GetPawn()));
 		return;
 	}
 
@@ -1935,14 +1645,12 @@ bool ASpellRisePlayerController::TryExecuteNarrativeInteract(bool bPressed) cons
 {
 	if (!IsLocalController())
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Input][Interact] Ignorado em controller nao-local. Controller=%s"), *GetNameSafe(this));
 		return false;
 	}
 
 	UNarrativeInteractionComponent* InteractionComponent = ResolveNarrativeInteractionComponent();
 	if (!InteractionComponent)
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Input][Interact] Rejeitado: UNarrativeInteractionComponent ausente. Controller=%s Pawn=%s"), *GetNameSafe(this), *GetNameSafe(GetPawn()));
 		return false;
 	}
 
@@ -1950,11 +1658,9 @@ bool ASpellRisePlayerController::TryExecuteNarrativeInteract(bool bPressed) cons
 	UFunction* Function = InteractionComponent->FindFunction(FunctionName);
 	if (!Function)
 	{
-		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[Input][Interact] Rejeitado: funcao %s ausente em %s. Controller=%s"), *FunctionName.ToString(), *GetNameSafe(InteractionComponent), *GetNameSafe(this));
 		return false;
 	}
 
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose, TEXT("[Input][Interact] Dispatch %s via %s. Controller=%s"), *FunctionName.ToString(), *GetNameSafe(InteractionComponent), *GetNameSafe(this));
 	InteractionComponent->ProcessEvent(Function, nullptr);
 	return true;
 }
@@ -2034,7 +1740,7 @@ bool ASpellRisePlayerController::ShouldEnableUIInputContext() const
 
 bool ASpellRisePlayerController::IsConstructionModeActive() const
 {
-	// Compatibilidade temporaria para chamadas legadas: build mode removido deste controller.
+
 	return false;
 }
 
@@ -2054,12 +1760,6 @@ void ASpellRisePlayerController::ShowDamageNumber(
 	{
 		return;
 	}
-
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Warning, TEXT("[POP][PC] Damage=%.1f Loc=%s Local=%d Controller=%s"),
-		Damage,
-		*WorldLocation.ToString(),
-		IsLocalController() ? 1 : 0,
-		*GetNameSafe(this));
 
 	FSpellRiseNumberPopRequest Request;
 	Request.WorldLocation = WorldLocation;
@@ -2431,7 +2131,7 @@ bool ASpellRisePlayerController::BuildAimTraceResult(
 		}
 	}
 
-	// Stage 1: camera trace to acquire the desired aim point.
+
 	const FVector CameraTraceStart = CameraLocation;
 	const FVector CameraTraceEnd = CameraTraceStart + (CameraDirection * SafeTraceDistance);
 
@@ -2445,8 +2145,8 @@ bool ASpellRisePlayerController::BuildAimTraceResult(
 
 	const FVector DesiredTargetPoint = bCameraHit ? CameraHitResult.ImpactPoint : CameraTraceEnd;
 
-	// Stage 2: validate from the controlled pawn view location.
-	// This avoids camera/muzzle parallax and prevents aiming through near walls.
+
+
 	const FVector SourceTraceStart = ResolveTraceOrigin(this);
 	if (SourceTraceStart.IsNearlyZero())
 	{
@@ -2482,7 +2182,7 @@ bool ASpellRisePlayerController::BuildAimTraceResult(
 	OutResult.AimDirection = SourceDirection;
 	OutResult.TargetPoint = bSourceHit ? SourceHitResult.ImpactPoint : DesiredTargetPoint;
 
-	// Mantém compatibilidade com quem usa HitResult.TraceStart/TraceEnd.
+
 	if (!bSourceHit)
 	{
 		OutResult.HitResult = FHitResult();

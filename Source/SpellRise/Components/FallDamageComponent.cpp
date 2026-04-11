@@ -1,4 +1,4 @@
-// FallDamageComponent.cpp
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/FallDamageComponent.h"
 
 #include "GameFramework/Character.h"
@@ -18,7 +18,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseFallDamage, Log, All);
 UFallDamageComponent::UFallDamageComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	SetIsReplicatedByDefault(false); // lógica só no servidor
+	SetIsReplicatedByDefault(false);
 }
 
 void UFallDamageComponent::BeginPlay()
@@ -56,17 +56,12 @@ void UFallDamageComponent::OnMovementModeChanged()
 		return;
 	}
 
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL MMC] MovementMode=%d ShouldTrack=%d"),
-		OwnerCharacter->GetCharacterMovement() ? (int32)OwnerCharacter->GetCharacterMovement()->MovementMode : -1,
-		ShouldTrackFall() ? 1 : 0);
-
 	if (ShouldTrackFall())
 	{
 		StartFallTracking();
 	}
 	else if (bFallTrackingActive)
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL MMC] Stop tracking due movement mode change"));
 		StopFallTracking();
 	}
 }
@@ -78,12 +73,6 @@ void UFallDamageComponent::OnLanded(const FHitResult& Hit)
 		return;
 	}
 
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL LANDED] Active=%d MaxSpeed=%.2f StartZ=%.2f CurrentZ=%.2f"),
-		bFallTrackingActive ? 1 : 0,
-		MaxFallSpeedAbs,
-		FallStartZ,
-		OwnerCharacter->GetActorLocation().Z);
-
 	if (!bFallTrackingActive)
 	{
 		return;
@@ -93,33 +82,21 @@ void UFallDamageComponent::OnLanded(const FHitResult& Hit)
 	const float FallDuration = Now - FallStartTime;
 	const float DeltaZ = FallStartZ - OwnerCharacter->GetActorLocation().Z;
 
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL CHECK] Duration=%.2f DeltaZ=%.2f MinTime=%.2f MinHeight=%.2f SafeSpeed=%.2f"),
-		FallDuration,
-		DeltaZ,
-		MinFallTime,
-		MinFallHeight,
-		SafeSpeed);
-
 	if (bIgnoreNextFallDamage || HasFallImmunity() || IsSafeSurface(Hit))
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL EXIT] Ignored by immunity/safe surface"));
 		StopFallTracking();
 		return;
 	}
 
 	if (FallDuration < MinFallTime || DeltaZ < MinFallHeight || MaxFallSpeedAbs < SafeSpeed)
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL EXIT] Threshold fail"));
 		StopFallTracking();
 		return;
 	}
 
 	const float Severity = ComputeSeverity();
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL SEVERITY] %.3f"), Severity);
-
 	if (Severity <= 0.f)
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL EXIT] Severity <= 0"));
 		StopFallTracking();
 		return;
 	}
@@ -128,18 +105,12 @@ void UFallDamageComponent::OnLanded(const FHitResult& Hit)
 	float Damage = GetMaxHealth() * DamagePercent;
 	Damage = ApplyMitigations(Damage, Hit);
 
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL DAMAGE] Percent=%.3f MaxHealth=%.2f Final=%.2f"),
-		DamagePercent,
-		GetMaxHealth(),
-		Damage);
-
 	if (Damage > 0.f)
 	{
 		ApplyFallDamage(Damage, Severity, Hit);
 	}
 	else
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL EXIT] Final damage <= 0"));
 	}
 
 	StopFallTracking();
@@ -157,16 +128,10 @@ void UFallDamageComponent::StartFallTracking()
 	FallStartTime = GetWorld()->GetTimeSeconds();
 	MaxFallSpeedAbs = FMath::Max(0.f, -OwnerCharacter->GetVelocity().Z);
 
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL START] Z=%.2f Time=%.2f VelZ=%.2f"),
-		FallStartZ,
-		FallStartTime,
-		OwnerCharacter->GetVelocity().Z);
 }
 
 void UFallDamageComponent::StopFallTracking()
 {
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL STOP]"));
-
 	bFallTrackingActive = false;
 	FallStartZ = 0.f;
 	FallStartTime = 0.f;
@@ -301,7 +266,6 @@ void UFallDamageComponent::ApplyFallDamage(float Damage, float Severity, const F
 	UAbilitySystemComponent* ASC = GetASC();
 	if (!ASC || !GE_FallDamage)
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL APPLY] ASC or GE_FallDamage missing"));
 		return;
 	}
 
@@ -312,7 +276,6 @@ void UFallDamageComponent::ApplyFallDamage(float Damage, float Severity, const F
 	const FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(GE_FallDamage, 1.f, Context);
 	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
 	{
-		UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL APPLY] Invalid SpecHandle"));
 		return;
 	}
 
@@ -325,14 +288,6 @@ void UFallDamageComponent::ApplyFallDamage(float Damage, float Severity, const F
 	static const FGameplayTag TagDamageTypeFall =
 		FGameplayTag::RequestGameplayTag(TEXT("Data.DamageType.Fall"), false);
 
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL APPLY] GE=%s Damage=%.2f Severity=%.3f TagsValid D=%d S=%d F=%d"),
-		*GetNameSafe(GE_FallDamage),
-		Damage,
-		Severity,
-		TagDataDamage.IsValid() ? 1 : 0,
-		TagDataFallSeverity.IsValid() ? 1 : 0,
-		TagDamageTypeFall.IsValid() ? 1 : 0);
-
 	if (TagDamageTypeFall.IsValid())
 	{
 		FGameplayTagContainer DamageTags;
@@ -343,11 +298,6 @@ void UFallDamageComponent::ApplyFallDamage(float Damage, float Severity, const F
 	SpecHandle.Data->SetSetByCallerMagnitude(TagDataDamage, Damage);
 	SpecHandle.Data->SetSetByCallerMagnitude(TagDataFallSeverity, Severity);
 	SpecHandle.Data->SetSetByCallerMagnitude(TagDamageTypeFall, 1.f);
-
-	UE_LOG(LogSpellRiseFallDamage, Warning, TEXT("[FALL APPLY] SBC Readback Damage=%.2f Severity=%.3f Fall=%.2f"),
-		SpecHandle.Data->GetSetByCallerMagnitude(TagDataDamage, false, -1.f),
-		SpecHandle.Data->GetSetByCallerMagnitude(TagDataFallSeverity, false, -1.f),
-		SpecHandle.Data->GetSetByCallerMagnitude(TagDamageTypeFall, false, -1.f));
 
 	ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }

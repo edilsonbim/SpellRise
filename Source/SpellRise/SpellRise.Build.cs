@@ -1,3 +1,4 @@
+// Cabeçalho de módulo: configura o alvo Unreal e suas regras de build.
 using UnrealBuildTool;
 using System.IO;
 
@@ -35,27 +36,27 @@ public class SpellRise : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				// UI / Widgets
+
 				"Slate",
 				"SlateCore",
 
-				// Rendering / FX support
+
 				"RenderCore",
 				"RHI",
 
-				// Networking / multiplayer
+
 				"NetCore",
 				"OnlineSubsystem",
 				"OnlineSubsystemUtils",
 				"OnlineSubsystemSteam",
 
-				// General project/runtime support
+
 				"Projects",
 				"DeveloperSettings",
 				"Json",
 				"JsonUtilities",
 
-				// Audio
+
 				"AudioMixer"
 			}
 		);

@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Tests/SpellRiseGameplayAbilitySmokeTest.h"
 #include "Misc/AutomationTest.h"
 #include "GameFramework/PlayerController.h"
@@ -40,4 +41,4 @@ bool FSpellRiseAbilityInputBroadcastSmokeTest::RunTest(const FString& Parameters
 	return true;
 }
 
-#endif // WITH_DEV_AUTOMATION_TESTS
+#endif

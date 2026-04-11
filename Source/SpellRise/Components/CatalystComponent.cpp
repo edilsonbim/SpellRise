@@ -1,5 +1,4 @@
-// CatalystComponent.cpp
-
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/CatalystComponent.h"
 
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
@@ -35,11 +34,11 @@ void UCatalystComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    // Cache references to the owner character and ability system component
+
     OwnerCharacter = Cast<ASpellRiseCharacterBase>(GetOwner());
     ResolveAbilitySystemComponent();
 
-    // If catalyst is enabled on the server, bind to attribute changes
+
     if (bCatalystEnabled && AbilitySystemComponent && AbilitySystemComponent->IsOwnerActorAuthoritative())
     {
         EnsureCatalystChargeListenerBound_Server();
@@ -111,7 +110,7 @@ void UCatalystComponent::BindCatalystChargeListener_Server()
         return;
     }
 
-    // Bind to changes of the CatalystCharge attribute on the ability system component
+
     AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
         UCatalystAttributeSet::GetCatalystChargeAttribute()
     ).AddUObject(this, &UCatalystComponent::OnCatalystChargeChanged);
@@ -129,7 +128,7 @@ void UCatalystComponent::OnCatalystChargeChanged(const FOnAttributeChangeData& D
         return;
     }
 
-    // Crossed 100% threshold?  Trigger proc if so.
+
     const bool bCrossedToReady = (Data.OldValue < 100.f && Data.NewValue >= 100.f);
     if (bCrossedToReady)
     {
@@ -149,7 +148,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
         return false;
     }
 
-    // Only the server modifies attributes
+
     if (!HasServerAuthority())
     {
         return false;
@@ -168,7 +167,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
         return false;
     }
 
-    // Do not gain charges while dead or when catalyst active
+
     static FGameplayTag TAG_State_Dead = FGameplayTag::RequestGameplayTag(FName("State.Dead"), false);
     static FGameplayTag TAG_State_Catalyst_Active = FGameplayTag::RequestGameplayTag(FName("State.Catalyst.Active"), false);
     if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead) || AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Catalyst_Active))
@@ -178,29 +177,22 @@ bool UCatalystComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
 
     if (!GE_CatalystAddCharge)
     {
-        UE_LOG(LogSpellRiseCatalystRuntime, Warning, TEXT("[CatalystComponent] GE_CatalystAddCharge is NULL on %s (Owner=%s Avatar=%s). Set it on the CatalystComponent defaults."),
-            *GetNameSafe(this), *GetNameSafe(GetOwner()), *GetNameSafe(SourceActor));
         return false;
     }
 
-    // Prepare effect context with the source actor for stat tracking
+
     FGameplayEffectContextHandle Ctx = AbilitySystemComponent->MakeEffectContext();
     Ctx.AddSourceObject(SourceActor);
 
-    // Create an outgoing spec for the charge effect
+
     FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(GE_CatalystAddCharge, 1.f, Ctx);
     if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
     {
-        UE_LOG(LogSpellRiseCatalystRuntime, Error, TEXT("[CatalystComponent] MakeOutgoingSpec failed for GE_CatalystAddCharge on %s"), *GetNameSafe(SourceActor));
         return false;
     }
 
     AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
     ++GCatalystRuntimeCounters.ChargeOnHitApplied;
-    UE_LOG(LogSpellRiseCatalystRuntime, Verbose, TEXT("[CATALYST][CHARGE_ON_HIT] Source=%s Target=%s AppliedCount=%lld"),
-        *GetNameSafe(SourceActor),
-        *GetNameSafe(TargetActor),
-        GCatalystRuntimeCounters.ChargeOnHitApplied);
     return true;
 }
 
@@ -216,7 +208,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorAc
         return false;
     }
 
-    // Only the server modifies attributes
+
     if (!HasServerAuthority())
     {
         return false;
@@ -235,7 +227,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorAc
         return false;
     }
 
-    // Do not gain charges while dead or when catalyst active
+
     static FGameplayTag TAG_State_Dead = FGameplayTag::RequestGameplayTag(FName("State.Dead"), false);
     static FGameplayTag TAG_State_Catalyst_Active = FGameplayTag::RequestGameplayTag(FName("State.Catalyst.Active"), false);
     if (AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Dead) || AbilitySystemComponent->HasMatchingGameplayTag(TAG_State_Catalyst_Active))
@@ -245,29 +237,22 @@ bool UCatalystComponent::TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorAc
 
     if (!GE_CatalystAddCharge)
     {
-        UE_LOG(LogSpellRiseCatalystRuntime, Warning, TEXT("[CatalystComponent] GE_CatalystAddCharge is NULL on %s (Owner=%s Avatar=%s). Set it on the CatalystComponent defaults."),
-            *GetNameSafe(this), *GetNameSafe(GetOwner()), *GetNameSafe(VictimActor));
         return false;
     }
 
-    // Prepare effect context with the instigator (the one who damaged us) for stat tracking
+
     FGameplayEffectContextHandle Ctx = AbilitySystemComponent->MakeEffectContext();
     Ctx.AddSourceObject(InstigatorActor ? InstigatorActor : VictimActor);
 
-    // Create an outgoing spec for the charge effect
+
     FGameplayEffectSpecHandle SpecHandle = AbilitySystemComponent->MakeOutgoingSpec(GE_CatalystAddCharge, 1.f, Ctx);
     if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
     {
-        UE_LOG(LogSpellRiseCatalystRuntime, Error, TEXT("[CatalystComponent] MakeOutgoingSpec failed for GE_CatalystAddCharge on victim %s"), *GetNameSafe(VictimActor));
         return false;
     }
 
     AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
     ++GCatalystRuntimeCounters.ChargeOnDamageTakenApplied;
-    UE_LOG(LogSpellRiseCatalystRuntime, Verbose, TEXT("[CATALYST][CHARGE_ON_DAMAGE_TAKEN] Victim=%s Instigator=%s AppliedCount=%lld"),
-        *GetNameSafe(VictimActor),
-        *GetNameSafe(InstigatorActor),
-        GCatalystRuntimeCounters.ChargeOnDamageTakenApplied);
     return true;
 }
 
@@ -283,7 +268,7 @@ void UCatalystComponent::TryProcCatalystIfReady()
         return;
     }
 
-    // Only the server should activate abilities
+
     if (!HasServerAuthority())
     {
         return;
@@ -299,22 +284,20 @@ void UCatalystComponent::TryProcCatalystIfReady()
 
     if (!CatalystProcAbilityClass)
     {
-        UE_LOG(LogSpellRiseCatalystRuntime, Warning, TEXT("[CatalystComponent] CatalystProcAbilityClass not set."));
         return;
     }
 
-    // Check if we have enough charge
+
     const float CurrentCharge = AbilitySystemComponent->GetNumericAttribute(UCatalystAttributeSet::GetCatalystChargeAttribute());
     if (CurrentCharge < 100.f)
     {
         return;
     }
 
-    // Find the spec for the proc ability on the ability system component
+
     FGameplayAbilitySpec* Spec = AbilitySystemComponent->FindAbilitySpecFromClass(CatalystProcAbilityClass);
     if (!Spec)
     {
-        UE_LOG(LogSpellRiseCatalystRuntime, Warning, TEXT("[CatalystComponent] Proc ability not granted on ASC."));
         return;
     }
 
@@ -325,13 +308,6 @@ void UCatalystComponent::TryProcCatalystIfReady()
     {
         ++GCatalystRuntimeCounters.ProcActivated;
     }
-    UE_LOG(LogSpellRiseCatalystRuntime, Verbose, TEXT("[CATALYST][PROC] Owner=%s Activated=%d Attempts=%lld ActivatedCount=%lld Charge=%.2f"),
-        *GetNameSafe(GetOwner()),
-        bActivated ? 1 : 0,
-        GCatalystRuntimeCounters.ProcAttempts,
-        GCatalystRuntimeCounters.ProcActivated,
-        CurrentCharge);
-
     if (bActivated && OwnerCharacter)
     {
         int32 Tier = 1;

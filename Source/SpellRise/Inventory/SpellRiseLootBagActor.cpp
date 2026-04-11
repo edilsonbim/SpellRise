@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 
 #include "Containers/StringConv.h"
@@ -60,7 +61,6 @@ void ASpellRiseLootBagActor::ApplyDeadPlayerNameToInteractable()
 	UNarrativeInteractableComponent* LootInteractable = ResolveLootInteractable();
 	if (!LootInteractable)
 	{
-		UE_LOG(LogSpellRiseLootBagActor, Verbose, TEXT("[FullLoot][Bag] Interactable_Loot nao encontrado em %s"), *GetNameSafe(this));
 		return;
 	}
 

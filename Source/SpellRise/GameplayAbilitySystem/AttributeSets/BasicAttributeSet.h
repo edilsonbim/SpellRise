@@ -1,11 +1,12 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "BasicAttributeSet.generated.h"
 
-// Define attribute accessor helpers only once to avoid duplicate macro definitions across multiple header files.
 #ifndef SPELLRISE_ATTRIBUTE_ACCESSORS
 #define SPELLRISE_ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
     GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \

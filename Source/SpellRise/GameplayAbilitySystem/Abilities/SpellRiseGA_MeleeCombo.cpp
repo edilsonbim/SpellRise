@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGA_MeleeCombo.h"
 
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
@@ -69,8 +70,8 @@ void USpellRiseGA_MeleeCombo::NativeOnAbilityInputPressed(
 		return;
 	}
 
-	// Buffer controlado: clique rápido pode ser reconhecido ao abrir a janela,
-	// mas sem consumir mais de uma continuação por janela.
+
+
 	bQueuedNextInput = true;
 	QueuedInputTimeSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
 	if (!bComboWindowOpen)
@@ -88,8 +89,8 @@ void USpellRiseGA_MeleeCombo::NativeOnAbilityInputReleased(
 {
 	Super::NativeOnAbilityInputReleased(Handle, ActorInfo, ActivationInfo);
 
-	// Libera o filtro do primeiro clique após soltar o botão,
-	// evitando que um tap rápido "mate" o próximo input válido.
+
+
 	bIgnoreFirstActivationPress = false;
 }
 
@@ -112,7 +113,7 @@ void USpellRiseGA_MeleeCombo::OnComboMontageBlendedIn()
 
 	for (int32 Index = 0; Index + 1 < ComboSections.Num(); ++Index)
 	{
-		// Force manual combo flow: never auto-chain to the next section.
+
 		AnimInstance->Montage_SetNextSection(ComboSections[Index], NAME_None, ComboMontage);
 	}
 }
@@ -151,8 +152,8 @@ void USpellRiseGA_MeleeCombo::OnComboWindowStart(FGameplayEventData Payload)
 		return;
 	}
 
-	// Segurança: se a seção anterior perdeu HitScanEnd por timing de notify/blend,
-	// garantimos reset antes de abrir nova janela.
+
+
 	StopHitScanIfActive(&Payload);
 
 	bComboWindowOpen = true;
@@ -171,8 +172,8 @@ void USpellRiseGA_MeleeCombo::OnComboWindowEnd(FGameplayEventData Payload)
 	bComboWindowOpen = false;
 	bConsumedThisWindow = false;
 	StopHitScanIfActive(&Payload);
-	// Se não houve input dentro da janela, não deve "bufferizar" para depois.
-	// Isso garante que o combo encerre naturalmente ao final da seção atual.
+
+
 	bQueuedNextInput = false;
 	QueuedInputTimeSeconds = -1.0f;
 	K2_OnComboWindowClosed(CurrentComboIndex);
@@ -382,25 +383,18 @@ bool USpellRiseGA_MeleeCombo::TryAdvanceComboSection()
 	}
 	const int32 CurrentSectionIndex = ComboMontage->GetSectionIndex(CurrentSection);
 
-	// Se não conseguir resolver a seção atual, cai para o índice runtime (melhor que travar).
+
 	const int32 ResolvedIndex = (CurrentSectionIndex != INDEX_NONE) ? CurrentSectionIndex : CurrentComboIndex;
 	const int32 NextIndex = ResolvedIndex + 1;
 	if (!ComboSections.IsValidIndex(NextIndex))
 	{
-		UE_LOG(
-			LogSpellRiseCombo,
-			Verbose,
-			TEXT("[Combo] Advance blocked: no next section (Current=%s ResolvedIdx=%d NumSections=%d)."),
-			*CurrentSection.ToString(),
-			ResolvedIndex,
-			ComboSections.Num());
 		return false;
 	}
 
 	const FName NextSection = ComboSections[NextIndex];
 
-	// Importante: NÃO "jump" imediato. Encadeia a próxima seção para começar
-	// exatamente ao final da seção atual, mantendo sincronismo do montage.
+
+
 	StopHitScanIfActive();
 	AnimInstance->Montage_SetNextSection(CurrentSection, NextSection, ComboMontage);
 	CurrentComboIndex = NextIndex;
@@ -410,12 +404,6 @@ bool USpellRiseGA_MeleeCombo::TryAdvanceComboSection()
 	bConsumedThisWindow = true;
 
 	K2_OnComboAdvanced(CurrentComboIndex, NextSection);
-	UE_LOG(
-		LogSpellRiseCombo,
-		Verbose,
-		TEXT("[Combo] Advanced to section %s (Index=%d)."),
-		*NextSection.ToString(),
-		CurrentComboIndex);
 	return true;
 }
 
@@ -427,9 +415,9 @@ bool USpellRiseGA_MeleeCombo::IsPayloadFromAvatar(const FGameplayEventData& Payl
 		return false;
 	}
 
-	// Notify events em montage frequentemente chegam sem instigator/target.
-	// Como a WaitGameplayEvent está amarrada ao AvatarActor do ASC dono da ability,
-	// payload anônimo aqui é válido para o contexto da ability ativa.
+
+
+
 	const AActor* PayloadTarget = Payload.Target.Get();
 	const AActor* PayloadInstigator = Payload.Instigator.Get();
 	if (!PayloadTarget && !PayloadInstigator)
@@ -437,7 +425,7 @@ bool USpellRiseGA_MeleeCombo::IsPayloadFromAvatar(const FGameplayEventData& Payl
 		return true;
 	}
 
-	// If payload has explicit source/target, use them to filter foreign actors.
+
 	if (PayloadTarget && PayloadTarget != Avatar)
 	{
 		return false;
@@ -458,7 +446,6 @@ void USpellRiseGA_MeleeCombo::StopHitScanIfActive(const FGameplayEventData* Payl
 	}
 
 	bHitScanActive = false;
-	UE_LOG(LogSpellRiseCombo, Verbose, TEXT("[Combo] HitScan force-stop."));
 	if (Payload)
 	{
 		K2_OnHitScanEnd(*Payload);

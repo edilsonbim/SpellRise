@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
@@ -20,16 +22,16 @@ class SPELLRISE_API USpellRiseAbilitySystemComponent : public UAbilitySystemComp
 	GENERATED_BODY()
 
 protected:
-	// Cache para detectar mudanças em abilities replicadas e disparar evento no Character
+
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpec> LastActivatableAbilities;
 
 	UPROPERTY(Transient)
 	FGameplayAbilitySpecHandle SelectedSpellSpecHandle;
 
-	// =========================================================
-	// Input pipeline por Gameplay Tag (custom, estilo Lyra)
-	// =========================================================
+
+
+
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
 
@@ -51,9 +53,9 @@ protected:
 	bool TryAdvanceActiveComboMontage();
 
 public:
-	// =========================================================
-	// Input public API
-	// =========================================================
+
+
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_AbilityInputTagPressed(FGameplayTag InputTag);
 
@@ -66,14 +68,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_ClearAbilityInput();
 
-	// ---------------------------------------------------------
-	// Ability Wheel helpers
-	// ---------------------------------------------------------
-	/** Activate a primeira ability spec que combinar com o InputTag. */
+
+
+
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	bool SR_TryActivateAbilityByInputTag(FGameplayTag InputTag);
 
-	/** Retorna a SpellRiseGameplayAbility CDO da primeira spec que combinar com o InputTag. */
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForInputTag(FGameplayTag InputTag) const;
 
@@ -83,36 +85,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	void SR_ClearSelectedSpellAbility();
 
-	/** Sync local selected spell cache from an input tag replicated/owned outside ASC (UI helper only). */
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	void SR_SetSelectedSpellAbilityByInputTag(FGameplayTag InputTag);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	bool SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const;
 
-	// =========================================================
-	// Tag relationship mapping
-	// =========================================================
+
+
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Tags")
 	TObjectPtr<USpellRiseAbilityTagRelationshipMapping> TagRelationshipMapping;
 
-	/** Sets the current tag relationship mapping. Passing nullptr clears it. */
+
 	void SetTagRelationshipMapping(USpellRiseAbilityTagRelationshipMapping* NewMapping);
 
-	/**
-	 * Given a set of ability tags, append additional required and blocked activation tags
-	 * based on the tag relationship mapping.
-	 */
+
+
 	void GetAdditionalActivationTagRequirements(
 		const FGameplayTagContainer& AbilityTags,
 		FGameplayTagContainer& OutActivationRequired,
 		FGameplayTagContainer& OutActivationBlocked) const;
 
 protected:
-	/**
-	 * Override of UAbilitySystemComponent::ApplyAbilityBlockAndCancelTags to apply tag relationship
-	 * rules before applying the incoming block and cancel tags.
-	 */
+
+
 	virtual void ApplyAbilityBlockAndCancelTags(
 		const FGameplayTagContainer& AbilityTags,
 		UGameplayAbility* RequestingAbility,

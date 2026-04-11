@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/SpellRiseConstructionModeComponent.h"
 
 #include "AbilitySystemComponent.h"
@@ -67,13 +68,6 @@ void USpellRiseConstructionModeComponent::ServerSetConstructionMode_Implementati
 	FString RejectReason;
 	if (!CanAcceptConstructionToggle(bEnableConstructionMode, RejectReason))
 	{
-		UE_LOG(
-			LogSpellRiseConstructionMode,
-			Warning,
-			TEXT("[ConstructionMode][Reject] Owner=%s Requested=%d Reason=%s"),
-			*GetNameSafe(GetOwner()),
-			bEnableConstructionMode ? 1 : 0,
-			*RejectReason);
 		return;
 	}
 
@@ -92,12 +86,6 @@ void USpellRiseConstructionModeComponent::ApplyConstructionModeInternal(bool bEn
 
 	if (bLog)
 	{
-		UE_LOG(
-			LogSpellRiseConstructionMode,
-			Log,
-			TEXT("[ConstructionMode][StateChanged] Owner=%s Enabled=%d"),
-			*GetNameSafe(GetOwner()),
-			bConstructionModeEnabled ? 1 : 0);
 	}
 }
 

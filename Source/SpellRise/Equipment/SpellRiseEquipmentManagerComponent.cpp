@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 
 #include "Engine/ActorChannel.h"
@@ -321,14 +322,12 @@ bool USpellRiseEquipmentManagerComponent::EquipItem(UEquippableItem* Item)
 	FString ValidationReason;
 	if (!ValidateItemOwnership(Item, ValidationReason))
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][EquipRejected] Owner=%s Item=%s Reason=%s"), *GetNameSafe(GetOwner()), *GetNameSafe(Item), *ValidationReason);
 		return false;
 	}
 
 	const uint8 SlotValue = ResolveItemSlot(Item);
 	if (SlotValue == 255)
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][EquipRejected] Owner=%s Item=%s Reason=invalid_slot"), *GetNameSafe(GetOwner()), *GetNameSafe(Item));
 		return false;
 	}
 
@@ -339,7 +338,6 @@ bool USpellRiseEquipmentManagerComponent::EquipItem(UEquippableItem* Item)
 		return false;
 	}
 
-	UE_LOG(LogSpellRiseEquipmentReplication, Log, TEXT("[Equipment][EquipCommittedServer] Owner=%s Item=%s Slot=%d"), *GetNameSafe(GetOwner()), *GetNameSafe(Item), static_cast<int32>(SlotValue));
 	return true;
 }
 
@@ -353,7 +351,6 @@ bool USpellRiseEquipmentManagerComponent::UnequipItem(UEquippableItem* Item)
 	FString ValidationReason;
 	if (!ValidateItemOwnership(Item, ValidationReason))
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][UnequipRejected] Owner=%s Item=%s Reason=%s"), *GetNameSafe(GetOwner()), *GetNameSafe(Item), *ValidationReason);
 		return false;
 	}
 
@@ -363,7 +360,6 @@ bool USpellRiseEquipmentManagerComponent::UnequipItem(UEquippableItem* Item)
 		return false;
 	}
 
-	UE_LOG(LogSpellRiseEquipmentReplication, Log, TEXT("[Equipment][UnequipCommittedServer] Owner=%s Item=%s Slot=%d"), *GetNameSafe(GetOwner()), *GetNameSafe(Item), static_cast<int32>(SlotValue));
 	return true;
 }
 
@@ -382,7 +378,6 @@ void USpellRiseEquipmentManagerComponent::HandleEntryAdded(const FSpellRiseAppli
 {
 	if (Entry.Instance)
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Verbose, TEXT("[Equipment][OnRep_EquipmentApplied] Owner=%s Item=%s Slot=%d"), *GetNameSafe(GetOwner()), *GetNameSafe(Entry.SourceItem), static_cast<int32>(Entry.SlotValue));
 		Entry.Instance->OnEquipped();
 	}
 	else
@@ -395,7 +390,6 @@ void USpellRiseEquipmentManagerComponent::HandleEntryRemoved(const FSpellRiseApp
 {
 	if (Entry.Instance)
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Verbose, TEXT("[Equipment][OnRep_EquipmentRemoved] Owner=%s Item=%s Slot=%d"), *GetNameSafe(GetOwner()), *GetNameSafe(Entry.SourceItem), static_cast<int32>(Entry.SlotValue));
 		Entry.Instance->OnUnequipped();
 	}
 	else
@@ -672,7 +666,7 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const v
 			continue;
 		}
 
-		// UserDefinedStruct fields can include generated suffixes in internal names.
+
 		if (PropertyName.Contains(TEXT("EquippedSocketName")))
 		{
 			OutEquippedSocket = NameProperty->GetPropertyValue_InContainer(WeaponConfigPtr);
@@ -683,7 +677,7 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const v
 		}
 	}
 
-	// Conservative fallback for legacy assets when config doesn't provide explicit sockets.
+
 	if (OutEquippedSocket == NAME_None)
 	{
 		OutEquippedSocket = TEXT("hand_r");
@@ -1049,7 +1043,7 @@ bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, 
 	const FRotator SpawnRotation = OwnerPawn ? OwnerPawn->GetActorRotation() : OwnerActor->GetActorRotation();
 	const TSubclassOf<UNarrativeItem> ItemClass = Item->GetClass();
 
-	// For equippables we only support full-stack drop; this keeps quick-slot state deterministic.
+
 	if (UEquippableItem* EquippableItem = Cast<UEquippableItem>(Item))
 	{
 		if (SafeDropQuantity < StackQuantity)
@@ -1064,21 +1058,20 @@ bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, 
 		}
 	}
 
-	// Ensure pickup class exists before mutating inventory.
+
 	UClass* DropPickupClass = DropPickupActorClass.LoadSynchronous();
 	if (!DropPickupClass)
 	{
-		// Fallback primario: pickup padrao do plugin Narrative Inventory.
+
 		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
 	}
 	if (!DropPickupClass)
 	{
-		// Fallback secundario: pickup custom em /Game.
+
 		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/Game/UI/InventorySystem/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
 	}
 	if (!DropPickupClass)
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][DropItem] DropPickupActorClass invalida. Owner=%s"), *GetNameSafe(GetOwner()));
 		return false;
 	}
 
@@ -1100,8 +1093,6 @@ bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, 
 
 	if (!SpawnPickupActorForDroppedItem_Server(ItemClass, SafeDropQuantity, SpawnLocation, SpawnRotation))
 	{
-		UE_LOG(LogSpellRiseEquipmentReplication, Warning, TEXT("[Equipment][DropItem] Pickup spawn failed after removal. Owner=%s ItemClass=%s Qty=%d"),
-			*GetNameSafe(OwnerActor), *GetNameSafe(*ItemClass), SafeDropQuantity);
 	}
 
 	return true;
@@ -1147,7 +1138,7 @@ bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(
 		return false;
 	}
 
-	// Configure common BP pickup properties by reflection to keep this generic and data-driven.
+
 	auto TrySetItemClassPropertyByName = [&](const FName PropertyName) -> bool
 	{
 		if (FProperty* ItemClassProperty = PickupActor->GetClass()->FindPropertyByName(PropertyName))
@@ -1237,7 +1228,7 @@ bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(
 		TrySetQuantityProperty(TEXT("Quantity")) ||
 		TrySetQuantityPropertyByType();
 
-	// Some pickup blueprints expose a custom Initialize(Class, Quantity) event.
+
 	if (UFunction* InitializeFunction = PickupActor->FindFunction(TEXT("Initialize")))
 	{
 		uint8* ParamsBuffer = static_cast<uint8*>(FMemory_Alloca(InitializeFunction->ParmsSize));
@@ -1298,15 +1289,6 @@ bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(
 	}
 
 	UGameplayStatics::FinishSpawningActor(PickupActor, SpawnTransform);
-
-	UE_LOG(LogSpellRiseEquipmentReplication, Warning,
-		TEXT("[Equipment][DropSpawn] Owner=%s Pickup=%s ItemClass=%s Qty=%d SetItemClass=%d SetQuantity=%d"),
-		*GetNameSafe(GetOwner()),
-		*GetNameSafe(PickupActor),
-		*GetNameSafe(*ItemClass),
-		QuantityToDrop,
-		bSetItemClass ? 1 : 0,
-		bSetQuantity ? 1 : 0);
 
 	return true;
 }
@@ -1453,12 +1435,12 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 		return;
 	}
 
-	// Defensive cleanup for cases where inventory systems replace item instances
-	// and the actor map still holds a stale key.
+
+
 	DestroyWeaponActorForItem(RemovedEquippableItem);
 
-	// Fallback: if references diverge after inventory mutations, purge any quick-slot item
-	// that no longer validates as owned by this actor.
+
+
 	for (int32 Index = 0; Index < QuickWeaponSlots.Num(); ++Index)
 	{
 		UEquippableItem* SlotItem = QuickWeaponSlots[Index];
@@ -1474,8 +1456,8 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 		}
 	}
 
-	// Extra fallback by class: remove mapped weapon actors that are no longer represented
-	// in quick slots, even if the removed item came through as a different UObject instance.
+
+
 	const UClass* RemovedItemClass = RemovedEquippableItem->GetClass();
 	for (auto It = SpawnedWeaponActorsByItem.CreateIterator(); It; ++It)
 	{

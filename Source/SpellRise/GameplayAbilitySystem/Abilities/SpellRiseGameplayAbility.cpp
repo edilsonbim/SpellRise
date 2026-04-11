@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 
 #include "AbilitySystemComponent.h"
@@ -22,36 +23,18 @@ void USpellRiseGameplayAbility::SetAbilityLevel(int32 NewLevel)
 {
 	if (!HasServerAuthority())
 	{
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Warning,
-			TEXT("[GAS][AbilityLevel] Ignored non-authority SetAbilityLevel ability=%s newLevel=%d"),
-			*GetNameSafe(this),
-			NewLevel);
 		return;
 	}
 
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
 	if (!ASC)
 	{
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Warning,
-			TEXT("[GAS][AbilityLevel] Missing ASC while setting level ability=%s newLevel=%d"),
-			*GetNameSafe(this),
-			NewLevel);
 		return;
 	}
 
 	FGameplayAbilitySpec* AbilitySpec = GetCurrentAbilitySpec();
 	if (!AbilitySpec)
 	{
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Warning,
-			TEXT("[GAS][AbilityLevel] Missing current spec ability=%s newLevel=%d"),
-			*GetNameSafe(this),
-			NewLevel);
 		return;
 	}
 
@@ -65,32 +48,23 @@ bool USpellRiseGameplayAbility::SR_TriggerGameplayCueReliable(
 {
 	if (!CueTag.IsValid())
 	{
-		UE_LOG(LogSpellRiseGameplayAbilityRuntime, Warning, TEXT("[GAS][Cue] Invalid cue tag ability=%s"), *GetNameSafe(this));
 		return false;
 	}
 
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
 	if (!ASC)
 	{
-		UE_LOG(LogSpellRiseGameplayAbilityRuntime, Warning, TEXT("[GAS][Cue] ASC null in ability=%s cue=%s"), *GetNameSafe(this), *CueTag.ToString());
 		return false;
 	}
 
 	AActor* AvatarActor = GetAvatarActorFromActorInfo();
 	if (!AvatarActor)
 	{
-		UE_LOG(LogSpellRiseGameplayAbilityRuntime, Warning, TEXT("[GAS][Cue] Avatar null in ability=%s cue=%s"), *GetNameSafe(this), *CueTag.ToString());
 		return false;
 	}
 
 	if (!HasServerAuthority() && !IsLocallyControlledAbility())
 	{
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Warning,
-			TEXT("[GAS][Cue] Rejected cue on non-authority/non-local ability=%s cue=%s"),
-			*GetNameSafe(this),
-			*CueTag.ToString());
 		return false;
 	}
 
@@ -180,22 +154,6 @@ AController* USpellRiseGameplayAbility::GetControllerFromActorInfo() const
 	return nullptr;
 }
 
-bool USpellRiseGameplayAbility::ShouldUseInputReleaseAfterCastWindow() const
-{
-	if (CastType != ESpellRiseAbilityCastType::Cast)
-	{
-		return false;
-	}
-
-	return bRequireInputReleaseAfterCastTime
-		|| CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete;
-}
-
-void USpellRiseGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
-{
-	Super::OnGiveAbility(ActorInfo, Spec);
-}
-
 bool USpellRiseGameplayAbility::CanActivateAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -203,49 +161,7 @@ bool USpellRiseGameplayAbility::CanActivateAbility(
 	const FGameplayTagContainer* TargetTags,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
-	const bool bCanActivate = Super::CanActivateAbility(
-		Handle,
-		ActorInfo,
-		SourceTags,
-		TargetTags,
-		OptionalRelevantTags);
-
-	if (!bCanActivate)
-	{
-		const FGameplayTagContainer FailureTags = OptionalRelevantTags ? *OptionalRelevantTags : FGameplayTagContainer();
-		float CooldownRemaining = 0.0f;
-		float CooldownDuration = 0.0f;
-		bool bSpecIsActive = false;
-
-		if (ActorInfo)
-		{
-			GetCooldownTimeRemainingAndDuration(Handle, ActorInfo, CooldownRemaining, CooldownDuration);
-
-			if (const UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get())
-			{
-				if (const FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle(Handle))
-				{
-					bSpecIsActive = Spec->IsActive();
-				}
-			}
-		}
-
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Warning,
-			TEXT("[GAS][AbilityActivateDenied] ability=%s authority=%d local=%d netExec=%d castType=%d specActive=%d cooldownRemaining=%.2f cooldownDuration=%.2f failureTags=%s"),
-			*GetNameSafe(this),
-			ActorInfo && ActorInfo->IsNetAuthority() ? 1 : 0,
-			ActorInfo && ActorInfo->IsLocallyControlled() ? 1 : 0,
-			static_cast<int32>(NetExecutionPolicy),
-			static_cast<int32>(CastType),
-			bSpecIsActive ? 1 : 0,
-			CooldownRemaining,
-			CooldownDuration,
-			*FailureTags.ToString());
-	}
-
-	return bCanActivate;
+	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
 void USpellRiseGameplayAbility::ActivateAbility(
@@ -255,17 +171,6 @@ void USpellRiseGameplayAbility::ActivateAbility(
 	const FGameplayEventData* TriggerEventData)
 {
 	Super::ActivateAbility(Handle, ActorInfo, ActivationInfo, TriggerEventData);
-
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[GAS][ActivateAbility] ability=%s castType=%d policy=%d inputPressed=%d authority=%d local=%d"),
-		*GetNameSafe(this),
-		static_cast<int32>(CastType),
-		static_cast<int32>(CastCompletionPolicy),
-		ActorInfo && ActorInfo->AbilitySystemComponent.IsValid() ? (GetCurrentAbilitySpec() && GetCurrentAbilitySpec()->InputPressed ? 1 : 0) : 0,
-		ActorInfo && ActorInfo->IsNetAuthority() ? 1 : 0,
-		ActorInfo && ActorInfo->IsLocallyControlled() ? 1 : 0);
 
 	ResetSpellRuntimeState();
 
@@ -308,17 +213,6 @@ void USpellRiseGameplayAbility::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[GAS][EndAbility] ability=%s wasCancelled=%d castType=%d inputPressed=%d casting=%d channeling=%d"),
-		*GetNameSafe(this),
-		bWasCancelled ? 1 : 0,
-		static_cast<int32>(CastType),
-		bIsAbilityInputPressed ? 1 : 0,
-		bIsCasting ? 1 : 0,
-		bIsChanneling ? 1 : 0);
-
 	RemoveCastingEffect();
 	RemoveCastingBarEffect();
 	NotifyHUDCastStopped();
@@ -359,14 +253,6 @@ void USpellRiseGameplayAbility::InputPressed(
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = true;
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[GAS][InputPressed] ability=%s isActive=%d castType=%d policy=%d"),
-		*GetNameSafe(this),
-		IsActive() ? 1 : 0,
-		static_cast<int32>(CastType),
-		static_cast<int32>(CastCompletionPolicy));
 	NativeOnAbilityInputPressed(Handle, ActorInfo, ActivationInfo);
 }
 
@@ -378,15 +264,6 @@ void USpellRiseGameplayAbility::InputReleased(
 	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = false;
-	bHasReceivedInputReleaseSinceCastStart = true;
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[GAS][InputReleased] ability=%s isActive=%d castType=%d policy=%d"),
-		*GetNameSafe(this),
-		IsActive() ? 1 : 0,
-		static_cast<int32>(CastType),
-		static_cast<int32>(CastCompletionPolicy));
 	NativeOnAbilityInputReleased(Handle, ActorInfo, ActivationInfo);
 }
 
@@ -402,19 +279,6 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	const FGameplayAbilityActivationInfo ActivationInfo)
 {
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[GAS][NativeInputReleased] ability=%s castType=%d isActive=%d hasExecuted=%d isCasting=%d awaitingRelease=%d hasReleaseSinceCastStart=%d policy=%d"),
-		*GetNameSafe(this),
-		static_cast<int32>(CastType),
-		IsActive() ? 1 : 0,
-		bHasExecutedSpell ? 1 : 0,
-		bIsCasting ? 1 : 0,
-		bAwaitingReleaseAfterCastComplete ? 1 : 0,
-		bHasReceivedInputReleaseSinceCastStart ? 1 : 0,
-		static_cast<int32>(CastCompletionPolicy));
-
 	if (!IsActive())
 	{
 		return;
@@ -422,34 +286,18 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 
 	if (CastType == ESpellRiseAbilityCastType::Cast && !bHasExecutedSpell)
 	{
-		if (ShouldUseInputReleaseAfterCastWindow())
+		if (bAwaitingReleaseAfterCastComplete)
 		{
-			if (bAwaitingReleaseAfterCastComplete && bCastElapsedTimeCompleted)
-			{
-				bAwaitingReleaseAfterCastComplete = false;
-				FinishCastFlow();
-				return;
-			}
-
-			if (bIsCasting && !bCastElapsedTimeCompleted && bCancelCastWhenInputReleasedDuringCastTime)
-			{
-				const UWorld* World = GetWorld();
-				if (World && World->GetTimeSeconds() < CastCancelReleaseAllowedFromWorldTime)
-				{
-					UE_LOG(
-						LogSpellRiseGameplayAbilityRuntime,
-						Verbose,
-						TEXT("[CAST] Release during cast ignored (grace) ability=%s until=%.3f now=%.3f"),
-						*GetNameSafe(this),
-						CastCancelReleaseAllowedFromWorldTime,
-						World->GetTimeSeconds());
-					return;
-				}
-
-				EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-				return;
-			}
+			FinishCastFlow();
+			return;
 		}
+
+		if (bIsCasting && CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
+		{
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+
 		return;
 	}
 
@@ -471,10 +319,10 @@ bool USpellRiseGameplayAbility::TryCommitSpellAbility()
 	{
 		UE_LOG(
 			LogSpellRiseGameplayAbilityRuntime,
-			Warning,
-			TEXT("[GAS][AbilityCommitDenied] ability=%s castType=%d"),
-			*GetNameSafe(this),
-			static_cast<int32>(CastType));
+			Verbose,
+			TEXT("CommitAbility failed for '%s' (owner=%s)"),
+			*GetName(),
+			CurrentActorInfo && CurrentActorInfo->OwnerActor.IsValid() ? *CurrentActorInfo->OwnerActor->GetName() : TEXT("None"));
 	}
 
 	return bCommitted;
@@ -501,13 +349,6 @@ void USpellRiseGameplayAbility::ApplyCastingEffect()
 		}
 
 		CastingGameplayEffectHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Verbose,
-			TEXT("[CAST] Applied casting GE=%s handle=%s ability=%s"),
-			*CastingGameplayEffectClass->GetName(),
-			*CastingGameplayEffectHandle.ToString(),
-			*GetNameSafe(this));
 	}
 }
 
@@ -524,12 +365,6 @@ void USpellRiseGameplayAbility::RemoveCastingEffect()
 	}
 
 	CastingGameplayEffectHandle = FActiveGameplayEffectHandle();
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[CAST] Removed casting GE handle=%s ability=%s"),
-		*CastingGameplayEffectHandle.ToString(),
-		*GetNameSafe(this));
 }
 
 void USpellRiseGameplayAbility::ApplyCastingBarEffect()
@@ -558,14 +393,6 @@ void USpellRiseGameplayAbility::ApplyCastingBarEffect()
 		}
 
 		CastingBarGameplayEffectHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-		UE_LOG(
-			LogSpellRiseGameplayAbilityRuntime,
-			Verbose,
-			TEXT("[CAST] Applied casting bar GE=%s handle=%s duration=%.2f ability=%s"),
-			*CastingBarGameplayEffectClass->GetName(),
-			*CastingBarGameplayEffectHandle.ToString(),
-			CastTime,
-			*GetNameSafe(this));
 	}
 }
 
@@ -582,12 +409,6 @@ void USpellRiseGameplayAbility::RemoveCastingBarEffect()
 	}
 
 	CastingBarGameplayEffectHandle = FActiveGameplayEffectHandle();
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[CAST] Removed casting bar GE handle=%s ability=%s"),
-		*CastingBarGameplayEffectHandle.ToString(),
-		*GetNameSafe(this));
 }
 
 void USpellRiseGameplayAbility::NotifyHUDCastStarted(float Duration) const
@@ -601,8 +422,6 @@ void USpellRiseGameplayAbility::NotifyHUDCastStarted(float Duration) const
 	{
 		return;
 	}
-
-	UE_LOG(LogSpellRiseGameplayAbilityRuntime, Verbose, TEXT("[HUD][Cast] Starting cast duration=%.2f ability=%s"), Duration, *GetNameSafe(this));
 
 	if (AController* Controller = GetControllerFromActorInfo())
 	{
@@ -637,19 +456,10 @@ void USpellRiseGameplayAbility::StartCastFlow()
 		return;
 	}
 
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[CAST] StartCastFlow begin ability=%s CastTime=%.2f"),
-		*GetNameSafe(this),
-		CastTime);
-
 	bIsCasting = true;
 	CastElapsedTime = 0.0f;
 	CastStartTimeSeconds = 0.0;
 	bAwaitingReleaseAfterCastComplete = false;
-	bHasReceivedInputReleaseSinceCastStart = false;
-	bCastElapsedTimeCompleted = false;
 	ApplyCastingEffect();
 	ApplyCastingBarEffect();
 	NotifyHUDCastStarted(CastTime);
@@ -661,12 +471,15 @@ void USpellRiseGameplayAbility::StartCastFlow()
 
 	NativeOnCastStarted();
 
+	const bool bWaitReleaseAfterCast =
+		(CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete);
+
 	if (CastTime <= 0.0f)
 	{
-		if (ShouldUseInputReleaseAfterCastWindow())
+		bIsCasting = false;
+		if (bWaitReleaseAfterCast)
 		{
-			bIsCasting = false;
-			BeginAwaitingInputReleaseAfterCastWindow();
+			bAwaitingReleaseAfterCastComplete = true;
 			return;
 		}
 
@@ -682,13 +495,6 @@ void USpellRiseGameplayAbility::StartCastFlow()
 			&USpellRiseGameplayAbility::HandleCastFinished,
 			CastTime,
 			false);
-
-		CastCancelReleaseAllowedFromWorldTime =
-			World->GetTimeSeconds() + static_cast<double>(FMath::Max(0.f, CastCancelReleaseGraceSeconds));
-	}
-	else
-	{
-		CastCancelReleaseAllowedFromWorldTime = 0.0;
 	}
 }
 
@@ -699,20 +505,7 @@ void USpellRiseGameplayAbility::FinishCastFlow()
 		return;
 	}
 
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(AwaitingReleasePollHandle);
-	}
-
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[CAST] FinishCastFlow ability=%s elapsed=%.2f"),
-		*GetNameSafe(this),
-		CastElapsedTime);
-
 	bAwaitingReleaseAfterCastComplete = false;
-	bHasReceivedInputReleaseSinceCastStart = false;
 	CastElapsedTime = ResolveElapsedCastTime();
 
 	if (bIsCasting)
@@ -794,13 +587,6 @@ void USpellRiseGameplayAbility::ExecuteSpellFromCurrentMode()
 		return;
 	}
 
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[CAST] ExecuteSpellFromCurrentMode ability=%s castType=%d"),
-		*GetNameSafe(this),
-		static_cast<int32>(CastType));
-
 	bHasExecutedSpell = true;
 	NativeOnSpellExecuted();
 
@@ -816,7 +602,6 @@ void USpellRiseGameplayAbility::ResetSpellRuntimeState()
 	{
 		World->GetTimerManager().ClearTimer(CastTimerHandle);
 		World->GetTimerManager().ClearTimer(ChannelTimerHandle);
-		World->GetTimerManager().ClearTimer(AwaitingReleasePollHandle);
 	}
 
 	bIsAbilityInputPressed = false;
@@ -825,12 +610,9 @@ void USpellRiseGameplayAbility::ResetSpellRuntimeState()
 	bHasExecutedSpell = false;
 	CastElapsedTime = 0.0f;
 	bAwaitingReleaseAfterCastComplete = false;
-	bHasReceivedInputReleaseSinceCastStart = false;
-	bCastElapsedTimeCompleted = false;
 	CastingGameplayEffectHandle = FActiveGameplayEffectHandle();
 	CastingBarGameplayEffectHandle = FActiveGameplayEffectHandle();
 	CastStartTimeSeconds = 0.0;
-	CastCancelReleaseAllowedFromWorldTime = 0.0;
 }
 
 float USpellRiseGameplayAbility::ResolveElapsedCastTime() const
@@ -849,81 +631,14 @@ float USpellRiseGameplayAbility::ResolveElapsedCastTime() const
 	return FMath::Max(0.0f, static_cast<float>(World->GetTimeSeconds() - CastStartTimeSeconds));
 }
 
-void USpellRiseGameplayAbility::TryFinishCastIfAwaitingAndInputNotHeld()
-{
-	if (!IsActive() || !bAwaitingReleaseAfterCastComplete || !bCastElapsedTimeCompleted || bHasExecutedSpell)
-	{
-		return;
-	}
-
-	const FGameplayAbilitySpec* Spec = GetCurrentAbilitySpec();
-	const bool bSpecPressed = Spec && Spec->InputPressed;
-	const bool bHeld = bIsAbilityInputPressed && bSpecPressed;
-	if (bHeld)
-	{
-		return;
-	}
-
-	bAwaitingReleaseAfterCastComplete = false;
-	FinishCastFlow();
-}
-
-void USpellRiseGameplayAbility::PollAwaitingReleaseAfterCastRepeating()
-{
-	if (!IsActive() || bHasExecutedSpell || !bAwaitingReleaseAfterCastComplete)
-	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().ClearTimer(AwaitingReleasePollHandle);
-		}
-		return;
-	}
-
-	TryFinishCastIfAwaitingAndInputNotHeld();
-}
-
-void USpellRiseGameplayAbility::BeginAwaitingInputReleaseAfterCastWindow()
-{
-	bCastElapsedTimeCompleted = true;
-	bAwaitingReleaseAfterCastComplete = true;
-
-	TryFinishCastIfAwaitingAndInputNotHeld();
-
-	if (!bAwaitingReleaseAfterCastComplete)
-	{
-		return;
-	}
-
-	const FGameplayAbilitySpec* SpecForLog = GetCurrentAbilitySpec();
-	UE_LOG(
-		LogSpellRiseGameplayAbilityRuntime,
-		Verbose,
-		TEXT("[CAST] Awaiting input release after cast window ability=%s abilityPressed=%d specPressed=%d"),
-		*GetNameSafe(this),
-		bIsAbilityInputPressed ? 1 : 0,
-		SpecForLog && SpecForLog->InputPressed ? 1 : 0);
-
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(AwaitingReleasePollHandle);
-		World->GetTimerManager().SetTimer(
-			AwaitingReleasePollHandle,
-			this,
-			&USpellRiseGameplayAbility::PollAwaitingReleaseAfterCastRepeating,
-			0.05f,
-			true);
-	}
-}
-
 void USpellRiseGameplayAbility::HandleCastFinished()
 {
 	CastElapsedTime = ResolveElapsedCastTime();
-
 	bIsCasting = false;
 
-	if (ShouldUseInputReleaseAfterCastWindow())
+	if (CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
 	{
-		BeginAwaitingInputReleaseAfterCastWindow();
+		bAwaitingReleaseAfterCastComplete = true;
 		return;
 	}
 

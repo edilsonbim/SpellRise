@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "USpellRiseGA_CancelCast.h"
 #include "AbilitySystemComponent.h"
 
@@ -27,8 +28,8 @@ void USpellRiseGA_CancelCast::ActivateAbility(
 		return;
 	}
 
-	// Não use CommitAbility aqui: cancelar cast não deve falhar por custo/cooldown
-	const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(TEXT("State.Casting"), /*ErrorIfNotFound=*/false);
+
+	const FGameplayTag CastingTag = FGameplayTag::RequestGameplayTag(TEXT("State.Casting"), false);
 
 	if (CastingTag.IsValid())
 	{

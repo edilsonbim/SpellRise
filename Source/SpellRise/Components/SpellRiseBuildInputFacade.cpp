@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/SpellRiseBuildInputFacade.h"
 
 #include "GameFramework/Actor.h"
@@ -130,8 +131,8 @@ void USpellRiseBuildInputFacade::BeginPlay()
 		NarrativeBuildBridge = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseNarrativeBuildBridge>() : nullptr;
 	}
 
-	// Startup menu sync is intentionally deferred until pawn possession is stable.
-	// Some EBS variants alter local view/input state when called too early in controller BeginPlay.
+
+
 	bStartupMenuSyncDone = false;
 }
 
@@ -158,15 +159,6 @@ void USpellRiseBuildInputFacade::HandleOwningPawnReady()
 		CallNoParamFunction(BuildingComponent, TEXT("HideBuildingMenu"));
 	}
 
-	UE_LOG(
-		LogSpellRiseBuildInputFacade,
-		Log,
-		TEXT("[BuildInput][StartupSync] Owner=%s Pawn=%s Focus=%s MouseCursor=%d"),
-		*GetNameSafe(GetOwner()),
-		*GetNameSafe(OwnerController->GetPawn()),
-		*GetSlateFocusWidgetDescription(),
-		OwnerController->bShowMouseCursor ? 1 : 0);
-
 	bStartupMenuSyncDone = true;
 }
 
@@ -179,19 +171,12 @@ void USpellRiseBuildInputFacade::SetConstructionModeActive(bool bInConstructionM
 		return;
 	}
 
-	// Prime the build component on mode enter to reduce cases where preview/widget doesn't show.
+
 	if (UObject* BuildingComponent = ResolveEBSBuildingComponent())
 	{
 		CallNoParamFunction(BuildingComponent, TEXT("AutoInitComponent"));
 	}
 
-	UE_LOG(
-		LogSpellRiseBuildInputFacade,
-		Log,
-		TEXT("[BuildInput][ModeActive] Owner=%s Active=%d Focus=%s"),
-		*GetNameSafe(GetOwner()),
-		bConstructionModeActive ? 1 : 0,
-		*GetSlateFocusWidgetDescription());
 }
 
 void USpellRiseBuildInputFacade::SetConstructionModifierHeld(bool bIsHeld)
@@ -212,13 +197,13 @@ void USpellRiseBuildInputFacade::OnBuildMenuPressed()
 		return;
 	}
 
-	// Manual init mode requires explicit component init before opening the radial menu.
+
 	CallNoParamFunction(BuildingComponent, TEXT("AutoInitComponent"));
 	CallNoParamFunction(BuildingComponent, TEXT("ShowBuildingMenu"));
 	bHasCachedTraceToMouseMode = GetBooleanProperty(BuildingComponent, TEXT("TraceToMouseMode"), bCachedTraceToMouseMode);
 	SetBooleanProperty(BuildingComponent, TEXT("TraceToMouseMode"), true);
 
-	// Allow explicit mouse click navigation/selection on radial menu.
+
 	if (APlayerController* PC = Cast<APlayerController>(GetOwner()))
 	{
 		bCachedClickEvents = PC->bEnableClickEvents;
@@ -232,16 +217,6 @@ void USpellRiseBuildInputFacade::OnBuildMenuPressed()
 		PC->bEnableClickEvents = true;
 		PC->bEnableMouseOverEvents = true;
 
-		UE_LOG(
-			LogSpellRiseBuildInputFacade,
-			Log,
-			TEXT("[BuildInput][MenuOpen] Owner=%s Pawn=%s Focus=%s Cursor=%d Click=%d Over=%d"),
-			*GetNameSafe(GetOwner()),
-			*GetNameSafe(PC->GetPawn()),
-			*GetSlateFocusWidgetDescription(),
-			PC->bShowMouseCursor ? 1 : 0,
-			PC->bEnableClickEvents ? 1 : 0,
-			PC->bEnableMouseOverEvents ? 1 : 0);
 	}
 }
 
@@ -264,7 +239,7 @@ void USpellRiseBuildInputFacade::OnBuildMenuReleased()
 		SetBooleanProperty(BuildingComponent, TEXT("TraceToMouseMode"), bCachedTraceToMouseMode);
 	}
 
-	// Restore gameplay input after closing menu.
+
 	if (APlayerController* PC = Cast<APlayerController>(GetOwner()))
 	{
 		FInputModeGameOnly InputMode;
@@ -273,16 +248,6 @@ void USpellRiseBuildInputFacade::OnBuildMenuReleased()
 		PC->bEnableClickEvents = bCachedClickEvents;
 		PC->bEnableMouseOverEvents = bCachedMouseOverEvents;
 
-		UE_LOG(
-			LogSpellRiseBuildInputFacade,
-			Log,
-			TEXT("[BuildInput][MenuClose] Owner=%s Pawn=%s Focus=%s Cursor=%d Click=%d Over=%d"),
-			*GetNameSafe(GetOwner()),
-			*GetNameSafe(PC->GetPawn()),
-			*GetSlateFocusWidgetDescription(),
-			PC->bShowMouseCursor ? 1 : 0,
-			PC->bEnableClickEvents ? 1 : 0,
-			PC->bEnableMouseOverEvents ? 1 : 0);
 	}
 }
 
@@ -383,7 +348,6 @@ void USpellRiseBuildInputFacade::OnBuildAdjustWheel(float AxisValue)
 
 	if (!bApplied && bEnableLegacyEBSAxisCalls)
 	{
-		UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Construction][Facade] Wheel axis sem função compatível no componente EBS (Rotation/Offset)."));
 	}
 }
 
@@ -420,11 +384,6 @@ void USpellRiseBuildInputFacade::OnBuildInteractPressed()
 		UObject* BuildingComponent = ResolveEBSBuildingComponent();
 		if (!BuildingComponent)
 		{
-			UE_LOG(
-				LogSpellRiseBuildInputFacade,
-				Warning,
-				TEXT("[Construction][Facade] ConfirmBuild rejeitado: componente de construcao ausente. Owner=%s"),
-				*GetNameSafe(GetOwner()));
 			return;
 		}
 
@@ -433,12 +392,6 @@ void USpellRiseBuildInputFacade::OnBuildInteractPressed()
 			FString RejectReason;
 			if (!CanConfirmBuild(BuildingComponent, RejectReason))
 			{
-				UE_LOG(
-					LogSpellRiseBuildInputFacade,
-					Warning,
-					TEXT("[Construction][Facade] ConfirmBuild rejeitado por validacao de material/contexto. Owner=%s Reason=%s"),
-					*GetNameSafe(GetOwner()),
-					*RejectReason);
 				return;
 			}
 		}
@@ -724,7 +677,7 @@ bool USpellRiseBuildInputFacade::CallOperationFunction(UObject* Target, const FN
 			continue;
 		}
 
-		// Out/ref params in reflective calls are too risky for this generic bridge.
+
 		if (Property->HasAnyPropertyFlags(CPF_OutParm) || Property->HasAnyPropertyFlags(CPF_ReferenceParm))
 		{
 			Function->DestroyStruct(ParamsBuffer);
@@ -743,12 +696,12 @@ bool USpellRiseBuildInputFacade::CallOperationFunction(UObject* Target, const FN
 		}
 		else if (PropertyName.Contains(TEXT("UpdateVisibility"), ESearchCase::IgnoreCase))
 		{
-			// Optional EBS param used by some variants.
+
 			SetBoolCompatibleProperty(Property, ValuePtr, true);
 		}
 		else
 		{
-			// Accept only primitive optional params to avoid unsafe ProcessEvent payloads.
+
 			const bool bIsPrimitiveOptional =
 				CastField<FBoolProperty>(Property) ||
 				CastField<FByteProperty>(Property) ||
@@ -764,7 +717,7 @@ bool USpellRiseBuildInputFacade::CallOperationFunction(UObject* Target, const FN
 		}
 	}
 
-	// Must at least match operation/value contract.
+
 	if (!bOperationSet || !bValueSet)
 	{
 		Function->DestroyStruct(ParamsBuffer);
@@ -832,7 +785,6 @@ bool USpellRiseBuildInputFacade::CallDisplayedFloorFunction(bool bIncrease)
 
 	if (!bVisibilitySet)
 	{
-		UE_LOG(LogSpellRiseBuildInputFacade, Verbose, TEXT("[Construction][Facade] ChangeDisplayedFloor sem parametro UpdateVisibility."));
 	}
 
 	BuildingComponent->ProcessEvent(Function, ParamsBuffer);
@@ -961,4 +913,3 @@ bool USpellRiseBuildInputFacade::CanConfirmBuild(UObject* BuildingComponent, FSt
 
 	return true;
 }
-

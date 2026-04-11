@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
@@ -357,7 +359,6 @@ protected:
 	void BindASCDelegates();
 	void RecalculateDerivedStats();
 	void ApplyDerivedStatsInfinite();
-	void LogDerivedDebug();
 	void ResetDeathStateAndResources_Server();
 	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
 	void OnHealthChanged(const FOnAttributeChangeData& Data);

@@ -1,4 +1,5 @@
-﻿#include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
@@ -28,15 +29,13 @@ void UDerivedStatsAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 void UDerivedStatsAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
 {
 	Super::PreAttributeChange(Attribute, NewValue);
-	// se quiser clamp global aqui, faça por Attribute == GetXAttribute()
+
 }
 
 void UDerivedStatsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
 {
 	Super::PostGameplayEffectExecute(Data);
 }
-
-// -------------------- OnRep --------------------
 
 void UDerivedStatsAttributeSet::OnRep_MeleeDamageMultiplier(const FGameplayAttributeData& OldValue)
 {

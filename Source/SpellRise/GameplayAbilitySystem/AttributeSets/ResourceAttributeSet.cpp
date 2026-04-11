@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 
 #include "AbilitySystemComponent.h"
@@ -92,7 +93,7 @@ static void ApplyCatalystChargeIfConfigured(
 		return;
 	}
 
-	// Prefer canonical tag and keep legacy fallback for older assets.
+
 	if (SpellRiseTags::Data_CatalystChargeDelta().IsValid())
 	{
 		SpecHandle.Data->SetSetByCallerMagnitude(SpellRiseTags::Data_CatalystChargeDelta(), FMath::Max(0.f, ChargeAmount));
@@ -700,13 +701,6 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		if (TotalDamage <= 0.f)
 		{
 			++GResourceCombatRuntimeCounters.DamageRejectedNonPositive;
-			UE_LOG(
-				LogSpellRiseResourceRuntime,
-				Verbose,
-				TEXT("[COMBAT][DAMAGE_DENIED] Reason=NonPositive Damage=%.2f Attempts=%lld Denied=%lld"),
-				TotalDamage,
-				GResourceCombatRuntimeCounters.DamageExecAttempts,
-				GResourceCombatRuntimeCounters.DamageRejectedNonPositive);
 			return;
 		}
 
@@ -752,21 +746,10 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		{
 			++GResourceCombatRuntimeCounters.DamageTargetKilled;
 		}
-		UE_LOG(
-			LogSpellRiseResourceRuntime,
-			Verbose,
-			TEXT("[COMBAT][DAMAGE_APPLIED] Damage=%.2f Type=%s Source=%s Target=%s Died=%d Applied=%lld Kills=%lld"),
-			TotalDamage,
-			*DamageTypeTag.ToString(),
-			*GetNameSafe(SourceCharacter),
-			*GetNameSafe(TargetCharacter),
-			bTargetDied ? 1 : 0,
-			GResourceCombatRuntimeCounters.DamageApplied,
-			GResourceCombatRuntimeCounters.DamageTargetKilled);
 		SendCombatHitGameplayEvents(Ctx, SourceCharacter, TargetCharacter, TotalDamage);
 		if (TargetCharacter && !bTargetDied)
 		{
-			// Cosmetic fallback AAA: server decides hit and replicates only presentation.
+
 			TargetCharacter->MultiPlayHitReactionMontage(1.0f);
 		}
 		SendCombatLogMessages(SourceCharacter, TargetCharacter, TotalDamage, DamageTypeTag, bTargetDied);
@@ -812,11 +795,6 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 				false
 			);
 
-			UE_LOG(LogSpellRiseResourceRuntime, Verbose, TEXT("[POP][ResourceSet] Damage=%.1f Source=%s Target=%s Causer=%s"),
-				TotalDamage,
-				*GetNameSafe(SourceCharacter),
-				*GetNameSafe(TargetCharacter),
-				*GetNameSafe(Ctx.GetEffectCauser()));
 		}
 
 		if (SpellRiseTags::Cue_DamageNumber().IsValid())

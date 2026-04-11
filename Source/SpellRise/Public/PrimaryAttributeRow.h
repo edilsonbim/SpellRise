@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 #include "PrimaryAttributeRow.generated.h"
@@ -19,8 +21,8 @@ public:
 		, Base(0)
 	{}
 
-	// (Opcional) Você não precisa disso na DataTable porque o RowName já existe no DataTable.
-	// Se quiser manter, ok.
+
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FName RowName = NAME_None;
 

@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/SpellRiseNarrativeBuildBridge.h"
 
 #include "GameFramework/Pawn.h"
@@ -87,7 +88,6 @@ bool USpellRiseNarrativeBuildBridge::TryOpenMalletMenu(UActorComponent* Building
 	if (!bTargetSet)
 	{
 		ShowMalletMenuFunction->DestroyStruct(ParamsBuffer);
-		UE_LOG(LogSpellRiseNarrativeBuildBridge, Warning, TEXT("[Construction][NarrativeBridge] ShowMalletMenu sem parametro de alvo em %s"), *GetNameSafe(BuildingComponent));
 		return false;
 	}
 
