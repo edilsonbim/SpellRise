@@ -1,12 +1,13 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "CatalystAttributeSet.generated.h"
 
-// Define catalyst attribute accessor helpers only once to avoid duplicate macro definitions.
 #ifndef ATTRIBUTE_ACCESSORS
 #define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
 	GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
@@ -23,22 +24,22 @@ class SPELLRISE_API UCatalystAttributeSet : public UAttributeSet
 public:
 	UCatalystAttributeSet();
 
-	// 0..100
+
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Catalyst", ReplicatedUsing=OnRep_CatalystCharge)
 	FGameplayAttributeData CatalystCharge;
 	ATTRIBUTE_ACCESSORS(UCatalystAttributeSet, CatalystCharge);
 
-	// persistent progression (>=0)
+
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Catalyst", ReplicatedUsing=OnRep_CatalystXP)
 	FGameplayAttributeData CatalystXP;
 	ATTRIBUTE_ACCESSORS(UCatalystAttributeSet, CatalystXP);
 
-	// 1..3
+
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Catalyst", ReplicatedUsing=OnRep_CatalystLevel)
 	FGameplayAttributeData CatalystLevel;
 	ATTRIBUTE_ACCESSORS(UCatalystAttributeSet, CatalystLevel);
 
-	// Meta: somar carga via GE simples (Add no Delta) e consumir aqui
+
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Catalyst|Meta")
 	FGameplayAttributeData CatalystChargeDelta;
 	ATTRIBUTE_ACCESSORS(UCatalystAttributeSet, CatalystChargeDelta);

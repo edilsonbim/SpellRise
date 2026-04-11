@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
 
 #include "Fonts/FontMeasure.h"

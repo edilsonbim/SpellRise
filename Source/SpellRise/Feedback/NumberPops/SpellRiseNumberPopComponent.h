@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "Components/ControllerComponent.h"
@@ -10,23 +12,23 @@ struct FSpellRiseNumberPopRequest
 {
 	GENERATED_BODY()
 
-	// Local no mundo onde o número deve aparecer
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Number Pops")
 	FVector WorldLocation = FVector::ZeroVector;
 
-	// Tags da origem/causa
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Number Pops")
 	FGameplayTagContainer SourceTags;
 
-	// Tags do alvo
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Number Pops")
 	FGameplayTagContainer TargetTags;
 
-	// Valor a exibir
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Number Pops")
 	int32 NumberToDisplay = 0;
 
-	// Crítico ou não
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Number Pops")
 	bool bIsCriticalDamage = false;
 };

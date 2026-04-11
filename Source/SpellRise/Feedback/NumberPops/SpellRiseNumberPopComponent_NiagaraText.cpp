@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
 
 #include "NiagaraComponent.h"
@@ -19,18 +20,7 @@ USpellRiseNumberPopComponent_NiagaraText::USpellRiseNumberPopComponent_NiagaraTe
 
 void USpellRiseNumberPopComponent_NiagaraText::AddNumberPop(const FSpellRiseNumberPopRequest& NewRequest)
 {
-	UE_LOG(
-		LogSpellRiseNumberPopNiagaraRuntime,
-		VeryVerbose,
-		TEXT("[POP][Niagara] Num=%d Crit=%d Owner=%s Style=%s Niagara=%s Array=%s"),
-		NewRequest.NumberToDisplay,
-		NewRequest.bIsCriticalDamage ? 1 : 0,
-		*GetNameSafe(GetOwner()),
-		*GetNameSafe(Style),
-		Style && Style->TextNiagara ? *GetNameSafe(Style->TextNiagara) : TEXT("NULL"),
-		Style ? *Style->NiagaraArrayName.ToString() : TEXT("NULL"));
 
-	// Em listen server evita duplicar number pop em controllers remotos.
 	if (APlayerController* PC = GetController<APlayerController>())
 	{
 		if (!PC->IsLocalController())
@@ -41,26 +31,22 @@ void USpellRiseNumberPopComponent_NiagaraText::AddNumberPop(const FSpellRiseNumb
 
 	if (!Style)
 	{
-		UE_LOG(LogSpellRiseNumberPopNiagaraRuntime, Warning, TEXT("[POP][Niagara] Style null on %s"), *GetNameSafe(this));
 		return;
 	}
 
 	if (!Style->TextNiagara)
 	{
-		UE_LOG(LogSpellRiseNumberPopNiagaraRuntime, Warning, TEXT("[POP][Niagara] TextNiagara null on Style=%s"), *GetNameSafe(Style));
 		return;
 	}
 
 	if (Style->NiagaraArrayName.IsNone())
 	{
-		UE_LOG(LogSpellRiseNumberPopNiagaraRuntime, Warning, TEXT("[POP][Niagara] NiagaraArrayName is None on Style=%s"), *GetNameSafe(Style));
 		return;
 	}
 
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		UE_LOG(LogSpellRiseNumberPopNiagaraRuntime, Warning, TEXT("[POP][Niagara] World null on %s"), *GetNameSafe(this));
 		return;
 	}
 
@@ -70,7 +56,7 @@ void USpellRiseNumberPopComponent_NiagaraText::AddNumberPop(const FSpellRiseNumb
 		LocalDamage *= -1;
 	}
 
-	// Garante componente valido no mundo com o sistema correto.
+
 	if (!IsValid(NiagaraComp) || NiagaraComp->GetAsset() != Style->TextNiagara)
 	{
 		NiagaraComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
@@ -86,12 +72,6 @@ void USpellRiseNumberPopComponent_NiagaraText::AddNumberPop(const FSpellRiseNumb
 
 		if (!NiagaraComp)
 		{
-			UE_LOG(
-				LogSpellRiseNumberPopNiagaraRuntime,
-				Warning,
-				TEXT("[POP][Niagara] Failed to spawn NiagaraComp. Style=%s Niagara=%s"),
-				*GetNameSafe(Style),
-				*GetNameSafe(Style->TextNiagara));
 			return;
 		}
 	}

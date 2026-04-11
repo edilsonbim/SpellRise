@@ -1,5 +1,6 @@
-﻿// FallDamageComponent.h
 #pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"

@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "MMC_MaxMana.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 
@@ -5,7 +6,7 @@ UMMC_MaxMana::UMMC_MaxMana()
 {
 	IntelligenceDef = FGameplayEffectAttributeCaptureDefinition(
 		UCombatAttributeSet::GetIntelligenceAttribute(),
-		EGameplayEffectAttributeCaptureSource::Target, // <- recomendado
+		EGameplayEffectAttributeCaptureSource::Target,
 		true
 	);
 	WisdomDef = FGameplayEffectAttributeCaptureDefinition(
@@ -28,7 +29,7 @@ float UMMC_MaxMana::CalculateBaseMagnitude_Implementation(const FGameplayEffectS
 	float Wisdom = 0.f;
 	if (!GetCapturedAttributeMagnitude(IntelligenceDef, Spec, Params, Intelligence))
 	{
-		Intelligence = 20.f; // fallback seguro
+		Intelligence = 20.f;
 	}
 	if (!GetCapturedAttributeMagnitude(WisdomDef, Spec, Params, Wisdom))
 	{
@@ -40,6 +41,6 @@ float UMMC_MaxMana::CalculateBaseMagnitude_Implementation(const FGameplayEffectS
 	const float IntelligenceBonus = FMath::Clamp(ClampedIntelligence - 20.f, 0.f, 100.f);
 	const float WisdomBonus = FMath::Clamp(ClampedWisdom - 20.f, 0.f, 100.f);
 
-	// Canonical primary pipeline alignment.
+
 	return FMath::Max(1.f, 180.f + (IntelligenceBonus * 2.f) + (WisdomBonus * 1.f));
 }

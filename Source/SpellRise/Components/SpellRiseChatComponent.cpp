@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/SpellRiseChatComponent.h"
 
 #include "Engine/GameInstance.h"
@@ -128,7 +129,6 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 
 	if (Channel == SpellRiseChatChannel::Combat)
 	{
-		UE_LOG(LogSpellRiseChatRuntime, Verbose, TEXT("[Chat] Ignored manual SendToMULTICAST in combat channel."));
 		return;
 	}
 
@@ -175,9 +175,6 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 				if (USpellRisePersistenceSubsystem* Persistence = GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>())
 				{
 					const bool bSaved = Persistence->SaveCharacterForController(SenderController);
-					UE_LOG(LogSpellRiseChatRuntime, Log, TEXT("[Chat][/name] Persisted immediately Controller=%s Success=%d"),
-						*GetNameSafe(SenderController),
-						bSaved ? 1 : 0);
 				}
 			}
 		}
@@ -212,9 +209,6 @@ void USpellRiseChatComponent::SendCombatToPlayer(
 	Message.TimeText = TimeText;
 	Message.Channel = SpellRiseChatChannel::Combat;
 
-	UE_LOG(LogSpellRiseChatRuntime, VeryVerbose, TEXT("[CombatChat] Routed combat feed to %s (inventory/full-loot untouched)."),
-		*GetNameSafe(TargetPlayerController));
-
 	TargetPlayerController->ClientReceiveChatMessage(Message);
 }
 
@@ -225,4 +219,3 @@ void USpellRiseChatComponent::Multi_ReceivePublicMessage_Implementation(const FS
 		LocalPlayerController->ReceiveChatMessageLocal(Message);
 	}
 }
-

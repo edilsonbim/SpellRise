@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "SpellRiseChatTypes.generated.h"
 
@@ -17,8 +19,8 @@ struct FSpellRiseChatMessage
 	UPROPERTY(BlueprintReadWrite, Category="SpellRise|Chat")
 	FText TimeText;
 
-	// Mirrors the existing BP enum ordering:
-	// 0 Global, 1 Party, 2 Guild, 3 Combat.
+
+
 	UPROPERTY(BlueprintReadWrite, Category="SpellRise|Chat")
 	uint8 Channel = 0;
 };
@@ -30,4 +32,3 @@ namespace SpellRiseChatChannel
 	static constexpr uint8 Guild = 2;
 	static constexpr uint8 Combat = 3;
 }
-

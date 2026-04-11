@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
@@ -25,7 +27,7 @@ class SPELLRISE_API ASpellRisePlayerState : public APlayerState, public IAbility
 public:
 	ASpellRisePlayerState();
 
-	// IAbilitySystemInterface
+
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -73,7 +75,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
 
-	// Attribute sets live on PlayerState (authoritative GAS owner)
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
 

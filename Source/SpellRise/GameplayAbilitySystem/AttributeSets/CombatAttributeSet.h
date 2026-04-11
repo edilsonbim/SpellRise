@@ -1,11 +1,12 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "CombatAttributeSet.generated.h"
 
-// Define attribute accessor helpers only once to avoid duplicate macro definitions across multiple header files.
 #ifndef SPELLRISE_ATTRIBUTE_ACCESSORS
 #define SPELLRISE_ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
     GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
@@ -22,10 +23,10 @@ class SPELLRISE_API UCombatAttributeSet : public UAttributeSet
 public:
 	UCombatAttributeSet();
 
-    // Primary attributes (Strength, Agility, Intelligence and Wisdom) are defined on UBasicAttributeSet.
-    // Provide static helper functions here so existing code can continue to access them via UCombatAttributeSet,
-    // but forward the calls to the corresponding UBasicAttributeSet attributes. This removes duplicate
-    // attribute definitions on both sets.
+
+
+
+
     static FGameplayAttribute GetStrengthAttribute();
     static FGameplayAttribute GetAgilityAttribute();
     static FGameplayAttribute GetIntelligenceAttribute();
@@ -99,9 +100,9 @@ public:
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
-	// Compat: evita quebrar arquivos antigos enquanto você migra
+
 protected:
-    // Primary attributes live on UBasicAttributeSet so there are no OnRep functions for them here.
+
 
 	UFUNCTION() void OnRep_MoveSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MoveSpeedMultiplier(const FGameplayAttributeData& OldValue);

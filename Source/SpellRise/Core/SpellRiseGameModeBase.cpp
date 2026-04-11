@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRiseGameModeBase.h"
 
 #include "OnlineSubsystem.h"
@@ -140,50 +141,14 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 	const bool bNoSteamTestingActive = IsNoSteamTestingModeActive();
 	const bool bEditorPIETestingActive = IsEditorPIETestingModeActive();
 	const bool bRequireSteamInThisContext = ShouldRequireSteamAuthentication();
-	UE_LOG(
-		LogSpellRiseLoginPersistence,
-		Log,
-		TEXT("[Net][PreLoginStart] Address=%s UniqueId=%s Options=%s RequireSteamDS=%d NoSteamParam=%d NoSteamTesting=%d EditorPIE=%d OSS={%s}"),
-		*Address,
-		*DescribeUniqueId(UniqueId),
-		*Options,
-		bRequireSteamAuthOnDedicatedServer ? 1 : 0,
-		bNoSteamParam ? 1 : 0,
-		bNoSteamTestingActive ? 1 : 0,
-		bEditorPIETestingActive ? 1 : 0,
-		*DescribeOnlineSubsystemState());
-
 	if (bNoSteamParam && !bNoSteamTestingActive)
 	{
-		UE_LOG(
-			LogSpellRiseLoginPersistence,
-			Warning,
-			TEXT("[Auth][NoSteamBlocked] Address=%s RequireSteam=%d NoSteamParam=%d NoSteamTesting=%d"),
-			*Address,
-			bRequireSteamAuthOnDedicatedServer ? 1 : 0,
-			1,
-			0);
 	}
 
 	if (!ErrorMessage.IsEmpty())
 	{
-		UE_LOG(
-			LogSpellRiseLoginPersistence,
-			Warning,
-			TEXT("[Net][PreLoginRejectedBySuper] Address=%s UniqueId=%s Error=%s OSS={%s}"),
-			*Address,
-			*DescribeUniqueId(UniqueId),
-			*ErrorMessage,
-			*DescribeOnlineSubsystemState());
-
 		if (ErrorMessage.Equals(TEXT("incompatible_unique_net_id"), ESearchCase::IgnoreCase))
 		{
-			UE_LOG(
-				LogSpellRiseLoginPersistence,
-				Warning,
-				TEXT("[Net][PreLoginRejectedReason] Address=%s Cause=UniqueNetIdMismatch ExpectedSubsystem=%s"),
-				*Address,
-			*DescribeSubsystemPtr(IOnlineSubsystem::Get()));
 		}
 		return;
 	}
@@ -194,39 +159,18 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 		if (!OSS || OSS->GetSubsystemName() != FName(TEXT("STEAM")))
 		{
 			ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
-			UE_LOG(
-				LogSpellRiseLoginPersistence,
-				Warning,
-				TEXT("[Auth][PreLoginReject] Address=%s Reason=steam_required UniqueId=%s OSS={%s}"),
-				*Address,
-				*DescribeUniqueId(UniqueId),
-				*DescribeOnlineSubsystemState());
 			return;
 		}
 
 		if (!UniqueId.IsValid())
 		{
 			ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
-			UE_LOG(
-				LogSpellRiseLoginPersistence,
-				Warning,
-				TEXT("[Auth][PreLoginReject] Address=%s Reason=steam_required UniqueId=%s OSS={%s}"),
-				*Address,
-				*DescribeUniqueId(UniqueId),
-				*DescribeOnlineSubsystemState());
 			return;
 		}
 
 		if (!IsSteamUniqueId(UniqueId))
 		{
 			ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
-			UE_LOG(
-				LogSpellRiseLoginPersistence,
-				Warning,
-				TEXT("[Auth][PreLoginReject] Address=%s Reason=unique_id_type_mismatch UniqueId=%s OSS={%s}"),
-				*Address,
-				*DescribeUniqueId(UniqueId),
-				*DescribeOnlineSubsystemState());
 			return;
 		}
 	}
@@ -237,16 +181,6 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 	if (PersistentId.IsEmpty())
 	{
 		ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
-		UE_LOG(
-			LogSpellRiseLoginPersistence,
-			Warning,
-			TEXT("[Auth][PreLoginReject] Address=%s Reason=missing_persistent_id RequireSteam=%d NoSteamParam=%d FallbackEnabled=%d UniqueId=%s OSS={%s}"),
-			*Address,
-			bRequireSteamAuthOnDedicatedServer ? 1 : 0,
-			bNoSteamParam ? 1 : 0,
-			bOfflineFallbackAllowedInThisContext ? 1 : 0,
-			*DescribeUniqueId(UniqueId),
-			*DescribeOnlineSubsystemState());
 		return;
 	}
 
@@ -256,13 +190,6 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 		PendingPersistentIdByAddress.Add(AddressKey, PersistentId);
 	}
 
-	UE_LOG(
-		LogSpellRiseLoginPersistence,
-		Log,
-		TEXT("[Auth][PreLoginAccept] Address=%s PersistentId=%s Source=%s"),
-		*Address,
-		*PersistentId,
-		bUsedDevFallback ? TEXT("DevFallback") : TEXT("Steam"));
 }
 
 void ASpellRiseGameModeBase::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -300,17 +227,8 @@ void ASpellRiseGameModeBase::PostLogin(APlayerController* NewPlayer)
 		UniqueIdText = DescribeUniqueId(NewPlayer->PlayerState->GetUniqueId());
 	}
 
-	UE_LOG(
-		LogSpellRiseLoginPersistence,
-		Log,
-		TEXT("[Net][PostLogin] Controller=%s Address=%s UniqueId=%s Pawn=%s"),
-		*GetNameSafe(NewPlayer),
-		NewPlayer ? *NewPlayer->GetPlayerNetworkAddress() : TEXT("NONE"),
-		*UniqueIdText,
-		NewPlayer ? *GetNameSafe(NewPlayer->GetPawn()) : TEXT("NONE"));
 
-	// Preload/apply ja ocorre em HandleStartingNewPlayer_Implementation.
-	// Evitar duplicidade aqui reduz hitch no login e side-effects de aplicacao repetida.
+
 
 }
 
@@ -327,23 +245,9 @@ void ASpellRiseGameModeBase::Logout(AController* Exiting)
 			ExitingAddress = ExitingPC->GetPlayerNetworkAddress();
 		}
 
-		UE_LOG(
-			LogSpellRiseLoginPersistence,
-			Log,
-			TEXT("[Net][Logout] Controller=%s Address=%s UniqueId=%s Pawn=%s"),
-			*GetNameSafe(Exiting),
-			*ExitingAddress,
-			*ExitingUniqueId,
-			ExitingPC ? *GetNameSafe(ExitingPC->GetPawn()) : TEXT("NONE"));
-
 		const bool bSkipSaveForHandover = ShouldSkipSaveDuringHandover(Exiting);
 		if (bSkipSaveForHandover)
 		{
-			UE_LOG(
-				LogSpellRiseLoginPersistence,
-				Log,
-				TEXT("[Persistence][Handover] Skip save for exiting old session Controller=%s"),
-				*GetNameSafe(Exiting));
 		}
 
 		if (USpellRisePersistenceSubsystem* Persistence = GetPersistenceSubsystem())
@@ -553,11 +457,6 @@ void ASpellRiseGameModeBase::RegisterActiveSessionForController(APlayerControlle
 	const FString PersistentId = ResolvePersistentIdForController(NewPlayer);
 	if (PersistentId.IsEmpty())
 	{
-		UE_LOG(
-			LogSpellRiseLoginPersistence,
-			Warning,
-			TEXT("[Auth][SessionRegisterFailed] Controller=%s Reason=empty_persistent_id"),
-			*GetNameSafe(NewPlayer));
 		return;
 	}
 
@@ -587,23 +486,10 @@ void ASpellRiseGameModeBase::RegisterActiveSessionForController(APlayerControlle
 				OldPlayer->ClientReturnToMainMenuWithTextReason(KickReason);
 			}
 
-			UE_LOG(
-				LogSpellRiseLoginPersistence,
-				Warning,
-				TEXT("[Auth][DuplicateLoginKick] PersistentId=%s Old=%s New=%s"),
-				*PersistentId,
-				*GetNameSafe(OldPlayer),
-				*GetNameSafe(NewPlayer));
 		}
 	}
 
 	ActiveSessionByPersistentId.Add(PersistentId, NewPlayer);
-	UE_LOG(
-		LogSpellRiseLoginPersistence,
-		Log,
-		TEXT("[Auth][SessionActive] PersistentId=%s Controller=%s"),
-		*PersistentId,
-		*GetNameSafe(NewPlayer));
 }
 
 void ASpellRiseGameModeBase::UnregisterActiveSessionForController(const AController* ExitingController)
@@ -642,12 +528,6 @@ void ASpellRiseGameModeBase::UnregisterActiveSessionForController(const AControl
 		}
 	}
 
-	UE_LOG(
-		LogSpellRiseLoginPersistence,
-		Log,
-		TEXT("[Auth][SessionUnregister] PersistentId=%s Controller=%s"),
-		*PersistentId,
-		*GetNameSafe(ExitingController));
 }
 
 bool ASpellRiseGameModeBase::ShouldSkipSaveDuringHandover(const AController* ExitingController) const

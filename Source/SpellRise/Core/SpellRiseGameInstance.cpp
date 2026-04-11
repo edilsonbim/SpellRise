@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRiseGameInstance.h"
 
 #include "OnlineSubsystem.h"
@@ -61,15 +62,6 @@ void USpellRiseGameInstance::Init()
 		bLoggedLocalSessionFallback = true;
 	}
 
-	UE_LOG(
-		LogSpellRiseGameInstanceRuntime,
-		Log,
-		TEXT("[SpellRise][Online] GameInstance Init. Subsystem=%s SteamActive=%d SessionIdentityReady=%d IdentitySource=%s FallbackKey=%s"),
-		*SubsystemName.ToString(),
-		IsSteamSubsystemActive() ? 1 : 0,
-		bHasLocalSessionIdentity ? 1 : 0,
-		*LocalSessionSource,
-		bHasLocalSessionIdentity ? TEXT("None") : *LocalSessionIdentity);
 }
 
 bool USpellRiseGameInstance::IsSteamSubsystemActive() const
@@ -114,14 +106,6 @@ FString USpellRiseGameInstance::GetLocalSessionIdentity(int32 LocalUserNum) cons
 	if (!bHasLocalSessionIdentity && !bLoggedLocalSessionFallback)
 	{
 		bLoggedLocalSessionFallback = true;
-		UE_LOG(
-			LogSpellRiseGameInstanceRuntime,
-			Log,
-			TEXT("[SpellRise][Online][SessionFallback] LocalUserNum=%d Subsystem=%s IdentitySource=%s FallbackKey=%s"),
-			LocalUserNum,
-			*GetOnlineSubsystemNameSafe(OnlineSubsystem),
-			*IdentitySource,
-			*SessionIdentity);
 	}
 
 	return SessionIdentity;

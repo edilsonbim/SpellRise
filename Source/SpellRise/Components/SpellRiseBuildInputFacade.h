@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include <initializer_list>
@@ -75,13 +77,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction")
 	bool bEnableDisplayedFloorCommands = false;
 
-	// Legacy EBS menu calls still depend on old widget/component wiring in some assets.
-	// Keep disabled by default during migration to avoid runtime crashes.
+
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction")
 	bool bEnableLegacyEBSMenuCalls = false;
 
-	// Legacy wheel axis handlers in EBS are unstable in current migration state.
-	// Disabled by default to avoid crashes on ChangeBuildingRotationZ/OffsetZ calls.
+
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction")
 	bool bEnableLegacyEBSAxisCalls = false;
 

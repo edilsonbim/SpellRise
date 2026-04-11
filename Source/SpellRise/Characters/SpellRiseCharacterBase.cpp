@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
@@ -267,13 +268,6 @@ void ASpellRiseCharacterBase::BeginPlay()
 		USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
 		UCameraComponent* AimCamera = GetActiveAimCameraComponent();
 
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[Anim][Server] Char=%s Mesh=%s AnimClass=%s AnimInstance=%s TickOption=%d AimCamera=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(VisualMesh),
-			VisualMesh ? *GetNameSafe(VisualMesh->AnimClass) : TEXT("NULL"),
-			VisualMesh ? *GetNameSafe(VisualMesh->GetAnimInstance()) : TEXT("NULL"),
-			VisualMesh ? static_cast<int32>(VisualMesh->VisibilityBasedAnimTickOption) : -1,
-			*GetNameSafe(AimCamera));
 	}
 }
 
@@ -343,8 +337,8 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 		}
 	}
 
-	// Ability input bindings now live in PlayerController.
-	// Character keeps movement/locomotion responsibilities.
+
+
 }
 
 void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
@@ -533,13 +527,6 @@ void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 
 void ASpellRiseCharacterBase::MultiRefreshEquipmentVisuals_Implementation()
 {
-	UE_LOG(
-		LogSpellRiseCharacterRuntime,
-		Warning,
-		TEXT("[Equipment][VisualRefreshDeprecated] Character=%s Local=%d Authority=%d"),
-		*GetNameSafe(this),
-		IsLocallyControlled() ? 1 : 0,
-		HasAuthority() ? 1 : 0);
 }
 
 void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Implementation(UObject* ItemObject, bool bShouldEquip)
@@ -557,12 +544,6 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 
 	if (EquippableItem->GetOwningPawn() != this)
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Warning,
-			TEXT("[Equipment][EquipRejected] Character=%s Item=%s Reason=item_not_owned_by_character"),
-			*GetNameSafe(this),
-			*GetNameSafe(EquippableItem));
 		return;
 	}
 
@@ -590,14 +571,6 @@ void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)
 	FString RejectReason;
 	if (!CanIssueOwnerServerRpc(RejectReason))
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Verbose,
-			TEXT("[RPC][ClientGuard] SetArchetype skipped reason=%s Char=%s Controller=%s Owner=%s"),
-			*RejectReason,
-			*GetNameSafe(this),
-			*GetNameSafe(GetController()),
-			*GetNameSafe(GetOwner()));
 		return;
 	}
 
@@ -698,7 +671,6 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
-	LogDerivedDebug();
 }
 
 void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FGameplayTag NewTag)
@@ -763,15 +735,6 @@ void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 		FString RejectReason;
 		if (!CanIssueOwnerServerRpc(RejectReason))
 		{
-			UE_LOG(
-				LogSpellRiseCharacterRuntime,
-				Verbose,
-				TEXT("[RPC][ClientGuard] SelectAbilitySlot skipped reason=%s Char=%s Controller=%s Owner=%s Slot=%d"),
-				*RejectReason,
-				*GetNameSafe(this),
-				*GetNameSafe(GetController()),
-				*GetNameSafe(GetOwner()),
-				SlotIndex);
 		}
 		else
 		{
@@ -848,14 +811,6 @@ void ASpellRiseCharacterBase::ClearSelectedAbility()
 		FString RejectReason;
 		if (!CanIssueOwnerServerRpc(RejectReason))
 		{
-			UE_LOG(
-				LogSpellRiseCharacterRuntime,
-				Verbose,
-				TEXT("[RPC][ClientGuard] ClearSelectedAbility skipped reason=%s Char=%s Controller=%s Owner=%s"),
-				*RejectReason,
-				*GetNameSafe(this),
-				*GetNameSafe(GetController()),
-				*GetNameSafe(GetOwner()));
 		}
 		else
 		{
@@ -910,14 +865,6 @@ void ASpellRiseCharacterBase::SyncDeadStateFromASC(const TCHAR* Context)
 
 	if (bOldMirror != bIsDead)
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Verbose,
-			TEXT("[GAS][DeadStateSync] Char=%s Context=%s MirrorOld=%d MirrorNew=%d"),
-			*GetNameSafe(this),
-			Context ? Context : TEXT("Unknown"),
-			bOldMirror ? 1 : 0,
-			bIsDead ? 1 : 0);
 	}
 }
 
@@ -934,24 +881,9 @@ void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bG
 	USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASC();
 	if (!SRASC)
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Verbose,
-			TEXT("[GAS][ProcessAbilityInput] skipped: missing ASC Character=%s PlayerState=%s Controller=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(GetPlayerState()),
-			*GetNameSafe(GetController()));
 		return;
 	}
 
-	UE_LOG(
-		LogSpellRiseCharacterRuntime,
-		Verbose,
-		TEXT("[GAS][ProcessAbilityInput] Character=%s ASC=%s Local=%d Authority=%d"),
-		*GetNameSafe(this),
-		*GetNameSafe(SRASC),
-		IsLocallyControlled() ? 1 : 0,
-		HasAuthority() ? 1 : 0);
 	SRASC->SR_ProcessAbilityInput(DeltaSeconds, bGamePaused);
 }
 
@@ -978,19 +910,8 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 {
 	USpellRiseAbilitySystemComponent* PreviousASC = GetSpellRiseASC();
 	ASpellRisePlayerState* SRPlayerStateBeforeInit = GetPlayerState<ASpellRisePlayerState>();
-	UE_LOG(
-		LogSpellRiseCharacterRuntime,
-		Verbose,
-		TEXT("[GAS][InitASCActorInfo] Character=%s PlayerState=%s ASC=%s Local=%d Authority=%d"),
-		*GetNameSafe(this),
-		*GetNameSafe(SRPlayerStateBeforeInit),
-		*GetNameSafe(PreviousASC),
-		IsLocallyControlled() ? 1 : 0,
-		HasAuthority() ? 1 : 0);
-
 	if (!InitializeAbilitySystemFromPlayerState())
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] InitASCActorInfo falhou em %s: PlayerState/ASC ainda nao disponivel."), *GetNameSafe(this));
 		ScheduleASCInitializationRetry();
 	}
 
@@ -1082,7 +1003,6 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 
 	if (!GetSpellRiseASC())
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] PossessedBy sem ASC cacheado em %s (OwnerController=%s)."), *GetNameSafe(this), *GetNameSafe(NewController));
 		return;
 	}
 
@@ -1111,7 +1031,6 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	}
 	else
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] Startup abilities already granted for %s (skipping)"), *GetNameSafe(this));
 	}
 
 	ApplyRegenStartupEffects();
@@ -1133,7 +1052,6 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 
 	if (!GetSpellRiseASC())
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] OnRep_PlayerState sem ASC cacheado em %s."), *GetNameSafe(this));
 	}
 }
 
@@ -1238,20 +1156,12 @@ void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Dat
 
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
-	LogDerivedDebug();
 }
 
 void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data)
 {
 	if (!GetSpellRiseASC() || GetSpellRiseASC()->GetAvatarActor() != this)
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Warning,
-			TEXT("[FullLoot][Death] OnHealthChanged ignorado por AvatarContext mismatch. Char=%s ASC=%s Avatar=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(GetSpellRiseASC()),
-			*GetNameSafe(GetSpellRiseASC() ? GetSpellRiseASC()->GetAvatarActor() : nullptr));
 		return;
 	}
 
@@ -1270,7 +1180,6 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	if (IsDead())
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] OnHealthChanged ignorado (ja morto). Char=%s"), *GetNameSafe(this));
 		return;
 	}
 
@@ -1282,11 +1191,9 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	if (!HasAuthority() || !GetSpellRiseASC())
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] OnHealthChanged sem authority/ASC. Char=%s Health=%.2f"), *GetNameSafe(this), NewHealth);
 		return;
 	}
 
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] OnHealthChanged matou personagem. Char=%s Health=%.2f LootProcessed=%d"), *GetNameSafe(this), NewHealth, bFullLootProcessedForCurrentDeath ? 1 : 0);
 	bIsDead = true;
 
 	if (!bFullLootProcessedForCurrentDeath)
@@ -1295,24 +1202,19 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 		{
 			if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
 			{
-				UE_LOG(LogSpellRiseDeathLoot, Log, TEXT("[DeathLoot] Disparando FullLoot via OnHealthChanged. Char=%s"), *GetNameSafe(this));
-				UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] Disparando FullLoot via OnHealthChanged. Char=%s"), *GetNameSafe(this));
 				FullLootSubsystem->HandleCharacterDeath(this, FullLootBagClass);
 				bFullLootProcessedForCurrentDeath = true;
 			}
 			else
 			{
-				UE_LOG(LogSpellRiseCharacterRuntime, Error, TEXT("[FullLoot][Death] Subsystem FullLoot ausente em OnHealthChanged. Char=%s"), *GetNameSafe(this));
 			}
 		}
 		else
 		{
-			UE_LOG(LogSpellRiseCharacterRuntime, Error, TEXT("[FullLoot][Death] World nulo em OnHealthChanged. Char=%s"), *GetNameSafe(this));
 		}
 	}
 	else
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] FullLoot ja processado em OnHealthChanged. Char=%s"), *GetNameSafe(this));
 	}
 
 	if (GE_Death)
@@ -1349,13 +1251,11 @@ void ASpellRiseCharacterBase::ApplyStartupEffects()
 
 	if (!GE_RecalculateResources)
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] GE_RecalculateResources is not set on %s"), *GetName());
 		return;
 	}
 
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
-	LogDerivedDebug();
 }
 
 void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
@@ -1367,7 +1267,6 @@ void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 
 	if (!GE_DerivedStatsInfinite)
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[DERIVED] GE_DerivedStatsInfinite is NULL on %s."), *GetNameSafe(this));
 		return;
 	}
 
@@ -1383,40 +1282,6 @@ void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 	}
 
 	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-}
-
-void ASpellRiseCharacterBase::LogDerivedDebug()
-{
-	if (!GetSpellRiseASC())
-	{
-		return;
-	}
-
-	const bool bTagActive = GetSpellRiseASC()->HasMatchingGameplayTag(SpellRiseTags::State_DerivedStats_Active());
-
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[DERIVED] GE=%s TagActive=%d"),
-		*GetNameSafe(GE_DerivedStatsInfinite),
-		bTagActive ? 1 : 0);
-
-	const float STR = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetStrengthAttribute());
-	const float AGI = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetAgilityAttribute());
-	const float INT = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetIntelligenceAttribute());
-	const float WIS = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetWisdomAttribute());
-
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[PRIM] STR=%.1f AGI=%.1f INT=%.1f WIS=%.1f"), STR, AGI, INT, WIS);
-
-	const float MeleeMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetMeleeDamageMultiplierAttribute());
-	const float BowMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetBowDamageMultiplierAttribute());
-	const float SpellMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetSpellDamageMultiplierAttribute());
-	const float HealMult = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetHealingMultiplierAttribute());
-	const float CTR = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetCastTimeReductionAttribute());
-	const float CC = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritChanceAttribute());
-	const float CD = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetCritDamageAttribute());
-	const float AP = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetArmorPenetrationAttribute());
-	const float MCR = GetSpellRiseASC()->GetNumericAttribute(UDerivedStatsAttributeSet::GetManaCostReductionAttribute());
-
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[DER]  Melee=%.3f Bow=%.3f Spell=%.3f Heal=%.3f CTR=%.3f CC=%.3f CD=%.3f AP=%.3f MCR=%.3f"),
-		MeleeMult, BowMult, SpellMult, HealMult, CTR, CC, CD, AP, MCR);
 }
 
 void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass)
@@ -1541,11 +1406,6 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), FMath::Max(0.f, MaxManaValue));
 	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaAttribute(), FMath::Max(0.f, MaxStaminaValue));
 
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Respawn] Reset de morte aplicado. Char=%s DeadTag=%s Health=%.1f/%.1f"),
-		*GetNameSafe(this),
-		DeadStateTag.IsValid() ? TEXT("valid") : TEXT("invalid"),
-		GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetHealthAttribute()),
-		GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute()));
 }
 
 TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
@@ -1567,7 +1427,6 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 
 		if (GetSpellRiseASC()->FindAbilitySpecFromClass(Grant.Ability) != nullptr)
 		{
-			UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] Ability ja concedida no ASC. Pulando duplicata: %s"), *GetNameSafe(Grant.Ability));
 			continue;
 		}
 
@@ -1587,7 +1446,6 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 			const bool bActivated = GetSpellRiseASC()->TryActivateAbility(Handle);
 			if (!bActivated)
 			{
-				UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[GAS] AutoActivate FAILED: %s"), *GetNameSafe(Grant.Ability));
 			}
 		}
 	}
@@ -1622,34 +1480,13 @@ void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
 
 	if (!GetSpellRiseASC())
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Verbose,
-			TEXT("[GAS][AbilitiesChanged] retry init before send Character=%s PlayerState=%s Controller=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(GetPlayerState()),
-			*GetNameSafe(GetController()));
 		InitASCActorInfo();
 	}
 
 	if (!GetSpellRiseASC())
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Warning,
-			TEXT("[GAS] SendAbilitiesChangedEvent skipped: missing ASC. Character=%s PlayerState=%s Controller=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(GetPlayerState()),
-			*GetNameSafe(GetController()));
 		return;
 	}
-
-	UE_LOG(
-		LogSpellRiseCharacterRuntime,
-		Verbose,
-		TEXT("[GAS][AbilitiesChanged] Send Character=%s Receiver=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(GetPlayerState() ? Cast<AActor>(GetPlayerState()) : Cast<AActor>(this)));
 
 	FGameplayEventData EventData;
 	EventData.EventTag = SpellRiseTags::Event_Abilities_Changed();
@@ -1927,17 +1764,6 @@ void ASpellRiseCharacterBase::AuditRejectedServerRpc(const TCHAR* RpcName, const
 	const AController* OwnerController = GetController();
 	const APlayerState* OwnerPlayerState = GetPlayerState();
 
-	UE_LOG(
-		LogSpellRiseSecurity,
-		Warning,
-		TEXT("[SEC][RPC] Rejected Rpc=%s Reason=%s Character=%s Controller=%s PlayerState=%s TotalRejected=%d"),
-		RpcName ? RpcName : TEXT("unknown"),
-		*RejectReason,
-		*GetNameSafe(this),
-		*GetNameSafe(OwnerController),
-		*GetNameSafe(OwnerPlayerState),
-		ServerRejectedGenericRpcs);
-
 	FSpellRiseAuditTrail::AppendEvent(
 		TEXT("Security"),
 		TEXT("RejectedServerRpc"),
@@ -1951,17 +1777,6 @@ void ASpellRiseCharacterBase::AuditRejectedServerGameplayEvent(const FGameplayTa
 
 	const AController* OwnerController = GetController();
 	const APlayerState* OwnerPlayerState = GetPlayerState();
-
-	UE_LOG(
-		LogSpellRiseSecurity,
-		Warning,
-		TEXT("[SEC][RPC][GameplayEvent] Rejected Tag=%s Reason=%s Character=%s Controller=%s PlayerState=%s TotalRejected=%d"),
-		*EventTag.ToString(),
-		*RejectReason,
-		*GetNameSafe(this),
-		*GetNameSafe(OwnerController),
-		*GetNameSafe(OwnerPlayerState),
-		ServerRejectedGameplayEvents);
 
 	FSpellRiseAuditTrail::AppendEvent(
 		TEXT("Security"),
@@ -1994,24 +1809,8 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 {
 	if (!GetSpellRiseASC() || GetSpellRiseASC()->GetAvatarActor() != this)
 	{
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Warning,
-			TEXT("[FullLoot][Death] OnDeadTagChanged ignorado por AvatarContext mismatch. Char=%s ASC=%s Avatar=%s Tag=%s NewCount=%d"),
-			*GetNameSafe(this),
-			*GetNameSafe(GetSpellRiseASC()),
-			*GetNameSafe(GetSpellRiseASC() ? GetSpellRiseASC()->GetAvatarActor() : nullptr),
-			*CallbackTag.ToString(),
-			NewCount);
 		return;
 	}
-
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] OnDeadTagChanged Char=%s Tag=%s NewCount=%d IsDead=%d LootProcessed=%d"),
-		*GetNameSafe(this),
-		*CallbackTag.ToString(),
-		NewCount,
-		IsDead() ? 1 : 0,
-		bFullLootProcessedForCurrentDeath ? 1 : 0);
 
 	if (NewCount > 0)
 	{
@@ -2028,14 +1827,11 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 				{
 					if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
 					{
-						UE_LOG(LogSpellRiseDeathLoot, Log, TEXT("[DeathLoot] Disparando FullLoot via OnDeadTagChanged. Char=%s"), *GetNameSafe(this));
-						UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] Disparando FullLoot via OnDeadTagChanged. Char=%s"), *GetNameSafe(this));
 						FullLootSubsystem->HandleCharacterDeath(this, FullLootBagClass);
 						bFullLootProcessedForCurrentDeath = true;
 					}
 					else
 					{
-						UE_LOG(LogSpellRiseCharacterRuntime, Error, TEXT("[FullLoot][Death] Subsystem FullLoot ausente em OnDeadTagChanged. Char=%s"), *GetNameSafe(this));
 					}
 				}
 			}
@@ -2058,8 +1854,6 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 	CombatLockExpireAtServerTimeSeconds = -1.0;
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(true);
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Death] Estado de morte resetado. Char=%s"), *GetNameSafe(this));
-
 	if (HasAuthority())
 	{
 		if (UWorld* World = GetWorld())
@@ -2085,7 +1879,6 @@ void ASpellRiseCharacterBase::ScheduleRespawn_Server()
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Error, TEXT("[FullLoot][Respawn] World nulo para %s"), *GetNameSafe(this));
 		return;
 	}
 
@@ -2100,21 +1893,12 @@ void ASpellRiseCharacterBase::ScheduleRespawn_Server()
 	if (IsCombatLockActive_Server(&CombatLockRemainingSeconds))
 	{
 		EffectiveDelaySeconds = FMath::Max(EffectiveDelaySeconds, static_cast<float>(CombatLockRemainingSeconds));
-		UE_LOG(
-			LogSpellRiseCharacterRuntime,
-			Warning,
-			TEXT("[FullLoot][Respawn] CombatLock ativo. Delay base=%.1fs delay efetivo=%.1fs lock restante=%.2fs Char=%s"),
-			BaseDelaySeconds,
-			EffectiveDelaySeconds,
-			CombatLockRemainingSeconds,
-			*GetNameSafe(this));
 	}
 	else
 	{
 		CombatLockExpireAtServerTimeSeconds = -1.0;
 	}
 
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Respawn] Agendado respawn em %.1fs para %s"), EffectiveDelaySeconds, *GetNameSafe(this));
 	World->GetTimerManager().SetTimer(RespawnTimerHandle, this, &ASpellRiseCharacterBase::ExecuteRespawn_Server, EffectiveDelaySeconds, false);
 }
 
@@ -2143,16 +1927,8 @@ void ASpellRiseCharacterBase::ExecuteRespawn_Server()
 	AGameModeBase* GameMode = UGameplayStatics::GetGameMode(this);
 	if (!GameMode || !ControllerToRespawn)
 	{
-		UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Respawn] Abortado: GameMode=%s Controller=%s Pawn=%s"),
-			*GetNameSafe(GameMode),
-			*GetNameSafe(ControllerToRespawn),
-			*GetNameSafe(this));
 		return;
 	}
-
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[FullLoot][Respawn] Reiniciando jogador. Controller=%s PawnAntigo=%s"),
-		*GetNameSafe(ControllerToRespawn),
-		*GetNameSafe(this));
 
 	StopAllCharacterAudio(true);
 	ControllerToRespawn->UnPossess();
@@ -2514,9 +2290,6 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 	GetSpellRiseASC()->RefreshAbilityActorInfo();
 	SendAbilitiesChangedEvent();
 
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[Death] Removidas %d abilities runtime no servidor para %s"),
-		HandlesToRemove.Num(),
-		*GetNameSafe(this));
 }
 
 void ASpellRiseCharacterBase::DestroyDeathAttachments_Server(USkeletalMeshComponent* VisualMesh)
@@ -2617,12 +2390,6 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 
 	BP_ShowDamagePop(Damage, InstigatorActor, DamageTypeTag, bIsCrit);
 
-	UE_LOG(LogSpellRiseCharacterRuntime, Warning, TEXT("[POP][Character] Damage=%.1f Crit=%d Type=%s Target=%s ViewerPC=%s"),
-		Damage,
-		bIsCrit ? 1 : 0,
-		*DamageTypeTag.ToString(),
-		*GetNameSafe(this),
-		*GetNameSafe(PC));
 }
 
 void ASpellRiseCharacterBase::MultiPlayHitReactionMontage_Implementation(float PlayRate)
@@ -2670,5 +2437,3 @@ void ASpellRiseCharacterBase::Landed(const FHitResult& Hit)
 
 	FallDamageComponent->OnLanded(Hit);
 }
-
-

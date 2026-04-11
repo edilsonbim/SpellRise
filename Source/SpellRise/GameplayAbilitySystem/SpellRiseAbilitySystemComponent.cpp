@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRiseAbilitySystemComponent.h"
 
 #include "GameplayEffect.h"
@@ -41,7 +42,7 @@ void USpellRiseAbilitySystemComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Catalyst logic is handled externally by UCatalystComponent.
+
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf);
 	OnAnyGameplayEffectRemovedDelegate().AddUObject(this, &USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf);
 }
@@ -74,14 +75,6 @@ int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTa
 
 		if (bIsComboEvent)
 		{
-			UE_LOG(
-				LogSpellRiseASCCombo,
-				Verbose,
-				TEXT("[GAS][Event] ASC=%s Event=%s Instigator=%s Target=%s"),
-				*GetNameSafe(this),
-				*EventTag.ToString(),
-				Payload ? *GetNameSafe(Payload->Instigator.Get()) : TEXT("None"),
-				Payload ? *GetNameSafe(Payload->Target.Get()) : TEXT("None"));
 		}
 
 		if (!bNativeComboActive && EventTag.MatchesTagExact(ComboInputEvent))
@@ -94,7 +87,6 @@ int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTa
 			if (bComboAdvanceRequested)
 			{
 				const bool bAdvanced = TryAdvanceActiveComboMontage();
-				UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Requested=1 Advanced=%d"), bAdvanced ? 1 : 0);
 				if (bAdvanced)
 				{
 					bComboAdvanceRequested = false;
@@ -117,7 +109,6 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 	ACharacter* Character = Cast<ACharacter>(LocalAvatarActor);
 	if (!Character)
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: Avatar is not Character. Avatar=%s"), *GetNameSafe(LocalAvatarActor));
 		return false;
 	}
 
@@ -175,7 +166,6 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 
 	if (!SelectedAnimInstance || !ActiveMontage)
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: No active montage found in candidate meshes. Character=%s"), *GetNameSafe(Character));
 		return false;
 	}
 
@@ -184,38 +174,16 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 	const int32 SectionCount = ActiveMontage->CompositeSections.Num();
 	if (CurrentSectionIndex == INDEX_NONE || CurrentSectionIndex + 1 >= SectionCount)
 	{
-		UE_LOG(
-			LogSpellRiseASCCombo,
-			Verbose,
-			TEXT("[GAS][ComboAdvance] Fail: Montage has no next section. Montage=%s CurrentSection=%s CurrentIdx=%d SectionCount=%d"),
-			*GetNameSafe(ActiveMontage),
-			*CurrentSection.ToString(),
-			CurrentSectionIndex,
-			SectionCount);
 		return false;
 	}
 
 	const FName NextSection = ActiveMontage->CompositeSections[CurrentSectionIndex + 1].SectionName;
 	if (NextSection.IsNone() || NextSection == CurrentSection)
 	{
-		UE_LOG(
-			LogSpellRiseASCCombo,
-			Verbose,
-			TEXT("[GAS][ComboAdvance] Fail: Next section invalid. Montage=%s Current=%s Next=%s"),
-			*GetNameSafe(ActiveMontage),
-			*CurrentSection.ToString(),
-			*NextSection.ToString());
 		return false;
 	}
 
 	SelectedAnimInstance->Montage_JumpToSection(NextSection, ActiveMontage);
-	UE_LOG(
-		LogSpellRiseASCCombo,
-		Verbose,
-		TEXT("[GAS][ComboMontage] Forced section jump Montage=%s Current=%s Next=%s"),
-		*GetNameSafe(ActiveMontage),
-		*CurrentSection.ToString(),
-		*NextSection.ToString());
 	return true;
 }
 
@@ -241,17 +209,6 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		}
 	}
 
-	UE_LOG(
-		LogSpellRiseASCCues,
-		Warning,
-		TEXT("[GAS][GE Applied] ASC=%s GE=%s Handle=%s DurationPolicy=%d Cues=%s SourceASC=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(Spec.Def),
-		*ActiveHandle.ToString(),
-		Spec.Def ? static_cast<int32>(Spec.Def->DurationPolicy) : -1,
-		CueSummary.IsEmpty() ? TEXT("<none>") : *CueSummary,
-		*GetNameSafe(SourceASC));
-
 	if (ShieldStatusTag.IsValid() && ShieldCueTag.IsValid() && Spec.Def && Spec.Def->GetGrantedTags().HasTagExact(ShieldStatusTag))
 	{
 		FGameplayCueParameters CueParams;
@@ -259,10 +216,9 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		CueParams.EffectCauser = GetAvatarActor();
 		CueParams.SourceObject = Spec.Def;
 		AddGameplayCue(ShieldCueTag, CueParams);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][ShieldCue] Added from GE lifecycle. ASC=%s"), *GetNameSafe(this));
 	}
 
-	// FillShield visual should follow GE lifecycle to avoid blink from ability-level execute/remove races.
+
 	if (FillShieldCueTag.IsValid() && Spec.Def && GetNameSafe(Spec.Def).Contains(TEXT("GE_FillShield"), ESearchCase::IgnoreCase))
 	{
 		FGameplayCueParameters CueParams;
@@ -270,7 +226,6 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		CueParams.EffectCauser = GetAvatarActor();
 		CueParams.SourceObject = Spec.Def;
 		AddGameplayCue(FillShieldCueTag, CueParams);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][FillShieldCue] Added from GE lifecycle. ASC=%s GE=%s"), *GetNameSafe(this), *GetNameSafe(Spec.Def));
 	}
 }
 
@@ -296,24 +251,14 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FAc
 		}
 	}
 
-	UE_LOG(
-		LogSpellRiseASCCues,
-		Warning,
-		TEXT("[GAS][GE Removed] ASC=%s GE=%s Cues=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(Def),
-		CueSummary.IsEmpty() ? TEXT("<none>") : *CueSummary);
-
 	if (ShieldStatusTag.IsValid() && ShieldCueTag.IsValid() && AssetTags.HasTagExact(ShieldStatusTag))
 	{
 		RemoveGameplayCue(ShieldCueTag);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][ShieldCue] Removed from GE lifecycle. ASC=%s"), *GetNameSafe(this));
 	}
 
 	if (FillShieldCueTag.IsValid() && Def && GetNameSafe(Def).Contains(TEXT("GE_FillShield"), ESearchCase::IgnoreCase))
 	{
 		RemoveGameplayCue(FillShieldCueTag);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][FillShieldCue] Removed from GE lifecycle. ASC=%s GE=%s"), *GetNameSafe(this), *GetNameSafe(Def));
 	}
 }
 
@@ -324,16 +269,10 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 		return;
 	}
 
-	UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed] ASC=%s Tag=%s"), *GetNameSafe(this), *InputTag.ToString());
-
 	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
 	{
 		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
 		{
-			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed][PrimarySelected] ASC=%s Handle=%s Ability=%s"),
-				*GetNameSafe(this),
-				*SelectedSpec->Handle.ToString(),
-				*GetNameSafe(SelectedSpec->Ability));
 			InputPressedSpecHandles.AddUnique(SelectedSpec->Handle);
 			InputHeldSpecHandles.AddUnique(SelectedSpec->Handle);
 			return;
@@ -350,19 +289,9 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 		if (SpellAbility && !SpellAbility->FiresFromOwnInputTag())
 		{
 			SelectedSpellSpecHandle = Handle;
-			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed][SelectOnly] ASC=%s Handle=%s Ability=%s Tag=%s"),
-				*GetNameSafe(this),
-				*Handle.ToString(),
-				*GetNameSafe(Spec->Ability),
-				*InputTag.ToString());
 			continue;
 		}
 
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagPressed][Queue] ASC=%s Handle=%s Ability=%s Tag=%s"),
-			*GetNameSafe(this),
-			*Handle.ToString(),
-			*GetNameSafe(Spec->Ability),
-			*InputTag.ToString());
 		InputPressedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.AddUnique(Handle);
 	}
@@ -375,25 +304,15 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 		return;
 	}
 
-	UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased] ASC=%s Tag=%s"), *GetNameSafe(this), *InputTag.ToString());
-
 	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
 	{
 		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
 		{
 			if (!InputHeldSpecHandles.Contains(SelectedSpec->Handle))
 			{
-				UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][PrimarySelectedIgnored] ASC=%s Handle=%s Ability=%s Reason=not_held"),
-					*GetNameSafe(this),
-					*SelectedSpec->Handle.ToString(),
-					*GetNameSafe(SelectedSpec->Ability));
 				return;
 			}
 
-			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][PrimarySelected] ASC=%s Handle=%s Ability=%s"),
-				*GetNameSafe(this),
-				*SelectedSpec->Handle.ToString(),
-				*GetNameSafe(SelectedSpec->Ability));
 			InputReleasedSpecHandles.AddUnique(SelectedSpec->Handle);
 			InputHeldSpecHandles.Remove(SelectedSpec->Handle);
 			return;
@@ -408,19 +327,9 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 		const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
 		if (!InputHeldSpecHandles.Contains(Handle))
 		{
-			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][Ignored] ASC=%s Handle=%s Ability=%s Tag=%s Reason=not_held"),
-				*GetNameSafe(this),
-				*Handle.ToString(),
-				*GetNameSafe(Spec ? Spec->Ability : nullptr),
-				*InputTag.ToString());
 			continue;
 		}
 
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][InputTagReleased][Queue] ASC=%s Handle=%s Ability=%s Tag=%s"),
-			*GetNameSafe(this),
-			*Handle.ToString(),
-			*GetNameSafe(Spec ? Spec->Ability : nullptr),
-			*InputTag.ToString());
 		InputReleasedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.Remove(Handle);
 	}
@@ -440,13 +349,13 @@ bool USpellRiseAbilitySystemComponent::AbilitySpecMatchesInputTag(const FGamepla
 		return false;
 	}
 
-	// Fonte principal: tags dinâmicas da spec
+
 	if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 	{
 		return true;
 	}
 
-	// Fallback para assets antigos
+
 	if (const USpellRiseGameplayAbility* SpellRiseAbility = Cast<USpellRiseGameplayAbility>(Spec.Ability))
 	{
 		return SpellRiseAbility->AbilityInputTag.IsValid()
@@ -480,7 +389,7 @@ void USpellRiseAbilitySystemComponent::MarkSpecInputPressed(FGameplayAbilitySpec
 {
 	Spec.InputPressed = true;
 
-	// For ServerOnly abilities, spec may not be locally active; still forward input edge.
+
 	if (!IsOwnerActorAuthoritative() && Spec.Ability)
 	{
 		if (Spec.Ability->GetNetExecutionPolicy() != EGameplayAbilityNetExecutionPolicy::LocalOnly)
@@ -499,7 +408,7 @@ void USpellRiseAbilitySystemComponent::MarkSpecInputReleased(FGameplayAbilitySpe
 {
 	Spec.InputPressed = false;
 
-	// For ServerOnly abilities, spec may not be locally active; still forward input edge.
+
 	if (!IsOwnerActorAuthoritative() && Spec.Ability)
 	{
 		if (Spec.Ability->GetNetExecutionPolicy() != EGameplayAbilityNetExecutionPolicy::LocalOnly)
@@ -553,14 +462,6 @@ bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputTag(FGameplay
 				const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
 				if (!Spec.Ability->CanActivateAbility(Spec.Handle, ActorInfo, nullptr, nullptr, &FailureTags))
 				{
-					UE_LOG(
-						LogSpellRiseASCCombo,
-						Warning,
-						TEXT("[GAS][TryActivateByInputTagFailed] InputTag=%s Ability=%s Handle=%s FailureTags=%s"),
-						*InputTag.ToString(),
-						*GetNameSafe(Spec.Ability),
-						*Spec.Handle.ToString(),
-						*FailureTags.ToString());
 				}
 			}
 			return bActivated;
@@ -644,7 +545,7 @@ bool USpellRiseAbilitySystemComponent::SR_IsSelectedSpellAbilityHandle(FGameplay
 
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)
 {
-	// SpellRise does not support gameplay pause and this function does not use frame delta.
+
 	(void)DeltaTime;
 	(void)bGamePaused;
 
@@ -686,15 +587,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			return;
 		}
 
-		UE_LOG(
-			LogSpellRiseASCCombo,
-			Warning,
-			TEXT("[GAS][TryActivateFailed] Ability=%s Handle=%s InputPressed=%d IsActive=%d FailureTags=%s"),
-			*GetNameSafe(Spec->Ability),
-			*Spec->Handle.ToString(),
-			Spec->InputPressed ? 1 : 0,
-			Spec->IsActive() ? 1 : 0,
-			*FailureTags.ToString());
 	};
 
 	AActor* Avatar = GetAvatarActor();
@@ -702,9 +594,6 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 	if (!AvatarPawn || !AvatarPawn->IsLocallyControlled())
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ProcessInput] ASC=%s skipped reason=not_locally_controlled Avatar=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(Avatar));
 		SR_ClearAbilityInput();
 		return;
 	}
@@ -715,7 +604,7 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 	TSet<FGameplayAbilitySpecHandle> PressedThisFrame;
 	PressedThisFrame.Reserve(InputPressedSpecHandles.Num());
 
-	// 1) Pressed
+
 	{
 		const TArray<FGameplayAbilitySpecHandle> PressedSnapshot = InputPressedSpecHandles;
 
@@ -730,15 +619,9 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			}
 
 			MarkSpecInputPressed(*Spec);
-			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ProcessInput][Pressed] ASC=%s Handle=%s Ability=%s Active=%d"),
-				*GetNameSafe(this),
-				*Spec->Handle.ToString(),
-				*GetNameSafe(Spec->Ability),
-				Spec->IsActive() ? 1 : 0);
-
 			if (Spec->IsActive())
 			{
-				// Ensure active abilities waiting on press edge events keep working.
+
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
 					EAbilityGenericReplicatedEvent::InputPressed,
@@ -752,7 +635,7 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		}
 	}
 
-	// 2) Held
+
 	{
 		const TArray<FGameplayAbilitySpecHandle> HeldSnapshot = InputHeldSpecHandles;
 
@@ -773,13 +656,13 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				// Keep held state in spec only; replicated input events are emitted on edge transitions.
+
 				continue;
 			}
 		}
 	}
 
-	// 3) Activate
+
 	for (const FGameplayAbilitySpecHandle& Handle : AbilitiesToActivate)
 	{
 		FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
@@ -798,7 +681,7 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		}
 	}
 
-	// 4) Released
+
 	{
 		const TArray<FGameplayAbilitySpecHandle> ReleasedSnapshot = InputReleasedSpecHandles;
 
@@ -811,15 +694,9 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			}
 
 			MarkSpecInputReleased(*Spec);
-			UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ProcessInput][Released] ASC=%s Handle=%s Ability=%s Active=%d"),
-				*GetNameSafe(this),
-				*Spec->Handle.ToString(),
-				*GetNameSafe(Spec->Ability),
-				Spec->IsActive() ? 1 : 0);
-
 			if (Spec->IsActive())
 			{
-				// Mirror pressed behavior for abilities waiting on input release tasks.
+
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
 					EAbilityGenericReplicatedEvent::InputReleased,
@@ -912,4 +789,3 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 		LastActivatableAbilities = ActivatableAbilities.Items;
 	}
 }
-

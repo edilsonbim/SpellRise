@@ -1,5 +1,4 @@
-// ExecCalc_Damage.cpp
-
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "ExecCalc_Damage.h"
 
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
@@ -452,7 +451,6 @@ static float SR_FixMultiplierOrDefault(float V, const TCHAR* Label)
 {
 	if (!FMath::IsFinite(V) || V <= 0.f)
 	{
-		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[DMG FIX] %s was %.3f -> forcing 1.0"), Label, V);
 		return 1.f;
 	}
 	return V;
@@ -498,10 +496,6 @@ void UExecCalc_Damage::Execute_Implementation(
 		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_Damage(), false, -1.f)
 		: -1.f;
 
-	UE_LOG(LogSpellRiseDamage, Warning,
-		TEXT("[FALL EXEC READ] FallTag=%.2f Severity=%.3f Damage=%.2f"),
-		FallTagMagnitude, FallSeverity, FallBaseDamage);
-
 	const bool bIsFallDamage = FallTagMagnitude > 0.f;
 
 	const bool bChanMelee = SpellRiseTags::DamageChannel_Melee().IsValid() && SpecDynTags.HasTagExact(SpellRiseTags::DamageChannel_Melee());
@@ -546,16 +540,6 @@ void UExecCalc_Damage::Execute_Implementation(
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, Tmp)) ArmorPenPct = Tmp;
 	}
 
-	UE_LOG(LogSpellRiseDamage, Warning,
-		TEXT("[DMG CAP] Chan=%s | Melee=%.3f Bow=%.3f Spell=%.3f | CritChance=%.3f CritDmg=%.3f | ArmorPenPct=%.3f | TrueDmg=%d | IsFall=%d | FallSeverity=%.3f | FallBase=%.2f"),
-		SR_ChannelToText(Channel),
-		MeleeMult, BowMult, SpellMult,
-		CritChance01, CritDamageMult, ArmorPenPct,
-		bTrueDamage ? 1 : 0,
-		bIsFallDamage ? 1 : 0,
-		FallSeverity,
-		FallBaseDamage);
-
 	MeleeMult = SR_FixMultiplierOrDefault(MeleeMult, TEXT("MeleeMult"));
 	BowMult = SR_FixMultiplierOrDefault(BowMult, TEXT("BowMult"));
 	SpellMult = SR_FixMultiplierOrDefault(SpellMult, TEXT("SpellMult"));
@@ -567,7 +551,7 @@ void UExecCalc_Damage::Execute_Implementation(
 	CritChance01 = FMath::Clamp(CritChance01, 0.f, 0.25f);
 	CritDamageMult = FMath::Clamp(CritDamageMult, 1.f, 2.0f);
 
-	// Canonical runtime unit is fractional (0.0..0.30), aligned with MMC_DerivedStats.
+
 	const float ArmorPen01 = FMath::Clamp(ArmorPenPct, 0.f, 0.30f);
 
 	float BaseDamage = 0.f;
@@ -579,10 +563,6 @@ void UExecCalc_Damage::Execute_Implementation(
 	{
 		BaseDamage = FMath::Max(0.f, FallBaseDamage);
 		FinalDamage = BaseDamage;
-
-		UE_LOG(LogSpellRiseDamage, Warning,
-			TEXT("[FALL DMG] Base=%.2f | Severity=%.3f | Raw=%.2f"),
-			BaseDamage, FallSeverity, FinalDamage);
 
 		if (FinalDamage <= 0.f)
 		{
@@ -598,10 +578,6 @@ void UExecCalc_Damage::Execute_Implementation(
 			FinalDamage = 0.f;
 		}
 
-		UE_LOG(LogSpellRiseDamage, Warning,
-			TEXT("[FALL DMG] ImpactResPct=%.2f | AfterResist=%.2f"),
-			ResistPct, FinalDamage);
-
 		if (FinalDamage <= 0.f)
 		{
 			return;
@@ -613,7 +589,6 @@ void UExecCalc_Damage::Execute_Implementation(
 				EGameplayModOp::Additive,
 				FinalDamage));
 
-		UE_LOG(LogSpellRiseDamage, Warning, TEXT("[FALL DMG FINAL] %.2f"), FinalDamage);
 		return;
 	}
 
@@ -642,11 +617,6 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	FinalDamage = BaseDamage * PowerMultiplier * DamageScaling;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
-
-	UE_LOG(LogSpellRiseDamage, Warning,
-		TEXT("[DMG] Chan=%s | Base=%.2f | Mult=%.3f | Scaling=%.2f | Raw=%.2f"),
-		SR_ChannelToText(Channel),
-		BaseDamage, PowerMultiplier, DamageScaling, FinalDamage);
 
 	if (FinalDamage <= 0.f)
 	{

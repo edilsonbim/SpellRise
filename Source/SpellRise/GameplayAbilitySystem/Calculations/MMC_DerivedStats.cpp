@@ -1,4 +1,5 @@
-﻿#include "MMC_DerivedStats.h"
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
+#include "MMC_DerivedStats.h"
 
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 #include "GameplayEffectExtension.h"
@@ -190,7 +191,7 @@ float UMMC_CarryWeightFromPrimaries::CalculateBaseMagnitude_Implementation(const
 	const float Str = SR_Primary::ClampPrimary(GetStrength(Spec));
 	const float StrBonus = FMath::Clamp(Str - SR_Primary::BASE, 0.f, 100.f);
 
-	// Canonical STR-based form, algebraically equivalent to the legacy wrapper:
-	// 30 + (10 + 0.5 * StrBonus) * 1.5 = 45 + 0.75 * StrBonus
+
+
 	return FMath::Max(1.f, 45.f + (StrBonus * 0.75f));
 }

@@ -1,4 +1,5 @@
-﻿#include "BasicAttributeSet.h"
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
+#include "BasicAttributeSet.h"
 
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"

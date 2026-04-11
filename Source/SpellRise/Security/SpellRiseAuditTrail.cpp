@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Security/SpellRiseAuditTrail.h"
 
 #include "HAL/FileManager.h"

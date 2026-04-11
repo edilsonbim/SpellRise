@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRisePlayerState.h"
 
 #include "AbilitySystemComponent.h"
@@ -160,31 +161,11 @@ void ASpellRisePlayerState::ServerSetRespawnBedReferenceData_Implementation(cons
 	FString RejectReason;
 	if (!CheckRespawnBedServerRateLimit(RejectReason))
 	{
-		UE_LOG(
-			LogSpellRiseRespawnSecurity,
-			Warning,
-			TEXT("[SEC][RespawnBed] Rejected by rate-limit. PlayerState=%s Controller=%s Reason=%s ActorName=%s ClassPath=%s Location=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(OwnerController),
-			*RejectReason,
-			*InActorName,
-			*InClassPath,
-			*RequestLocation.ToCompactString());
 		return;
 	}
 
 	if (!ValidateRespawnBedPayload(OwnerController, InActorName, InClassPath, RequestLocation, RejectReason))
 	{
-		UE_LOG(
-			LogSpellRiseRespawnSecurity,
-			Warning,
-			TEXT("[SEC][RespawnBed] Rejected payload. PlayerState=%s Controller=%s Reason=%s ActorName=%s ClassPath=%s Location=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(OwnerController),
-			*RejectReason,
-			*InActorName,
-			*InClassPath,
-			*RequestLocation.ToCompactString());
 		return;
 	}
 
@@ -206,15 +187,6 @@ void ASpellRisePlayerState::ServerSetRespawnBedReferenceData_Implementation(cons
 	AActor* ResolvedBedActor = ResolveRespawnBedActorOnServer(SanitizedActorName, SanitizedClassPath, RequestLocation);
 	if (!ResolvedBedActor)
 	{
-		UE_LOG(
-			LogSpellRiseRespawnSecurity,
-			Warning,
-			TEXT("[SEC][RespawnBed] Rejected unresolved bed reference. PlayerState=%s Controller=%s ActorName=%s ClassPath=%s Location=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(OwnerController),
-			*SanitizedActorName,
-			*SanitizedClassPath,
-			*RequestLocation.ToCompactString());
 		return;
 	}
 
@@ -308,13 +280,6 @@ void ASpellRisePlayerState::AppendCombatLogEvent_Server(
 
 	if (CombatLogTruncatedCount > 0 && (CombatLogTruncatedCount % 10) == 0)
 	{
-		UE_LOG(
-			LogSpellRiseCombatLog,
-			Warning,
-			TEXT("[CombatLog] TruncatedCount=%lld PlayerState=%s MaxEntries=%d"),
-			CombatLogTruncatedCount,
-			*GetNameSafe(this),
-			MaxEntries);
 	}
 
 	ForceNetUpdate();
@@ -348,11 +313,6 @@ void ASpellRisePlayerState::MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR
 	}
 
 	ClientReceiveCombatLogSnapshot(CombatLog.Entries, SnapshotSequence);
-	UE_LOG(LogSpellRiseCombatLog, Log, TEXT("[CombatLog][Snapshot] Reason=%s PlayerState=%s Entries=%d Seq=%lld"),
-		Reason ? Reason : TEXT("unknown"),
-		*GetNameSafe(this),
-		CombatLog.Entries.Num(),
-		SnapshotSequence);
 }
 
 void ASpellRisePlayerState::ClientReceiveCombatLogSnapshot_Implementation(const TArray<FSpellRiseCombatLogEntry>& Snapshot, int64 SnapshotSequence)
@@ -373,10 +333,6 @@ void ASpellRisePlayerState::ClientReceiveCombatLogSnapshot_Implementation(const 
 		}
 	}
 
-	UE_LOG(LogSpellRiseCombatLog, Log, TEXT("[CombatLog][SnapshotClient] PlayerState=%s Entries=%d Seq=%lld"),
-		*GetNameSafe(this),
-		Snapshot.Num(),
-		SnapshotSequence);
 }
 
 void ASpellRisePlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
@@ -10,17 +10,14 @@
 class APlayerController;
 class USpellRisePersistenceSubsystem;
 
-/**
- *  Simple GameMode for a third person game
- */
 UCLASS(abstract, Config=Game)
 class ASpellRiseGameModeBase : public AGameModeBase
 {
 	GENERATED_BODY()
 
 public:
-	
-	/** Constructor */
+
+
 	ASpellRiseGameModeBase();
 
 	virtual void BeginPlay() override;

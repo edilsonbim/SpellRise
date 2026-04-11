@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "SpellRise/Core/SpellRiseChatTypes.h"
@@ -15,7 +17,7 @@ class SPELLRISE_API USpellRiseChatComponent : public UActorComponent
 public:
 	USpellRiseChatComponent();
 
-	// Keep this signature compatible with existing BP graphs.
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
 	void SendToMULTICAST(FName Name, const FText& Text, const FText& TimeText, uint8 Channel);
 
@@ -26,4 +28,3 @@ protected:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multi_ReceivePublicMessage(const FSpellRiseChatMessage& Message);
 };
-

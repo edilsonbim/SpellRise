@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Persistence/SpellRisePostgresPersistenceProvider.h"
 
 #include "Dom/JsonObject.h"
@@ -55,7 +56,6 @@ FSpellRisePostgresPersistenceProvider::FSpellRisePostgresPersistenceProvider()
 
 	if (ConnectionString.IsEmpty())
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Error, TEXT("[Persistence][Postgres][InitFailed] Reason=missing_connection_string Env=SR_PG_CONN Cmd=SRPgConn"));
 		bReady = false;
 		return;
 	}
@@ -149,11 +149,9 @@ bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 	FString StdErr;
 	if (!ExecSql(SchemaSql, StdOut, StdErr))
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Error, TEXT("[Persistence][Postgres][SchemaFailed] StdErr=%s"), *StdErr);
 		return false;
 	}
 
-	UE_LOG(LogSpellRisePersistencePostgres, Log, TEXT("[Persistence][Postgres][SchemaOk]"));
 	return true;
 }
 
@@ -181,7 +179,6 @@ bool FSpellRisePostgresPersistenceProvider::ExecSql(const FString& Sql, FString&
 	IFileManager::Get().Delete(*TempSqlPath, false, true, true);
 	if (ReturnCode != 0)
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Warning, TEXT("[Persistence][Postgres][ExecFailed] ReturnCode=%d StdErr=%s"), ReturnCode, *OutStdErr);
 	}
 	return ReturnCode == 0;
 }
@@ -193,7 +190,6 @@ bool FSpellRisePostgresPersistenceProvider::ExecMutatingSql(const FString& Sql, 
 	const bool bOk = ExecSql(Sql, StdOut, StdErr);
 	if (!bOk)
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Warning, TEXT("[Persistence][Postgres][ExecFailed] Context=%s StdErr=%s"), Context ? Context : TEXT("unknown"), *StdErr);
 	}
 	return bOk;
 }

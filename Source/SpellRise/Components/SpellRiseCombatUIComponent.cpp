@@ -1,4 +1,4 @@
-﻿// SpellRiseCombatUIComponent.cpp
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRiseCombatUIComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
@@ -13,7 +13,7 @@ void USpellRiseCombatUIComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    // Tenta obter o AbilitySystemComponent do ator proprietário
+
     AActor* Owner = GetOwner();
     if (Owner)
     {
@@ -28,7 +28,7 @@ void USpellRiseCombatUIComponent::BeginPlay()
 void USpellRiseCombatUIComponent::BindAttributeChangeDelegates()
 {
     using AttrSet = UResourceAttributeSet;
-    // Assina delegates para Health, Mana e Stamina
+
     CachedASC->GetGameplayAttributeValueChangeDelegate(AttrSet::GetHealthAttribute())
         .AddUObject(this, &USpellRiseCombatUIComponent::OnHealthChanged);
     CachedASC->GetGameplayAttributeValueChangeDelegate(AttrSet::GetManaAttribute())
@@ -53,7 +53,7 @@ void USpellRiseCombatUIComponent::OnHealthChanged(const FOnAttributeChangeData& 
 
 void USpellRiseCombatUIComponent::OnManaChanged(const FOnAttributeChangeData& Data)
 {
-    // Reutiliza a lógica de atualização
+
     OnHealthChanged(Data);
 }
 

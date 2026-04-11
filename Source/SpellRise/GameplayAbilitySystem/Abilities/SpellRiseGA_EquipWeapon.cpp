@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGA_EquipWeapon.h"
 
 #include "EquippableItem.h"
@@ -30,9 +31,6 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(ActorInfo->AvatarActor.Get());
 	if (!Character)
 	{
-		UE_LOG(LogSpellRiseGAEquipWeapon, Warning, TEXT("[GAS][EquipWeapon] Avatar invalido Ability=%s Avatar=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(ActorInfo->AvatarActor.Get()));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
@@ -40,9 +38,6 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 	USpellRiseEquipmentManagerComponent* EquipmentManager = Character->GetSpellRiseEquipmentManager();
 	if (!EquipmentManager)
 	{
-		UE_LOG(LogSpellRiseGAEquipWeapon, Warning, TEXT("[GAS][EquipWeapon] EquipmentManager ausente Ability=%s Character=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(Character));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
@@ -58,9 +53,6 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 	UEquippableItem* ItemToHandle = const_cast<UEquippableItem*>(ItemToHandleConst);
 	if (!ItemToHandle)
 	{
-		UE_LOG(LogSpellRiseGAEquipWeapon, Warning, TEXT("[GAS][EquipWeapon] Item nao informado em TriggerEventData Ability=%s Character=%s"),
-			*GetNameSafe(this),
-			*GetNameSafe(Character));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
@@ -71,11 +63,6 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 
 	if (!bRequested)
 	{
-		UE_LOG(LogSpellRiseGAEquipWeapon, Warning, TEXT("[GAS][EquipWeapon] Request falhou Ability=%s Character=%s Item=%s Unequip=%d"),
-			*GetNameSafe(this),
-			*GetNameSafe(Character),
-			*GetNameSafe(ItemToHandle),
-			bUnequipInstead ? 1 : 0);
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}

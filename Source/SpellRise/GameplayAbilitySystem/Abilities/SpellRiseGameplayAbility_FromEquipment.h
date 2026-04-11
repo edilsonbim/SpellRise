@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRiseGameplayAbility_FromEquipment.generated.h"

@@ -1,8 +1,9 @@
-﻿#include "CombatAttributeSet.h"
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
+#include "CombatAttributeSet.h"
 
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
-// Include basic attribute set to forward primary attribute requests
+
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 
 namespace SR_Combat
@@ -19,7 +20,7 @@ namespace SR_Combat
 
 UCombatAttributeSet::UCombatAttributeSet()
 {
-    // Primary attributes are defined on UBasicAttributeSet, so avoid initializing duplicates here.
+
 
 	MoveSpeed = 0.f;
 	MoveSpeedMultiplier = 1.f;
@@ -44,7 +45,7 @@ void UCombatAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-    // Primary attributes are replicated on UBasicAttributeSet
+
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, MoveSpeed, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, MoveSpeedMultiplier, COND_None, REPNOTIFY_Always);
@@ -74,7 +75,7 @@ void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
-    // No clamping for primary attributes here since they live on UBasicAttributeSet
+
 
 	if (Attribute == GetMoveSpeedAttribute())
 	{
@@ -129,9 +130,6 @@ void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 	else if (A == GetImpactResAttribute()) SetImpactRes(ClampRes(GetImpactRes()));
 }
 
-// Primary attributes (Strength, Agility, Intelligence, Wisdom) reside on UBasicAttributeSet,
-// so there are no replication handlers needed for them on UCombatAttributeSet.
-
 void UCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, MoveSpeed, OldValue); }
 void UCombatAttributeSet::OnRep_MoveSpeedMultiplier(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, MoveSpeedMultiplier, OldValue); }
 
@@ -150,7 +148,6 @@ void UCombatAttributeSet::OnRep_BleedRes(const FGameplayAttributeData& OldValue)
 void UCombatAttributeSet::OnRep_PoisonRes(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, PoisonRes, OldValue); }
 void UCombatAttributeSet::OnRep_ImpactRes(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, ImpactRes, OldValue); }
 
-// Primary attribute forwarding helpers
 FGameplayAttribute UCombatAttributeSet::GetStrengthAttribute()
 {
     return UBasicAttributeSet::GetStrengthAttribute();

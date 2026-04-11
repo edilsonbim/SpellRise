@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -48,7 +50,7 @@ private:
 
     void BindAttributeChangeDelegates();
 
-    // NÃO usar UFUNCTION aqui
+
     void OnHealthChanged(const FOnAttributeChangeData& Data);
     void OnManaChanged(const FOnAttributeChangeData& Data);
     void OnStaminaChanged(const FOnAttributeChangeData& Data);

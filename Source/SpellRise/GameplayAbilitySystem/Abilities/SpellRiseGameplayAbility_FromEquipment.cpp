@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility_FromEquipment.h"
 
 #include "EquippableItem.h"
@@ -36,12 +37,10 @@ void USpellRiseGameplayAbility_FromEquipment::OnGiveAbility(const FGameplayAbili
 
 	if (!Spec.SourceObject.IsValid())
 	{
-		UE_LOG(LogSpellRiseEquipmentAbility, Warning, TEXT("[GAS][EquipmentAbility] Ability without SourceObject: %s"), *GetNameSafe(this));
 		return;
 	}
 
 	if (!Spec.SourceObject->IsA(USpellRiseEquipmentInstance::StaticClass()))
 	{
-		UE_LOG(LogSpellRiseEquipmentAbility, Warning, TEXT("[GAS][EquipmentAbility] SourceObject is not equipment instance Ability=%s Source=%s"), *GetNameSafe(this), *GetNameSafe(Spec.SourceObject.Get()));
 	}
 }

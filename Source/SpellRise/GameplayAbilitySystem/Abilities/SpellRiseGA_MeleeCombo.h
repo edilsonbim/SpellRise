@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
@@ -56,7 +58,7 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Combo|State")
 	bool bConsumedThisWindow = false;
 
-	// Evita que o clique inicial de ativação seja consumido como continuação de combo.
+
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Combo|State")
 	bool bIgnoreFirstActivationPress = false;
 
@@ -66,7 +68,7 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Combo|State")
 	float QueuedInputTimeSeconds = -1.0f;
 
-	// Tempo de tolerância para aceitar input pouco antes da janela de combo abrir.
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Combo|Input", meta=(ClampMin="0.00", ClampMax="0.50"))
 	float InputBufferGraceSeconds = 0.16f;
 

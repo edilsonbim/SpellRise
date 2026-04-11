@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "CatalystAttributeSet.h"
 
 #include "Net/UnrealNetwork.h"
@@ -79,9 +80,9 @@ void UCatalystAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 
 	const FGameplayAttribute& Attr = Data.EvaluatedData.Attribute;
 
-	// -----------------------------
-	// META: Delta -> Charge
-	// -----------------------------
+
+
+
 	if (Attr == GetCatalystChargeDeltaAttribute())
 	{
 		const float Delta = GetCatalystChargeDelta();
@@ -99,9 +100,9 @@ void UCatalystAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		}
 	}
 
-	// -----------------------------
-	// Clamp Charge sempre
-	// -----------------------------
+
+
+
 	if (Attr == GetCatalystChargeAttribute() || Attr == GetCatalystChargeDeltaAttribute())
 	{
 		const float Clamped = FMath::Clamp(
@@ -115,15 +116,15 @@ void UCatalystAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			SetCatalystCharge(Clamped);
 		}
 
-		// O proc/ativação da catalyst NÃO fica mais no ASC.
-		// Isso deve ser tratado pelo UCatalystComponent ouvindo mudança de carga.
+
+
 
 		return;
 	}
 
-	// -----------------------------
-	// clamps restantes
-	// -----------------------------
+
+
+
 	if (Attr == GetCatalystLevelAttribute())
 	{
 		SetCatalystLevel(FMath::Clamp(

@@ -1,11 +1,13 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "SpellRiseConstructionModeComponent.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FSpellRiseConstructionModeChangedNative, bool /*bConstructionModeEnabled*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FSpellRiseConstructionModeChangedNative, bool );
 
 UCLASS(ClassGroup=(SpellRise), BlueprintType, Blueprintable, meta=(BlueprintSpawnableComponent))
 class SPELLRISE_API USpellRiseConstructionModeComponent : public UActorComponent

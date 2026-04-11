@@ -1,5 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+// Cabeçalho de módulo: configura o alvo Unreal e suas regras de build.
 using UnrealBuildTool;
 
 public class SpellRiseTarget : TargetRules
@@ -8,11 +7,11 @@ public class SpellRiseTarget : TargetRules
 	{
 		Type = TargetType.Game;
 
-		// ✅ Padronizar UE 5.7
+
 		DefaultBuildSettings = BuildSettingsVersion.V6;
 		IncludeOrderVersion  = EngineIncludeOrderVersion.Unreal5_7;
 
-		// ✅ Evita símbolos "inline/const" quebrando link quando algo força std antigo
+
 		CppStandard = CppStandardVersion.Cpp20;
 
 		ExtraModuleNames.Add("SpellRise");

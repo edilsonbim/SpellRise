@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Persistence/SpellRiseBuildPersistenceAdapter.h"
 
 #include "EngineUtils.h"
@@ -60,7 +61,6 @@ void FSpellRiseBuildPersistenceAdapter::GatherWorldBuildingActors(UWorld* World,
 		OutActors.Add(MoveTemp(ActorData));
 	}
 
-	UE_LOG(LogSpellRisePersistenceBuild, Verbose, TEXT("[Persistence][WorldSnapshotGather] World=%s ManagedActors=%d"), *GetNameSafe(World), OutActors.Num());
 }
 
 void FSpellRiseBuildPersistenceAdapter::SpawnMissingBuildingActors(UWorld* World, const TArray<FSpellRiseWorldActorSaveData>& SavedActors, double LocationMatchToleranceSq)
@@ -134,11 +134,4 @@ void FSpellRiseBuildPersistenceAdapter::SpawnMissingBuildingActors(UWorld* World
 		++SpawnedActors;
 	}
 
-	UE_LOG(LogSpellRisePersistenceBuild, Verbose, TEXT("[Persistence][WorldSnapshotSpawn] World=%s Spawned=%d SkippedExisting=%d SkippedInvalidClassPath=%d SkippedLoadFailure=%d SavedActors=%d"),
-		*GetNameSafe(World),
-		SpawnedActors,
-		SkippedExistingActors,
-		SkippedInvalidClassPath,
-		SkippedLoadFailure,
-		SavedActors.Num());
 }

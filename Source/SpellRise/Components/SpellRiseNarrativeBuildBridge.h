@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "SpellRiseNarrativeBuildBridge.generated.h"
@@ -27,4 +29,3 @@ private:
 	UNarrativeInteractionComponent* ResolveNarrativeInteractionComponent(APawn* InteractingPawn) const;
 	AActor* ResolveCurrentNarrativeTargetActor(const UNarrativeInteractionComponent* InteractionComponent) const;
 };
-

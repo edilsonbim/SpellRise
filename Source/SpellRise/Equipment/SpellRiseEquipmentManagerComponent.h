@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayAbilitySpec.h"
@@ -89,11 +91,11 @@ public:
 	virtual bool ReplicateSubobjects(UActorChannel* Channel, FOutBunch* Bunch, FReplicationFlags* RepFlags) override;
 	virtual void ReadyForReplication() override;
 
-	/** Client-safe entrypoint. Routes to server when called without authority. */
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	bool RequestEquipItem(UEquippableItem* Item);
 
-	/** Client-safe entrypoint. Routes to server when called without authority. */
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	bool RequestUnequipItem(UEquippableItem* Item);
 

@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "MMC_MaxStamina.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 
@@ -5,13 +6,13 @@ UMMC_MaxStamina::UMMC_MaxStamina()
 {
 	AgilityDef = FGameplayEffectAttributeCaptureDefinition(
 		UCombatAttributeSet::GetAgilityAttribute(),
-		EGameplayEffectAttributeCaptureSource::Target, // <- recomendado
+		EGameplayEffectAttributeCaptureSource::Target,
 		true
 	);
 
 	StrengthDef = FGameplayEffectAttributeCaptureDefinition(
 		UCombatAttributeSet::GetStrengthAttribute(),
-		EGameplayEffectAttributeCaptureSource::Target, // <- recomendado
+		EGameplayEffectAttributeCaptureSource::Target,
 		true
 	);
 
@@ -42,6 +43,6 @@ float UMMC_MaxStamina::CalculateBaseMagnitude_Implementation(const FGameplayEffe
 	const float AgilityBonus = FMath::Clamp(ClampedAgility - 20.f, 0.f, 100.f);
 	const float StrengthBonus = FMath::Clamp(ClampedStrength - 20.f, 0.f, 100.f);
 
-	// Canonical primary pipeline alignment.
+
 	return FMath::Max(1.f, 180.f + (StrengthBonus * 1.f) + (AgilityBonus * 2.f));
 }
