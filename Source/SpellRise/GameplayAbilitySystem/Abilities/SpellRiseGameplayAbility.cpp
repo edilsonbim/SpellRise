@@ -264,6 +264,7 @@ void USpellRiseGameplayAbility::InputReleased(
 	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
 
 	bIsAbilityInputPressed = false;
+	bHasReceivedInputReleaseSinceCastStart = true;
 	NativeOnAbilityInputReleased(Handle, ActorInfo, ActivationInfo);
 }
 
@@ -294,7 +295,7 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 
 		if (bIsCasting && CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
 		{
-			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			UE_LOG(LogSpellRiseGameplayAbilityRuntime, Verbose, TEXT("[CAST] Release before cast complete marked ability=%s"), *GetNameSafe(this));
 			return;
 		}
 
@@ -460,6 +461,7 @@ void USpellRiseGameplayAbility::StartCastFlow()
 	CastElapsedTime = 0.0f;
 	CastStartTimeSeconds = 0.0;
 	bAwaitingReleaseAfterCastComplete = false;
+	bHasReceivedInputReleaseSinceCastStart = false;
 	ApplyCastingEffect();
 	ApplyCastingBarEffect();
 	NotifyHUDCastStarted(CastTime);
@@ -506,6 +508,7 @@ void USpellRiseGameplayAbility::FinishCastFlow()
 	}
 
 	bAwaitingReleaseAfterCastComplete = false;
+	bHasReceivedInputReleaseSinceCastStart = false;
 	CastElapsedTime = ResolveElapsedCastTime();
 
 	if (bIsCasting)
@@ -638,6 +641,12 @@ void USpellRiseGameplayAbility::HandleCastFinished()
 
 	if (CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
 	{
+		if (bHasReceivedInputReleaseSinceCastStart)
+		{
+			FinishCastFlow();
+			return;
+		}
+
 		bAwaitingReleaseAfterCastComplete = true;
 		return;
 	}

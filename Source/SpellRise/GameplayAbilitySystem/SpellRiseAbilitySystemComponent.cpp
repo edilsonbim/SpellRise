@@ -330,6 +330,16 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 			continue;
 		}
 
+		// Spells com bFireOnAbilityInput=false sao armadas pelo slot mas disparadas pelo Primary;
+		// soltar a tecla do slot nao deve sintetizar InputReleased (evita cancelar cast/channel ao soltar SkillN).
+		if (const USpellRiseGameplayAbility* SpellAbility = Spec ? Cast<USpellRiseGameplayAbility>(Spec->Ability) : nullptr)
+		{
+			if (SpellAbility && !SpellAbility->FiresFromOwnInputTag())
+			{
+				continue;
+			}
+		}
+
 		InputReleasedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.Remove(Handle);
 	}

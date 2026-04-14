@@ -4,6 +4,8 @@
 #include "NarrativeActivatableWidget.h"
 #include "Input/CommonUIInputTypes.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogNarrativeActivatableWidget, Log, All);
+
 void UNarrativeActivatableWidget::NativeDestruct()
 {
 	for (FUIActionBindingHandle Handle : BindingHandles)
@@ -20,6 +22,16 @@ void UNarrativeActivatableWidget::NativeDestruct()
 
 void UNarrativeActivatableWidget::RegisterBinding(FDataTableRowHandle InputAction, const FInputActionExecutedDelegate& Callback, FInputActionBindingHandle& BindingHandle, FText OverrideDisplayName, const bool bShouldDisplayInActionBar/*=true*/)
 {
+	if (InputAction.IsNull() || InputAction.RowName.IsNone())
+	{
+		UE_LOG(
+			LogNarrativeActivatableWidget,
+			Warning,
+			TEXT("Ignoring UI input binding with invalid data table row handle on widget '%s'."),
+			*GetNameSafe(this));
+		return;
+	}
+
 	FBindUIActionArgs BindArgs(InputAction, FSimpleDelegate::CreateLambda([InputAction, Callback]()
 		{
 			Callback.ExecuteIfBound(InputAction.RowName);

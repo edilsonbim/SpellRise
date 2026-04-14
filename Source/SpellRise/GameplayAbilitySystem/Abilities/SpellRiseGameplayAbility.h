@@ -232,6 +232,10 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bAwaitingReleaseAfterCastComplete = false;
 
+	/** Marca que o release real já aconteceu em algum ponto do cast. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bHasReceivedInputReleaseSinceCastStart = false;
+
 	FTimerHandle CastTimerHandle;
 	FTimerHandle ChannelTimerHandle;
 	FActiveGameplayEffectHandle CastingGameplayEffectHandle;
