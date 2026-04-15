@@ -173,6 +173,7 @@ protected:
 	void ExecuteSpellFromCurrentMode();
 	void ResetSpellRuntimeState();
 	float ResolveElapsedCastTime() const;
+	bool CommitSpellAbilityForExecution();
 	void ApplyCastingEffect();
 	void ApplyCastingBarEffect();
 	void RemoveCastingEffect();
@@ -224,6 +225,9 @@ protected:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bHasExecutedSpell = false;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	bool bHasCommittedSpellAbility = false;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	float CastElapsedTime = 0.0f;

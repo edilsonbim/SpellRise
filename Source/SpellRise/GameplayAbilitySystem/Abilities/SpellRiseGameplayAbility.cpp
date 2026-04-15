@@ -329,6 +329,17 @@ bool USpellRiseGameplayAbility::TryCommitSpellAbility()
 	return bCommitted;
 }
 
+bool USpellRiseGameplayAbility::CommitSpellAbilityForExecution()
+{
+	if (bHasCommittedSpellAbility)
+	{
+		return true;
+	}
+
+	bHasCommittedSpellAbility = TryCommitSpellAbility();
+	return bHasCommittedSpellAbility;
+}
+
 void USpellRiseGameplayAbility::ApplyCastingEffect()
 {
 	if (!CastingGameplayEffectClass)
@@ -451,12 +462,6 @@ void USpellRiseGameplayAbility::NotifyHUDCastStopped() const
 
 void USpellRiseGameplayAbility::StartCastFlow()
 {
-	if (!TryCommitSpellAbility())
-	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
-		return;
-	}
-
 	bIsCasting = true;
 	CastElapsedTime = 0.0f;
 	CastStartTimeSeconds = 0.0;
@@ -525,12 +530,6 @@ void USpellRiseGameplayAbility::FinishCastFlow()
 
 void USpellRiseGameplayAbility::StartChannelFlow()
 {
-	if (!TryCommitSpellAbility())
-	{
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
-		return;
-	}
-
 	bIsChanneling = true;
 	NativeOnChannelStarted();
 	NativeOnSpellExecuted();
@@ -590,6 +589,12 @@ void USpellRiseGameplayAbility::ExecuteSpellFromCurrentMode()
 		return;
 	}
 
+	if (!CommitSpellAbilityForExecution())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
 	bHasExecutedSpell = true;
 	NativeOnSpellExecuted();
 
@@ -611,6 +616,7 @@ void USpellRiseGameplayAbility::ResetSpellRuntimeState()
 	bIsCasting = false;
 	bIsChanneling = false;
 	bHasExecutedSpell = false;
+	bHasCommittedSpellAbility = false;
 	CastElapsedTime = 0.0f;
 	bAwaitingReleaseAfterCastComplete = false;
 	CastingGameplayEffectHandle = FActiveGameplayEffectHandle();
@@ -661,6 +667,11 @@ void USpellRiseGameplayAbility::HandleChannelTick()
 
 void USpellRiseGameplayAbility::NativeOnSpellExecuted()
 {
+	if (!CommitSpellAbilityForExecution())
+	{
+		return;
+	}
+
 	K2_OnSpellExecuted();
 }
 
