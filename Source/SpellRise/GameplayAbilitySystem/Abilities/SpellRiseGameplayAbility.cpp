@@ -182,14 +182,9 @@ void USpellRiseGameplayAbility::ActivateAbility(
 	switch (CastType)
 	{
 	case ESpellRiseAbilityCastType::Instant:
-		if (TryCommitSpellAbility())
-		{
-			ExecuteSpellFromCurrentMode();
-		}
-		else
-		{
-			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
-		}
+		// Um unico CommitAbility via ExecuteSpellFromCurrentMode/CommitSpellAbilityForExecution.
+		// (Commit aqui + de novo em ExecuteSpellFromCurrentMode falhava o 2.o CommitAbility no GAS e cancelava a ability.)
+		ExecuteSpellFromCurrentMode();
 		break;
 
 	case ESpellRiseAbilityCastType::Cast:
