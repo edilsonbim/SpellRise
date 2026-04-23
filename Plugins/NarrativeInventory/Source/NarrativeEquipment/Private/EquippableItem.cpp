@@ -19,12 +19,18 @@ namespace
 
 	bool TryRouteToSpellRiseEquipmentManager(APawn* OwningPawn, UEquippableItem* Item, bool bShouldEquip)
 	{
-		if (!OwningPawn || !Item || !OwningPawn->HasAuthority())
+		if (!OwningPawn || !Item)
 		{
 			return false;
 		}
 
+		// Prefer the explicit server RPC; when called on clients this still routes to server.
 		UFunction* RouteFunction = OwningPawn->FindFunction(FName(TEXT("ServerHandleNarrativeItemActivationForEquipment")));
+		if (!RouteFunction)
+		{
+			// Fallback for projects exposing a non-RPC helper with similar intent.
+			RouteFunction = OwningPawn->FindFunction(FName(TEXT("HandleNarrativeItemActivationForEquipment")));
+		}
 		if (!RouteFunction)
 		{
 			return false;

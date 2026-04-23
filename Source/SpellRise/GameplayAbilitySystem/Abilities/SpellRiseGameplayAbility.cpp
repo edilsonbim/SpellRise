@@ -335,6 +335,56 @@ bool USpellRiseGameplayAbility::CommitSpellAbilityForExecution()
 	return bHasCommittedSpellAbility;
 }
 
+float USpellRiseGameplayAbility::GetCastRemainingTime() const
+{
+	if (CastType != ESpellRiseAbilityCastType::Cast)
+	{
+		return 0.0f;
+	}
+
+	if (CastTime <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	if (bIsCasting)
+	{
+		return FMath::Max(0.0f, CastTime - ResolveElapsedCastTime());
+	}
+
+	return FMath::Max(0.0f, CastRemainingTime);
+}
+
+float USpellRiseGameplayAbility::GetCastProgressAlpha() const
+{
+	if (CastType != ESpellRiseAbilityCastType::Cast || CastTime <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	const float RemainingTime = GetCastRemainingTime();
+	return FMath::Clamp((CastTime - RemainingTime) / CastTime, 0.0f, 1.0f);
+}
+
+float USpellRiseGameplayAbility::GetSuggestedCastMontagePlayRate(float MontageLength) const
+{
+	if (MontageLength <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	if (CastType != ESpellRiseAbilityCastType::Cast)
+	{
+		return 1.0f;
+	}
+
+	const float EffectiveCastWindow = bIsCasting
+		? FMath::Max(KINDA_SMALL_NUMBER, GetCastRemainingTime())
+		: FMath::Max(KINDA_SMALL_NUMBER, CastTime);
+
+	return FMath::Max(0.01f, MontageLength / EffectiveCastWindow);
+}
+
 void USpellRiseGameplayAbility::ApplyCastingEffect()
 {
 	if (!CastingGameplayEffectClass)
@@ -459,6 +509,7 @@ void USpellRiseGameplayAbility::StartCastFlow()
 {
 	bIsCasting = true;
 	CastElapsedTime = 0.0f;
+	CastRemainingTime = FMath::Max(0.0f, CastTime);
 	CastStartTimeSeconds = 0.0;
 	bAwaitingReleaseAfterCastComplete = false;
 	bHasReceivedInputReleaseSinceCastStart = false;
@@ -510,6 +561,7 @@ void USpellRiseGameplayAbility::FinishCastFlow()
 	bAwaitingReleaseAfterCastComplete = false;
 	bHasReceivedInputReleaseSinceCastStart = false;
 	CastElapsedTime = ResolveElapsedCastTime();
+	CastRemainingTime = FMath::Max(0.0f, CastTime - CastElapsedTime);
 
 	if (bIsCasting)
 	{
@@ -613,6 +665,7 @@ void USpellRiseGameplayAbility::ResetSpellRuntimeState()
 	bHasExecutedSpell = false;
 	bHasCommittedSpellAbility = false;
 	CastElapsedTime = 0.0f;
+	CastRemainingTime = 0.0f;
 	bAwaitingReleaseAfterCastComplete = false;
 	CastingGameplayEffectHandle = FActiveGameplayEffectHandle();
 	CastingBarGameplayEffectHandle = FActiveGameplayEffectHandle();
@@ -638,6 +691,7 @@ float USpellRiseGameplayAbility::ResolveElapsedCastTime() const
 void USpellRiseGameplayAbility::HandleCastFinished()
 {
 	CastElapsedTime = ResolveElapsedCastTime();
+	CastRemainingTime = FMath::Max(0.0f, CastTime - CastElapsedTime);
 	bIsCasting = false;
 
 	if (CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
