@@ -14,6 +14,7 @@ class UInputMappingContext;
 class UInputAction;
 class UCameraComponent;
 class UAudioComponent;
+class UChildActorComponent;
 class USkeletalMeshComponent;
 class UAnimMontage;
 class USpellRiseAbilitySystemComponent;
@@ -145,7 +146,7 @@ public:
 	void MultiRefreshEquipmentVisuals();
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
-	USpellRiseEquipmentManagerComponent* GetSpellRiseEquipmentManager() const { return EquipmentManager; }
+	USpellRiseEquipmentManagerComponent* GetSpellRiseEquipmentManager() const;
 
 	UFUNCTION(Server, Reliable)
 	void ServerHandleNarrativeItemActivationForEquipment(UObject* ItemObject, bool bShouldEquip);
@@ -379,6 +380,8 @@ protected:
 	void ForceServerAnimTick();
 	void EnsureAnimInstanceInitialized();
 	USkeletalMeshComponent* FindCharacterSkeletalMeshComponentByName(FName ComponentName) const;
+	UChildActorComponent* FindCharacterChildActorComponentByName(FName ComponentName) const;
+	USkeletalMeshComponent* ResolveSkeletalMeshFromChildActorComponent(FName ComponentName) const;
 	UCameraComponent* FindCharacterCameraComponentByName(FName ComponentName) const;
 	void HandleArchetypeChanged(ESpellRiseArchetype OldArchetype);
 	void HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag);

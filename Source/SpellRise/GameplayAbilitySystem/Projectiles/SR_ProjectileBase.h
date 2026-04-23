@@ -9,8 +9,17 @@
 #include "SR_ProjectileBase.generated.h"
 
 class UArrowComponent;
+class UGameplayEffect;
 class UProjectileMovementComponent;
 class USphereComponent;
+
+UENUM(BlueprintType)
+enum class ESpellRiseProjectileCollisionMode : uint8
+{
+	Block = 0 UMETA(DisplayName="Block"),
+	Overlap = 1 UMETA(DisplayName="Overlap"),
+	Ignore = 2 UMETA(DisplayName="Ignore")
+};
 
 UCLASS()
 class SPELLRISE_API ASR_ProjectileBase : public AActor
@@ -23,8 +32,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Projectile")
 	void InitializeProjectile(
 		const FVector& InTargetLocation,
+		const FVector& InInitialDirection,
 		float InSpeed,
-		const FGameplayEffectSpecHandle& InEffectSpecHandle);
+		const FGameplayEffectSpecHandle& InEffectSpecHandle,
+		TSubclassOf<UGameplayEffect> InDebuffEffectClass = nullptr);
 
 protected:
 	virtual void BeginPlay() override;
@@ -50,6 +61,8 @@ protected:
 	void ApplyDamageToActor(AActor* OtherActor);
 	void TriggerSpawnCue();
 	void TriggerImpactCue();
+	void ApplyCollisionSettings();
+	static ECollisionResponse ToCollisionResponse(ESpellRiseProjectileCollisionMode CollisionMode);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
@@ -64,11 +77,38 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Projectile Settings", meta=(ClampMin="0.0"))
 	float Speed = 2000.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision", meta=(ClampMin="0.0"))
+	float CollisionRadius = 16.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision")
+	ESpellRiseProjectileCollisionMode PawnCollisionMode = ESpellRiseProjectileCollisionMode::Overlap;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision")
+	ESpellRiseProjectileCollisionMode WorldStaticCollisionMode = ESpellRiseProjectileCollisionMode::Block;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision")
+	ESpellRiseProjectileCollisionMode WorldDynamicCollisionMode = ESpellRiseProjectileCollisionMode::Block;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision")
+	ESpellRiseProjectileCollisionMode PhysicsBodyCollisionMode = ESpellRiseProjectileCollisionMode::Block;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision")
+	bool bGenerateProjectileOverlapEvents = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Projectile Settings|Collision")
+	bool bGenerateProjectileHitEvents = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Projectile Settings")
 	FVector TargetLocation = FVector::ZeroVector;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Projectile Settings")
+	FVector InitialDirection = FVector::ZeroVector;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Gameplay Effect")
 	FGameplayEffectSpecHandle EffectSpecHandle;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Gameplay Effect")
+	TSubclassOf<UGameplayEffect> DebuffEffectClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Gameplay Cue")
 	FGameplayTag GameplayCueSpawnTag;

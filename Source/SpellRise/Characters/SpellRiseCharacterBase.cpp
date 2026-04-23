@@ -42,10 +42,12 @@
 #include "SpellRise/UI/SpellRiseDamageEdgeWidget.h"
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
 #include "EquippableItem.h"
+#include "EquipmentComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDeathLoot, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCharacterRuntime, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEquipTrace, Log, All);
 
 namespace SpellRiseTags
 {
@@ -442,6 +444,64 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::FindCharacterSkeletalMeshCompon
 	return nullptr;
 }
 
+UChildActorComponent* ASpellRiseCharacterBase::FindCharacterChildActorComponentByName(FName ComponentName) const
+{
+	if (ComponentName.IsNone())
+	{
+		return nullptr;
+	}
+
+	TArray<UChildActorComponent*> ChildActorComponents;
+	GetComponents<UChildActorComponent>(ChildActorComponents);
+
+	for (UChildActorComponent* ChildActorComp : ChildActorComponents)
+	{
+		if (!IsValid(ChildActorComp))
+		{
+			continue;
+		}
+
+		if (ChildActorComp->GetFName() == ComponentName)
+		{
+			return ChildActorComp;
+		}
+	}
+
+	return nullptr;
+}
+
+USkeletalMeshComponent* ASpellRiseCharacterBase::ResolveSkeletalMeshFromChildActorComponent(FName ComponentName) const
+{
+	UChildActorComponent* ChildActorComp = FindCharacterChildActorComponentByName(ComponentName);
+	if (!ChildActorComp)
+	{
+		return nullptr;
+	}
+
+	AActor* ChildActor = ChildActorComp->GetChildActor();
+	if (!IsValid(ChildActor))
+	{
+		return nullptr;
+	}
+
+	if (USkeletalMeshComponent* DirectMesh = ChildActor->FindComponentByClass<USkeletalMeshComponent>())
+	{
+		return DirectMesh;
+	}
+
+	TArray<USkeletalMeshComponent*> ChildMeshes;
+	ChildActor->GetComponents<USkeletalMeshComponent>(ChildMeshes);
+	for (USkeletalMeshComponent* MeshComp : ChildMeshes)
+	{
+		if (IsValid(MeshComp))
+		{
+			return MeshComp;
+		}
+	}
+
+	return nullptr;
+}
+
 UCameraComponent* ASpellRiseCharacterBase::FindCharacterCameraComponentByName(FName ComponentName) const
 {
 	if (ComponentName.IsNone())
@@ -475,6 +535,11 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::GetVisualMeshComponent() const
 		return VisualMesh;
 	}
 
+	if (USkeletalMeshComponent* VisualOverrideMesh = ResolveSkeletalMeshFromChildActorComponent(VisualMeshComponentName))
+	{
+		return VisualOverrideMesh;
+	}
+
 	return GetMesh();
 }
 
@@ -483,6 +548,11 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent
 	if (USkeletalMeshComponent* AttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
 	{
 		return AttachMesh;
+	}
+
+	if (USkeletalMeshComponent* AttachMeshFromChildActor = ResolveSkeletalMeshFromChildActorComponent(EquipmentAttachMeshComponentName))
+	{
+		return AttachMeshFromChildActor;
 	}
 
 	return GetVisualMeshComponent();
@@ -517,6 +587,16 @@ UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
 	return nullptr;
 }
 
+USpellRiseEquipmentManagerComponent* ASpellRiseCharacterBase::GetSpellRiseEquipmentManager() const
+{
+	if (EquipmentManager)
+	{
+		return EquipmentManager;
+	}
+
+	return FindComponentByClass<USpellRiseEquipmentManagerComponent>();
+}
+
 void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -537,24 +617,77 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 	}
 
 	UEquippableItem* EquippableItem = Cast<UEquippableItem>(ItemObject);
-	if (!EquippableItem || !EquipmentManager)
+	USpellRiseEquipmentManagerComponent* ResolvedEquipmentManager = GetSpellRiseEquipmentManager();
+	if (!EquippableItem || !ResolvedEquipmentManager)
 	{
+		UE_LOG(LogSpellRiseEquipTrace, Warning,
+			TEXT("Character.HandleItemActivation abortado. Item=%s EquipmentManager=%s ShouldEquip=%s"),
+			*GetNameSafe(ItemObject),
+			ResolvedEquipmentManager ? TEXT("yes") : TEXT("no"),
+			bShouldEquip ? TEXT("true") : TEXT("false"));
 		return;
 	}
 
 	if (EquippableItem->GetOwningPawn() != this)
 	{
+		const bool bOwnedByController = (EquippableItem->GetOwningController() != nullptr && EquippableItem->GetOwningController() == GetController());
+		if (bOwnedByController)
+		{
+			UE_LOG(LogSpellRiseEquipTrace, Verbose,
+				TEXT("Character.HandleItemActivation ownership aceito via controller. Item=%s Controller=%s"),
+				*GetNameSafe(EquippableItem),
+				*GetNameSafe(GetController()));
+		}
+		else
+		{
+		UE_LOG(LogSpellRiseEquipTrace, Warning,
+			TEXT("Character.HandleItemActivation rejeitado por ownership. Item=%s OwningPawn=%s Character=%s"),
+			*GetNameSafe(EquippableItem),
+			*GetNameSafe(EquippableItem->GetOwningPawn()),
+			*GetNameSafe(this));
+		return;
+		}
+	}
+
+	UE_LOG(LogSpellRiseEquipTrace, Log,
+		TEXT("Character.HandleItemActivation. Item=%s ShouldEquip=%s HasAuthority=%s"),
+		*GetNameSafe(EquippableItem),
+		bShouldEquip ? TEXT("true") : TEXT("false"),
+		HasAuthority() ? TEXT("true") : TEXT("false"));
+
+	const bool bHandledBySpellRise = bShouldEquip
+		? ResolvedEquipmentManager->RequestEquipItem(EquippableItem)
+		: ResolvedEquipmentManager->RequestUnequipItem(EquippableItem);
+
+	if (bHandledBySpellRise)
+	{
 		return;
 	}
 
-	if (bShouldEquip)
+	const bool bLooksLikeWeaponItem = (EquippableItem->GetClass()->FindPropertyByName(TEXT("WeaponClass")) != nullptr);
+	if (bLooksLikeWeaponItem)
 	{
-		EquipmentManager->RequestEquipItem(EquippableItem);
+		UE_LOG(LogSpellRiseEquipTrace, Warning,
+			TEXT("Character.HandleItemActivation weapon rejeitada pelo SpellRiseEquipmentManager sem fallback Narrative. Item=%s"),
+			*GetNameSafe(EquippableItem));
+		return;
 	}
-	else
+
+	UE_LOG(LogSpellRiseEquipTrace, Warning,
+		TEXT("Character.HandleItemActivation fallback para Narrative Equipment. Item=%s ShouldEquip=%s"),
+		*GetNameSafe(EquippableItem),
+		bShouldEquip ? TEXT("true") : TEXT("false"));
+
+	UEquipmentComponent* EquipmentComponent = FindComponentByClass<UEquipmentComponent>();
+	if (!EquipmentComponent)
 	{
-		EquipmentManager->RequestUnequipItem(EquippableItem);
+		UE_LOG(LogSpellRiseEquipTrace, Warning,
+			TEXT("Character.HandleItemActivation fallback falhou: EquipmentComponent ausente. Item=%s"),
+			*GetNameSafe(EquippableItem));
+		return;
 	}
+
+	EquipmentComponent->ApplyEquippableVisual(EquippableItem, bShouldEquip);
 }
 
 void ASpellRiseCharacterBase::SetArchetype(ESpellRiseArchetype NewArchetype)

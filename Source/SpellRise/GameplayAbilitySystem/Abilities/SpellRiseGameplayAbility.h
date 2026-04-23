@@ -111,6 +111,15 @@ public:
 		return bIsChanneling;
 	}
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|State")
+	float GetCastRemainingTime() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|State")
+	float GetCastProgressAlpha() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Animation")
+	float GetSuggestedCastMontagePlayRate(float MontageLength) const;
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Input")
 	bool FiresFromOwnInputTag() const
 	{
@@ -231,6 +240,9 @@ protected:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	float CastElapsedTime = 0.0f;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
+	float CastRemainingTime = 0.0f;
 
 	/** True após CastTime quando CastCompletionPolicy exige release para executar. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")

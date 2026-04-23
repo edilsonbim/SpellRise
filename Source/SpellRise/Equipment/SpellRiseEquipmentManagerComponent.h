@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayAbilitySpec.h"
+#include "HAL/Platform.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "SpellRiseEquipmentManagerComponent.generated.h"
 
@@ -12,6 +13,8 @@ class UEquippableItem;
 class UEquipmentComponent;
 class USpellRiseEquipmentInstance;
 class AActor;
+class UPrimitiveComponent;
+class USceneComponent;
 class USkeletalMeshComponent;
 class UNarrativeInventoryComponent;
 class UNarrativeItem;
@@ -114,6 +117,24 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	int32 GetActiveQuickWeaponSlotIndex() const { return ActiveQuickWeaponSlotIndex; }
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	AActor* GetActiveEquippedWeaponActor() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	AActor* GetEquippedWeapon() const { return EquippedWeapon; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment", meta=(DeterminesOutputType="ExpectedClass"))
+	AActor* GetEquippedWeaponTyped(TSubclassOf<AActor> ExpectedClass) const;
+
+	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon, BlueprintReadOnly, Category="SpellRise|Equipment")
+	TObjectPtr<AActor> EquippedWeapon = nullptr;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	bool GetActiveEquippedWeaponSpawnPointLocation(FVector& OutLocation) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	bool GetActiveEquippedWeaponSpawnPointTransform(FTransform& OutTransform) const;
+
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Equipment")
 	FOnQuickWeaponSlotsChanged OnQuickWeaponSlotsChanged;
 
@@ -153,15 +174,26 @@ private:
 	bool ExtractAbilitiesToGrantFromItem(UEquippableItem* Item, TArray<struct FSpellRiseGrantedAbility>& OutAbilities) const;
 	bool ResolveWeaponActorClassFromItem(UEquippableItem* Item, UClass*& OutWeaponActorClass, const void*& OutWeaponConfigPtr, const UStruct*& OutWeaponConfigStruct) const;
 	bool ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const;
+	void RefreshEquippedWeaponReference();
+	void NotifyExternalWeaponEquipState(UEquippableItem* Item, bool bEquipped);
+	bool TryNotifyBowMechanicEquip(UClass* WeaponActorClass, bool bEquipped) const;
+	bool TrySetBowMechanicWeaponRef(AActor* WeaponActor) const;
+	void UpdateCharacterOverlayFromEquippedItem(UEquippableItem* Item) const;
+	bool TryExtractOverlayValueFromWeaponConfig(UEquippableItem* Item, int64& OutOverlayValue) const;
+	bool TrySetOverlayValueOnCharacter(AActor* CharacterActor, int64 OverlayValue) const;
+	bool TryCallSetOverlayFunction(AActor* CharacterActor, int64 OverlayValue) const;
 	AActor* ResolveOwnedWeaponActor(UClass* WeaponActorClass) const;
+	USceneComponent* ResolveWeaponSpawnPointComponent(AActor* WeaponActor) const;
 	USkeletalMeshComponent* ResolveEquipmentAttachMesh() const;
+	void PrepareWeaponActorForAttachment(AActor* WeaponActor) const;
+	bool AttachWeaponActorToSocket(AActor* WeaponActor, USkeletalMeshComponent* AttachMesh, FName TargetSocket) const;
 	void SnapItemWeaponToSocket(UEquippableItem* Item, bool bEquip);
 	void ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue);
 	void RemoveGrantedAbilitiesForSlot(uint8 SlotValue);
 	bool IsWeaponItem(UEquippableItem* Item) const;
 	int32 FindQuickSlotByItem(UEquippableItem* Item) const;
 	int32 FindFirstFreeQuickSlot() const;
-	void HandleWeaponEquipIntent(UEquippableItem* Item);
+	bool HandleWeaponEquipIntent(UEquippableItem* Item);
 	bool ActivateQuickWeaponSlot_Server(int32 QuickSlotIndex);
 	bool AssignQuickWeaponSlot_Server(UEquippableItem* Item, int32 QuickSlotIndex);
 	void RemoveQuickWeaponSlot_Server(int32 QuickSlotIndex, bool bDestroyWeaponActor);
@@ -179,6 +211,8 @@ private:
 	void OnRep_QuickWeaponSlots();
 	UFUNCTION()
 	void OnRep_ActiveQuickSlotIndex();
+	UFUNCTION()
+	void OnRep_EquippedWeapon();
 
 	FSpellRiseAppliedEquipmentEntry* AddEntry(UEquippableItem* Item, uint8 SlotValue);
 	bool RemoveEntryBySlot(uint8 SlotValue);
@@ -204,4 +238,6 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Drop", meta=(ClampMin="50.0", UIMin="50.0"))
 	float DropSpawnForwardDistance = 150.0f;
+
+	int32 VisualSyncDepth = 0;
 };

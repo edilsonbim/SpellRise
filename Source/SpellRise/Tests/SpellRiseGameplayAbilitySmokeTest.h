@@ -3,7 +3,7 @@
 // Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "GameFramework\Pawn.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRiseGameplayAbilitySmokeTest.generated.h"
 
@@ -15,12 +15,12 @@ class SPELLRISE_API USpellRiseAbilityBroadcastSmokeTestAbility : public USpellRi
 public:
 	bool IsInputEventAllowedForActorInfo(const FGameplayAbilityActorInfo* ActorInfo) const
 	{
-		return ActorInfo && ActorInfo->IsLocallyControlled();
+		return ActorInfo && !ActorInfo->IsNetAuthority() && ActorInfo->IsLocallyControlled();
 	}
 };
 
 UCLASS()
-class SPELLRISE_API ASpellRiseAbilityBroadcastSmokeTestAvatar : public AActor
+class SPELLRISE_API ASpellRiseAbilityBroadcastSmokeTestAvatar : public APawn
 {
 	GENERATED_BODY()
 
@@ -33,7 +33,7 @@ public:
 	UPROPERTY()
 	bool bIsLocallyControlledOverride = false;
 
-	virtual bool IsLocallyControlled() const
+	virtual bool IsLocallyControlled() const override
 	{
 		return bIsLocallyControlledOverride;
 	}
