@@ -214,9 +214,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCatalystComponent> CatalystComponent = nullptr;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<USpellRiseEquipmentManagerComponent> EquipmentManager = nullptr;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Catalyst")
 	bool bEnableCatalyst = true;
 
