@@ -23,6 +23,7 @@ class FOutBunch;
 struct FReplicationFlags;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnQuickWeaponSlotsChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpellRiseWeaponChanged, AActor*, EquippedWeapon);
 
 USTRUCT()
 struct FSpellRiseAppliedEquipmentEntry : public FFastArraySerializerItem
@@ -81,7 +82,7 @@ struct TStructOpsTypeTraits<FSpellRiseEquipmentList> : public TStructOpsTypeTrai
 	};
 };
 
-UCLASS(ClassGroup=(SpellRise), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup=(SpellRise), BlueprintType, Blueprintable, meta=(BlueprintSpawnableComponent))
 class SPELLRISE_API USpellRiseEquipmentManagerComponent : public UActorComponent
 {
 	GENERATED_BODY()
@@ -135,8 +136,11 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	bool GetActiveEquippedWeaponSpawnPointTransform(FTransform& OutTransform) const;
 
-	UPROPERTY(BlueprintAssignable, Category="SpellRise|Equipment")
+	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Quick Weapon Slots Changed"))
 	FOnQuickWeaponSlotsChanged OnQuickWeaponSlotsChanged;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Weapon Changed"))
+	FOnSpellRiseWeaponChanged OnWeaponChanged;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	bool EquipItem(UEquippableItem* Item);
@@ -170,24 +174,21 @@ private:
 	bool ValidateItemOwnership(UEquippableItem* Item, FString& OutReason) const;
 	uint8 ResolveItemSlot(UEquippableItem* Item) const;
 	UEquipmentComponent* ResolveEquipmentComponent() const;
+	void SyncNarrativeEquipmentComponentState(UEquippableItem* Item, bool bEquipped);
 	void ApplyVisualForItem(UEquippableItem* Item, bool bEquip);
 	bool ExtractAbilitiesToGrantFromItem(UEquippableItem* Item, TArray<struct FSpellRiseGrantedAbility>& OutAbilities) const;
 	bool ResolveWeaponActorClassFromItem(UEquippableItem* Item, UClass*& OutWeaponActorClass, const void*& OutWeaponConfigPtr, const UStruct*& OutWeaponConfigStruct) const;
 	bool ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const;
 	void RefreshEquippedWeaponReference();
-	void NotifyExternalWeaponEquipState(UEquippableItem* Item, bool bEquipped);
-	bool TryNotifyBowMechanicEquip(UClass* WeaponActorClass, bool bEquipped) const;
-	bool TrySetBowMechanicWeaponRef(AActor* WeaponActor) const;
-	void UpdateCharacterOverlayFromEquippedItem(UEquippableItem* Item) const;
-	bool TryExtractOverlayValueFromWeaponConfig(UEquippableItem* Item, int64& OutOverlayValue) const;
-	bool TrySetOverlayValueOnCharacter(AActor* CharacterActor, int64 OverlayValue) const;
-	bool TryCallSetOverlayFunction(AActor* CharacterActor, int64 OverlayValue) const;
+	void BroadcastWeaponChangedIfNeeded();
 	AActor* ResolveOwnedWeaponActor(UClass* WeaponActorClass) const;
 	USceneComponent* ResolveWeaponSpawnPointComponent(AActor* WeaponActor) const;
 	USkeletalMeshComponent* ResolveEquipmentAttachMesh() const;
 	void PrepareWeaponActorForAttachment(AActor* WeaponActor) const;
 	bool AttachWeaponActorToSocket(AActor* WeaponActor, USkeletalMeshComponent* AttachMesh, FName TargetSocket) const;
 	void SnapItemWeaponToSocket(UEquippableItem* Item, bool bEquip);
+	void RefreshQuickSlotVisual_Local(int32 QuickSlotIndex, bool bEquipped);
+	void ReconcileReplicatedQuickSlotVisuals();
 	void ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue);
 	void RemoveGrantedAbilitiesForSlot(uint8 SlotValue);
 	bool IsWeaponItem(UEquippableItem* Item) const;
@@ -232,6 +233,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNarrativeInventoryComponent> CachedInventoryComponent = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> LastBroadcastEquippedWeapon = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Drop")
 	TSoftClassPtr<AActor> DropPickupActorClass;

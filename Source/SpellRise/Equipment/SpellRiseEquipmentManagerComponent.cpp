@@ -680,6 +680,32 @@ UEquipmentComponent* USpellRiseEquipmentManagerComponent::ResolveEquipmentCompon
 	return OwnerActor ? OwnerActor->FindComponentByClass<UEquipmentComponent>() : nullptr;
 }
 
+void USpellRiseEquipmentManagerComponent::SyncNarrativeEquipmentComponentState(UEquippableItem* Item, bool bEquipped)
+{
+	if (!Item)
+	{
+		return;
+	}
+
+	UEquipmentComponent* EquipmentComponent = ResolveEquipmentComponent();
+	if (!EquipmentComponent)
+	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
+			TEXT("SyncNarrativeEquipmentComponentState falhou: EquipmentComponent ausente. Owner=%s Item=%s Equipped=%s"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(Item),
+			bEquipped ? TEXT("true") : TEXT("false"));
+		return;
+	}
+
+	EquipmentComponent->SyncEquippedItemState(Item, bEquipped);
+	UE_LOG(LogSpellRiseEquipmentTrace, Log,
+		TEXT("SyncNarrativeEquipmentComponentState sincronizou no Narrative. Owner=%s Item=%s Equipped=%s"),
+		*GetNameSafe(GetOwner()),
+		*GetNameSafe(Item),
+		bEquipped ? TEXT("true") : TEXT("false"));
+}
+
 void USpellRiseEquipmentManagerComponent::ApplyVisualForItem(UEquippableItem* Item, bool bEquip)
 {
 	if (!Item)
@@ -723,6 +749,7 @@ FSpellRiseAppliedEquipmentEntry* USpellRiseEquipmentManagerComponent::AddEntry(U
 	}
 
 	ApplyGrantedAbilitiesForSlot(Item, SlotValue);
+	SyncNarrativeEquipmentComponentState(Item, true);
 
 	EquipmentList.MarkItemDirty(NewEntry);
 	if (AActor* NetOwnerActor = GetOwner())
@@ -756,6 +783,7 @@ bool USpellRiseEquipmentManagerComponent::RemoveEntryBySlot(uint8 SlotValue)
 		}
 
 		RemoveGrantedAbilitiesForSlot(SlotValue);
+		SyncNarrativeEquipmentComponentState(Entry.SourceItem, false);
 
 		EquipmentList.Entries.RemoveAt(Index);
 		EquipmentList.MarkArrayDirty();
@@ -1030,284 +1058,15 @@ void USpellRiseEquipmentManagerComponent::RefreshEquippedWeaponReference()
 	EquippedWeapon = GetOrSpawnWeaponActorForItem(ActiveItem);
 }
 
-void USpellRiseEquipmentManagerComponent::NotifyExternalWeaponEquipState(UEquippableItem* Item, bool bEquipped)
+void USpellRiseEquipmentManagerComponent::BroadcastWeaponChangedIfNeeded()
 {
-	return;
-}
-
-bool USpellRiseEquipmentManagerComponent::TryNotifyBowMechanicEquip(UClass* WeaponActorClass, bool bEquipped) const
-{
-	return false;
-}
-
-bool USpellRiseEquipmentManagerComponent::TrySetBowMechanicWeaponRef(AActor* WeaponActor) const
-{
-	AActor* OwnerActor = GetOwner();
-	if (!OwnerActor)
-	{
-		return false;
-	}
-
-	UActorComponent* BowMechanicsComponent = nullptr;
-	TInlineComponentArray<UActorComponent*> OwnerComponents;
-	OwnerActor->GetComponents(OwnerComponents);
-	for (UActorComponent* Component : OwnerComponents)
-	{
-		if (!IsValid(Component))
-		{
-			continue;
-		}
-
-		const FString ComponentClassName = Component->GetClass()->GetName();
-		if (ComponentClassName.Contains(TEXT("AC_BowMechanics"), ESearchCase::IgnoreCase) ||
-			ComponentClassName.Contains(TEXT("AC_Bow_Mechanics"), ESearchCase::IgnoreCase))
-		{
-			BowMechanicsComponent = Component;
-			break;
-		}
-	}
-
-	if (!BowMechanicsComponent)
-	{
-		return false;
-	}
-
-	static const TArray<FName> BowRefPropertyNames = {
-		TEXT("BowRef"),
-		TEXT("Bow Ref"),
-		TEXT("BowReference"),
-		TEXT("BowActorRef")
-	};
-
-	for (const FName PropertyName : BowRefPropertyNames)
-	{
-		FObjectProperty* ObjectProperty = CastField<FObjectProperty>(BowMechanicsComponent->GetClass()->FindPropertyByName(PropertyName));
-		if (!ObjectProperty || !ObjectProperty->PropertyClass || !ObjectProperty->PropertyClass->IsChildOf(AActor::StaticClass()))
-		{
-			continue;
-		}
-
-		void* ValuePtr = ObjectProperty->ContainerPtrToValuePtr<void>(BowMechanicsComponent);
-		ObjectProperty->SetObjectPropertyValue(ValuePtr, WeaponActor);
-		return true;
-	}
-
-	for (TFieldIterator<FObjectProperty> It(BowMechanicsComponent->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
-	{
-		FObjectProperty* ObjectProperty = *It;
-		if (!ObjectProperty || !ObjectProperty->PropertyClass || !ObjectProperty->PropertyClass->IsChildOf(AActor::StaticClass()))
-		{
-			continue;
-		}
-
-		const FString PropertyName = ObjectProperty->GetName();
-		if (!PropertyName.Contains(TEXT("Bow"), ESearchCase::IgnoreCase) ||
-			!PropertyName.Contains(TEXT("Ref"), ESearchCase::IgnoreCase))
-		{
-			continue;
-		}
-
-		void* ValuePtr = ObjectProperty->ContainerPtrToValuePtr<void>(BowMechanicsComponent);
-		ObjectProperty->SetObjectPropertyValue(ValuePtr, WeaponActor);
-		return true;
-	}
-
-	return false;
-}
-
-void USpellRiseEquipmentManagerComponent::UpdateCharacterOverlayFromEquippedItem(UEquippableItem* Item) const
-{
-	AActor* OwnerActor = GetOwner();
-	if (!OwnerActor)
+	if (LastBroadcastEquippedWeapon == EquippedWeapon)
 	{
 		return;
 	}
 
-	int64 OverlayValue = 0;
-	if (Item && TryExtractOverlayValueFromWeaponConfig(Item, OverlayValue))
-	{
-		if (TrySetOverlayValueOnCharacter(OwnerActor, OverlayValue))
-		{
-			return;
-		}
-
-		TryCallSetOverlayFunction(OwnerActor, OverlayValue);
-		return;
-	}
-
-	TrySetOverlayValueOnCharacter(OwnerActor, 0);
-	TryCallSetOverlayFunction(OwnerActor, 0);
-}
-
-bool USpellRiseEquipmentManagerComponent::TryExtractOverlayValueFromWeaponConfig(UEquippableItem* Item, int64& OutOverlayValue) const
-{
-	OutOverlayValue = 0;
-
-	UClass* WeaponActorClass = nullptr;
-	const void* WeaponConfigPtr = nullptr;
-	const UStruct* WeaponConfigStruct = nullptr;
-	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) || !WeaponConfigPtr || !WeaponConfigStruct)
-	{
-		return false;
-	}
-
-	for (TFieldIterator<FProperty> It(WeaponConfigStruct); It; ++It)
-	{
-		FProperty* Property = *It;
-		if (!Property)
-		{
-			continue;
-		}
-
-		const FString PropertyName = Property->GetName();
-		if (!PropertyName.Contains(TEXT("AnimClass"), ESearchCase::IgnoreCase))
-		{
-			continue;
-		}
-
-		if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
-		{
-			const void* ValuePtr = EnumProperty->ContainerPtrToValuePtr<void>(WeaponConfigPtr);
-			if (const FNumericProperty* UnderlyingProperty = EnumProperty->GetUnderlyingProperty())
-			{
-				OutOverlayValue = UnderlyingProperty->GetSignedIntPropertyValue(ValuePtr);
-				return true;
-			}
-		}
-		else if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
-		{
-			const void* ValuePtr = ByteProperty->ContainerPtrToValuePtr<void>(WeaponConfigPtr);
-			OutOverlayValue = static_cast<int64>(ByteProperty->GetUnsignedIntPropertyValue(ValuePtr));
-			return true;
-		}
-		else if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
-		{
-			const void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(WeaponConfigPtr);
-			OutOverlayValue = NumericProperty->GetSignedIntPropertyValue(ValuePtr);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool USpellRiseEquipmentManagerComponent::TrySetOverlayValueOnCharacter(AActor* CharacterActor, int64 OverlayValue) const
-{
-	if (!CharacterActor)
-	{
-		return false;
-	}
-
-	static const TArray<FName> OverlayPropertyNames = {
-		TEXT("OverlayState"),
-		TEXT("Overlay State"),
-		TEXT("OverlayStates"),
-		TEXT("Overlay States"),
-		TEXT("CurrentOverlayState"),
-		TEXT("Current Overlay State")
-	};
-
-	for (const FName PropertyName : OverlayPropertyNames)
-	{
-		FProperty* OverlayProperty = CharacterActor->GetClass()->FindPropertyByName(PropertyName);
-		if (!OverlayProperty)
-		{
-			continue;
-		}
-
-		if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(OverlayProperty))
-		{
-			void* ValuePtr = EnumProperty->ContainerPtrToValuePtr<void>(CharacterActor);
-			if (FNumericProperty* UnderlyingProperty = EnumProperty->GetUnderlyingProperty())
-			{
-				UnderlyingProperty->SetIntPropertyValue(ValuePtr, OverlayValue);
-				return true;
-			}
-		}
-		else if (FByteProperty* ByteProperty = CastField<FByteProperty>(OverlayProperty))
-		{
-			void* ValuePtr = ByteProperty->ContainerPtrToValuePtr<void>(CharacterActor);
-			ByteProperty->SetIntPropertyValue(ValuePtr, OverlayValue);
-			return true;
-		}
-		else if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(OverlayProperty))
-		{
-			void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(CharacterActor);
-			NumericProperty->SetIntPropertyValue(ValuePtr, OverlayValue);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool USpellRiseEquipmentManagerComponent::TryCallSetOverlayFunction(AActor* CharacterActor, int64 OverlayValue) const
-{
-	if (!CharacterActor)
-	{
-		return false;
-	}
-
-	static const TArray<FName> CandidateFunctionNames = {
-		TEXT("SetOverlayState"),
-		TEXT("Set Overlay State"),
-		TEXT("SetOverlayStates"),
-		TEXT("Set Overlay States")
-	};
-
-	for (const FName FunctionName : CandidateFunctionNames)
-	{
-		UFunction* SetOverlayFunction = CharacterActor->FindFunction(FunctionName);
-		if (!SetOverlayFunction || SetOverlayFunction->NumParms <= 0)
-		{
-			continue;
-		}
-
-		uint8* ParamsBuffer = static_cast<uint8*>(FMemory_Alloca(SetOverlayFunction->ParmsSize));
-		FMemory::Memzero(ParamsBuffer, SetOverlayFunction->ParmsSize);
-
-		bool bAssigned = false;
-		for (TFieldIterator<FProperty> It(SetOverlayFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
-		{
-			if (It->HasAnyPropertyFlags(CPF_ReturnParm))
-			{
-				continue;
-			}
-
-			if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(*It))
-			{
-				void* ValuePtr = EnumProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-				if (FNumericProperty* UnderlyingProperty = EnumProperty->GetUnderlyingProperty())
-				{
-					UnderlyingProperty->SetIntPropertyValue(ValuePtr, OverlayValue);
-					bAssigned = true;
-					break;
-				}
-			}
-			else if (FByteProperty* ByteProperty = CastField<FByteProperty>(*It))
-			{
-				void* ValuePtr = ByteProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-				ByteProperty->SetIntPropertyValue(ValuePtr, OverlayValue);
-				bAssigned = true;
-				break;
-			}
-			else if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(*It))
-			{
-				void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-				NumericProperty->SetIntPropertyValue(ValuePtr, OverlayValue);
-				bAssigned = true;
-				break;
-			}
-		}
-
-		if (bAssigned)
-		{
-			CharacterActor->ProcessEvent(SetOverlayFunction, ParamsBuffer);
-			return true;
-		}
-	}
-
-	return false;
+	LastBroadcastEquippedWeapon = EquippedWeapon;
+	OnWeaponChanged.Broadcast(EquippedWeapon);
 }
 
 AActor* USpellRiseEquipmentManagerComponent::ResolveOwnedWeaponActor(UClass* WeaponActorClass) const
@@ -1486,6 +1245,77 @@ void USpellRiseEquipmentManagerComponent::SnapItemWeaponToSocket(UEquippableItem
 	}
 
 	AttachWeaponActorToSocket(WeaponActor, AttachMesh, TargetSocket);
+}
+
+void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Local(int32 QuickSlotIndex, bool bEquipped)
+{
+	if (!QuickWeaponSlots.IsValidIndex(QuickSlotIndex))
+	{
+		return;
+	}
+
+	UEquippableItem* Item = QuickWeaponSlots[QuickSlotIndex];
+	if (!Item)
+	{
+		return;
+	}
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) || !WeaponActorClass)
+	{
+		return;
+	}
+
+	FName EquippedSocket = NAME_None;
+	FName StowedSocket = NAME_None;
+	ResolveWeaponSocketsFromConfig(WeaponConfigPtr, WeaponConfigStruct, EquippedSocket, StowedSocket);
+	const FName TargetSocket = bEquipped ? EquippedSocket : StowedSocket;
+	if (TargetSocket == NAME_None)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
+	AActor* WeaponActor = ResolveOwnedWeaponActor(WeaponActorClass);
+	if (!AttachMesh || !WeaponActor)
+	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
+			TEXT("RefreshQuickSlotVisual_Local aguardando actor/mesh. Owner=%s Item=%s Slot=%d Equipped=%s AttachMesh=%s WeaponActor=%s"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(Item),
+			QuickSlotIndex,
+			bEquipped ? TEXT("true") : TEXT("false"),
+			*GetNameSafe(AttachMesh),
+			*GetNameSafe(WeaponActor));
+		return;
+	}
+
+	UE_LOG(LogSpellRiseEquipmentTrace, Log,
+		TEXT("RefreshQuickSlotVisual_Local attachando em cliente/replica. Owner=%s Item=%s WeaponActor=%s Slot=%d Equipped=%s Socket=%s Mesh=%s"),
+		*GetNameSafe(GetOwner()),
+		*GetNameSafe(Item),
+		*GetNameSafe(WeaponActor),
+		QuickSlotIndex,
+		bEquipped ? TEXT("true") : TEXT("false"),
+		*TargetSocket.ToString(),
+		*GetNameSafe(AttachMesh));
+	AttachWeaponActorToSocket(WeaponActor, AttachMesh, TargetSocket);
+}
+
+void USpellRiseEquipmentManagerComponent::ReconcileReplicatedQuickSlotVisuals()
+{
+	for (int32 SlotIndex = 0; SlotIndex < QuickWeaponSlots.Num(); ++SlotIndex)
+	{
+		if (!QuickWeaponSlots[SlotIndex])
+		{
+			continue;
+		}
+
+		const bool bShouldBeEquipped = (SlotIndex == ActiveQuickWeaponSlotIndex);
+		RefreshQuickSlotVisual_Local(SlotIndex, bShouldBeEquipped);
+	}
 }
 
 void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue)
@@ -1739,6 +1569,7 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 		OwnerActor->ForceNetUpdate();
 	}
 	RefreshEquippedWeaponReference();
+	BroadcastWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
 
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
@@ -1805,6 +1636,7 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 		OwnerActor->ForceNetUpdate();
 	}
 	RefreshEquippedWeaponReference();
+	BroadcastWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("ActivateQuickWeaponSlot concluido. Owner=%s Slot=%d Item=%s EquippedWeapon=%s"),
@@ -1858,6 +1690,7 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 	}
 	CleanupOrphanedWeaponActors_Server();
 	RefreshEquippedWeaponReference();
+	BroadcastWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
@@ -2434,16 +2267,21 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 
 void USpellRiseEquipmentManagerComponent::OnRep_QuickWeaponSlots()
 {
+	ReconcileReplicatedQuickSlotVisuals();
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_ActiveQuickSlotIndex()
 {
+	RefreshEquippedWeaponReference();
+	ReconcileReplicatedQuickSlotVisuals();
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_EquippedWeapon()
 {
+	ReconcileReplicatedQuickSlotVisuals();
+	BroadcastWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 

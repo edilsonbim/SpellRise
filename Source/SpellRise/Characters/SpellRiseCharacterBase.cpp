@@ -189,7 +189,6 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	}
 
 	FallDamageComponent = CreateDefaultSubobject<UFallDamageComponent>(TEXT("FallDamageComponent"));
-	EquipmentManager = CreateDefaultSubobject<USpellRiseEquipmentManagerComponent>(TEXT("EquipmentManager"));
 
 	DeadStateTag = SpellRiseTags::State_Dead();
 
@@ -589,11 +588,6 @@ UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
 
 USpellRiseEquipmentManagerComponent* ASpellRiseCharacterBase::GetSpellRiseEquipmentManager() const
 {
-	if (EquipmentManager)
-	{
-		return EquipmentManager;
-	}
-
 	return FindComponentByClass<USpellRiseEquipmentManagerComponent>();
 }
 

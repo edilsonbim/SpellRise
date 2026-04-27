@@ -100,4 +100,7 @@ public:
 	/** Exposed for deterministic replication-driven visual sync pipelines (server and client). */
 	void ApplyEquippableVisual(class UEquippableItem* Equippable, bool bEquip);
 
+	/** Exposed for external authoritative systems that need to mirror equip state without re-triggering HandleEquip/HandleUnequip. */
+	void SyncEquippedItemState(class UEquippableItem* Equippable, bool bEquip);
+
 };
