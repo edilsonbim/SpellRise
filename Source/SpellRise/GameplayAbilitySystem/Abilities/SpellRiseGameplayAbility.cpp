@@ -426,6 +426,11 @@ void USpellRiseGameplayAbility::RemoveCastingEffect()
 
 void USpellRiseGameplayAbility::ApplyCastingBarEffect()
 {
+	if (!bShowCastBar)
+	{
+		return;
+	}
+
 	if (!CastingBarGameplayEffectClass || CastTime <= 0.0f)
 	{
 		return;
@@ -470,6 +475,11 @@ void USpellRiseGameplayAbility::RemoveCastingBarEffect()
 
 void USpellRiseGameplayAbility::NotifyHUDCastStarted(float Duration) const
 {
+	if (!bShowCastBar)
+	{
+		return;
+	}
+
 	if (!IsLocallyControlledAbility())
 	{
 		return;
@@ -491,6 +501,11 @@ void USpellRiseGameplayAbility::NotifyHUDCastStarted(float Duration) const
 
 void USpellRiseGameplayAbility::NotifyHUDCastStopped() const
 {
+	if (!bShowCastBar)
+	{
+		return;
+	}
+
 	if (!IsLocallyControlledAbility())
 	{
 		return;

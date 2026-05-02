@@ -635,6 +635,20 @@ void USpellRiseFullLootSubsystem::HandleCharacterDeath(ASpellRiseCharacterBase* 
 	ProcessCharacterDeathNow(DeadCharacter, LootBagClassOverride, DeathLocation);
 }
 
+void USpellRiseFullLootSubsystem::HandleCharacterCorpseDespawn(
+	ASpellRiseCharacterBase* DeadCharacter,
+	TSubclassOf<AActor> LootBagClassOverride,
+	const FVector& CorpseLocation)
+{
+	UWorld* World = GetWorld();
+	if (!World || !DeadCharacter || !DeadCharacter->HasAuthority() || !IsAuthorityWorld(World))
+	{
+		return;
+	}
+
+	ProcessCharacterDeathNow(DeadCharacter, LootBagClassOverride, CorpseLocation);
+}
+
 void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 	ASpellRiseCharacterBase* DeadCharacter,
 	TSubclassOf<AActor> LootBagClassOverride,

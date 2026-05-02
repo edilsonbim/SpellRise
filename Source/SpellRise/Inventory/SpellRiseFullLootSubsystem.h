@@ -19,6 +19,7 @@ public:
 	virtual void Deinitialize() override;
 
 	void HandleCharacterDeath(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride);
+	void HandleCharacterCorpseDespawn(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride, const FVector& CorpseLocation);
 
 private:
 	struct FTrackedLootBag

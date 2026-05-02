@@ -542,6 +542,20 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::GetVisualMeshComponent() const
 	return GetMesh();
 }
 
+FVector ASpellRiseCharacterBase::GetDamageNumberWorldLocation() const
+{
+	if (const USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent())
+	{
+		const FBoxSphereBounds MeshBounds = VisualMesh->Bounds;
+		return FVector(
+			MeshBounds.Origin.X,
+			MeshBounds.Origin.Y,
+			MeshBounds.Origin.Z + MeshBounds.BoxExtent.Z + 20.f);
+	}
+
+	return GetActorLocation() + FVector(0.f, 0.f, 110.f);
+}
+
 USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent() const
 {
 	if (USkeletalMeshComponent* AttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
@@ -1323,27 +1337,6 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	bIsDead = true;
 
-	if (!bFullLootProcessedForCurrentDeath)
-	{
-		if (UWorld* World = GetWorld())
-		{
-			if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
-			{
-				FullLootSubsystem->HandleCharacterDeath(this, FullLootBagClass);
-				bFullLootProcessedForCurrentDeath = true;
-			}
-			else
-			{
-			}
-		}
-		else
-		{
-		}
-	}
-	else
-	{
-	}
-
 	if (GE_Death)
 	{
 		FGameplayEffectContextHandle Context = GetSpellRiseASC()->MakeEffectContext();
@@ -1366,6 +1359,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	GetSpellRiseASC()->CancelAllAbilities();
 	SyncDeadStateFromASC(TEXT("OnHealthChanged"));
+	ScheduleCorpseDespawn_Server();
 	ScheduleRespawn_Server();
 }
 
@@ -1948,22 +1942,8 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 
 		if (HasAuthority())
 		{
-			if (!bFullLootProcessedForCurrentDeath)
-			{
-				if (UWorld* World = GetWorld())
-				{
-					if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
-					{
-						FullLootSubsystem->HandleCharacterDeath(this, FullLootBagClass);
-						bFullLootProcessedForCurrentDeath = true;
-					}
-					else
-					{
-					}
-				}
-			}
-
 			MultiHandleDeath();
+			ScheduleCorpseDespawn_Server();
 			ScheduleRespawn_Server();
 		}
 		else
@@ -1986,9 +1966,80 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 		if (UWorld* World = GetWorld())
 		{
 			World->GetTimerManager().ClearTimer(RespawnTimerHandle);
+			World->GetTimerManager().ClearTimer(CorpseDespawnTimerHandle);
 		}
 		ApplyRegenStartupEffects();
 	}
+}
+
+void ASpellRiseCharacterBase::ScheduleCorpseDespawn_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (CorpseDespawnDelaySeconds < 0.f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	if (World->GetTimerManager().IsTimerActive(CorpseDespawnTimerHandle))
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		CorpseDespawnTimerHandle,
+		this,
+		&ASpellRiseCharacterBase::ExecuteCorpseDespawn_Server,
+		FMath::Max(0.f, CorpseDespawnDelaySeconds),
+		false);
+}
+
+void ASpellRiseCharacterBase::ExecuteCorpseDespawn_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
+	FVector CorpseLocation = GetActorLocation();
+	if (VisualMesh)
+	{
+		CorpseLocation = VisualMesh->Bounds.Origin;
+	}
+
+	if (!bFullLootProcessedForCurrentDeath)
+	{
+		if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
+		{
+			FullLootSubsystem->HandleCharacterCorpseDespawn(this, FullLootBagClass, CorpseLocation);
+			bFullLootProcessedForCurrentDeath = true;
+		}
+	}
+
+	if (VisualMesh)
+	{
+		VisualMesh->SetSimulatePhysics(false);
+		VisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		VisualMesh->SetVisibility(false, true);
+	}
+
+	MultiHandleCorpseDespawn();
 }
 
 void ASpellRiseCharacterBase::ScheduleRespawn_Server()
@@ -2315,6 +2366,16 @@ void ASpellRiseCharacterBase::MultiHandleDeath_Implementation()
 	HandleDeath();
 }
 
+void ASpellRiseCharacterBase::MultiHandleCorpseDespawn_Implementation()
+{
+	if (USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent())
+	{
+		VisualMesh->SetSimulatePhysics(false);
+		VisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		VisualMesh->SetVisibility(false, true);
+	}
+}
+
 void ASpellRiseCharacterBase::HandleDeath_Implementation()
 {
 	USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
@@ -2504,8 +2565,7 @@ void ASpellRiseCharacterBase::MultiShowDamagePop_Implementation(float Damage, AA
 		TargetTags.AddTag(DamageTypeTag);
 	}
 
-	const FVector PopLocation =
-	(InstigatorActor ? InstigatorActor->GetActorLocation() : GetActorLocation()) + FVector(0.f, 0.f, 90.f);
+	const FVector PopLocation = GetDamageNumberWorldLocation();
 
 	PC->ShowDamageNumber(
 		Damage,

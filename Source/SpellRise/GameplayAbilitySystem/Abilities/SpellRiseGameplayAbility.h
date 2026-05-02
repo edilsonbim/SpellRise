@@ -266,6 +266,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting")
 	TSubclassOf<UGameplayEffect> CastingBarGameplayEffectClass;
 
+	/** Controla se esta ability deve exibir a barra/widget de cast local. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting", meta=(DisplayName="Show Cast"))
+	bool bShowCastBar = true;
+
 	/** Tag SetByCaller usada para enviar CastTime ao CastingBarGameplayEffectClass. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell|Casting")
 	FGameplayTag CastDurationMagnitudeTag;

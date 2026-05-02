@@ -174,7 +174,9 @@ void USpellRiseEquipmentManagerComponent::GetLifetimeReplicatedProps(TArray<FLif
 	DOREPLIFETIME(ThisClass, EquipmentList);
 	DOREPLIFETIME(ThisClass, QuickWeaponSlots);
 	DOREPLIFETIME(ThisClass, ActiveQuickWeaponSlotIndex);
+	DOREPLIFETIME(ThisClass, ActiveOffHandItem);
 	DOREPLIFETIME(ThisClass, EquippedWeapon);
+	DOREPLIFETIME(ThisClass, EquippedOffHandWeapon);
 }
 
 bool USpellRiseEquipmentManagerComponent::ReplicateSubobjects(UActorChannel* Channel, FOutBunch* Bunch, FReplicationFlags* RepFlags)
@@ -239,6 +241,17 @@ bool USpellRiseEquipmentManagerComponent::RequestEquipItem(UEquippableItem* Item
 
 	if (IsWeaponItem(Item))
 	{
+		if (IsOffHandWeaponItem(Item))
+		{
+			if (OwnerActor->HasAuthority())
+			{
+				return HandleOffHandEquipIntent(Item);
+			}
+
+			ServerRequestEquipItem(Item);
+			return true;
+		}
+
 		if (OwnerActor->HasAuthority())
 		{
 			const bool bHandled = HandleWeaponEquipIntent(Item);
@@ -296,6 +309,18 @@ bool USpellRiseEquipmentManagerComponent::RequestUnequipItem(UEquippableItem* It
 
 	if (IsWeaponItem(Item))
 	{
+		if (Item == ActiveOffHandItem)
+		{
+			if (OwnerActor->HasAuthority())
+			{
+				RemoveOffHandWeapon_Server(false);
+				return true;
+			}
+
+			ServerRequestUnequipItem(Item);
+			return true;
+		}
+
 		if (OwnerActor->HasAuthority())
 		{
 			const int32 SlotIndex = FindQuickSlotByItem(Item);
@@ -344,6 +369,17 @@ void USpellRiseEquipmentManagerComponent::ServerRequestEquipItem_Implementation(
 
 	if (IsWeaponItem(Item))
 	{
+		if (IsOffHandWeaponItem(Item))
+		{
+			const bool bHandled = HandleOffHandEquipIntent(Item);
+			UE_LOG(LogSpellRiseEquipmentTrace, Log,
+				TEXT("ServerRequestEquipItem offhand result. Owner=%s Item=%s Handled=%s"),
+				*GetNameSafe(GetOwner()),
+				*GetNameSafe(Item),
+				bHandled ? TEXT("true") : TEXT("false"));
+			return;
+		}
+
 		const bool bHandled = HandleWeaponEquipIntent(Item);
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("ServerRequestEquipItem weapon result. Owner=%s Item=%s Handled=%s"),
@@ -366,6 +402,12 @@ void USpellRiseEquipmentManagerComponent::ServerRequestUnequipItem_Implementatio
 
 	if (IsWeaponItem(Item))
 	{
+		if (Item == ActiveOffHandItem)
+		{
+			RemoveOffHandWeapon_Server(false);
+			return;
+		}
+
 		const int32 SlotIndex = FindQuickSlotByItem(Item);
 		if (SlotIndex != INDEX_NONE)
 		{
@@ -597,11 +639,14 @@ void USpellRiseEquipmentManagerComponent::HandleEntryAdded(const FSpellRiseAppli
 {
 	if (Entry.Instance)
 	{
+		Entry.Instance->Initialize(this, Entry.SourceItem);
 		Entry.Instance->OnEquipped();
+		SyncNarrativeEquipmentComponentState(Entry.SourceItem, true);
 	}
 	else
 	{
 		ApplyVisualForItem(Entry.SourceItem, true);
+		SyncNarrativeEquipmentComponentState(Entry.SourceItem, true);
 	}
 }
 
@@ -609,11 +654,14 @@ void USpellRiseEquipmentManagerComponent::HandleEntryRemoved(const FSpellRiseApp
 {
 	if (Entry.Instance)
 	{
+		Entry.Instance->Initialize(this, Entry.SourceItem);
 		Entry.Instance->OnUnequipped();
+		SyncNarrativeEquipmentComponentState(Entry.SourceItem, false);
 	}
 	else
 	{
 		ApplyVisualForItem(Entry.SourceItem, false);
+		SyncNarrativeEquipmentComponentState(Entry.SourceItem, false);
 	}
 }
 
@@ -998,7 +1046,7 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponActorClassFromItem(UEquip
 bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const
 {
 	OutEquippedSocket = TEXT("hand_r");
-	OutStowedSocket = TEXT("stowed");
+	OutStowedSocket = TEXT("holster_r");
 
 	if (!WeaponConfigPtr || !WeaponConfigStruct)
 	{
@@ -1025,7 +1073,7 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const v
 		{
 			OutEquippedSocket = NameProperty->GetPropertyValue_InContainer(WeaponConfigPtr);
 		}
-		else if (PropertyName.Contains(TEXT("StowedSocketName")))
+		else if (PropertyName.Contains(TEXT("HolsterSocketName")) || PropertyName.Contains(TEXT("StowedSocketName")))
 		{
 			OutStowedSocket = NameProperty->GetPropertyValue_InContainer(WeaponConfigPtr);
 		}
@@ -1038,6 +1086,67 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const v
 		*OutEquippedSocket.ToString(),
 		*OutStowedSocket.ToString());
 	return OutEquippedSocket != NAME_None || OutStowedSocket != NAME_None;
+}
+
+bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutHolsterSocket) const
+{
+	OutEquippedSocket = bOffHand ? TEXT("hand_l") : TEXT("hand_r");
+	OutHolsterSocket = bOffHand ? TEXT("holster_l") : TEXT("holster_r");
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct))
+	{
+		return false;
+	}
+
+	if (!WeaponConfigPtr || !WeaponConfigStruct)
+	{
+		return true;
+	}
+
+	auto ReadNameProperty = [WeaponConfigPtr, WeaponConfigStruct](const TArray<FString>& PreferredNames, FName& OutValue) -> bool
+	{
+		for (const FString& PreferredName : PreferredNames)
+		{
+			for (TFieldIterator<FProperty> It(WeaponConfigStruct); It; ++It)
+			{
+				const FNameProperty* NameProperty = CastField<FNameProperty>(*It);
+				if (!NameProperty || !It->GetName().Contains(PreferredName, ESearchCase::IgnoreCase))
+				{
+					continue;
+				}
+
+				const FName Value = NameProperty->GetPropertyValue_InContainer(WeaponConfigPtr);
+				if (Value != NAME_None)
+				{
+					OutValue = Value;
+					return true;
+				}
+			}
+		}
+
+		return false;
+	};
+
+	if (bOffHand)
+	{
+		ReadNameProperty({ TEXT("OffHandEquippedSocketName"), TEXT("OffHandEquippedSocket"), TEXT("EquippedSocketName") }, OutEquippedSocket);
+		ReadNameProperty({ TEXT("OffHandHolsterSocketName"), TEXT("OffHandHolsterSocket"), TEXT("HolsterSocketName"), TEXT("StowedSocketName") }, OutHolsterSocket);
+	}
+	else if (IsTwoHandedWeaponItem(Item))
+	{
+		ReadNameProperty({ TEXT("TwoHandEquippedSocketName"), TEXT("TwoHandEquippedSocket"), TEXT("MainHandEquippedSocketName"), TEXT("EquippedSocketName") }, OutEquippedSocket);
+		ReadNameProperty({ TEXT("TwoHandHolsterSocketName"), TEXT("TwoHandHolsterSocket"), TEXT("MainHandHolsterSocketName"), TEXT("HolsterSocketName"), TEXT("StowedSocketName") }, OutHolsterSocket);
+	}
+	else
+	{
+		ReadNameProperty({ TEXT("MainHandEquippedSocketName"), TEXT("MainHandEquippedSocket"), TEXT("EquippedSocketName") }, OutEquippedSocket);
+		ReadNameProperty({ TEXT("MainHandHolsterSocketName"), TEXT("MainHandHolsterSocket"), TEXT("HolsterSocketName"), TEXT("StowedSocketName") }, OutHolsterSocket);
+	}
+
+	return OutEquippedSocket != NAME_None || OutHolsterSocket != NAME_None;
 }
 
 void USpellRiseEquipmentManagerComponent::RefreshEquippedWeaponReference()
@@ -1058,6 +1167,11 @@ void USpellRiseEquipmentManagerComponent::RefreshEquippedWeaponReference()
 	EquippedWeapon = GetOrSpawnWeaponActorForItem(ActiveItem);
 }
 
+void USpellRiseEquipmentManagerComponent::RefreshEquippedOffHandWeaponReference()
+{
+	EquippedOffHandWeapon = ActiveOffHandItem ? GetOrSpawnWeaponActorForItem(ActiveOffHandItem) : nullptr;
+}
+
 void USpellRiseEquipmentManagerComponent::BroadcastWeaponChangedIfNeeded()
 {
 	if (LastBroadcastEquippedWeapon == EquippedWeapon)
@@ -1067,6 +1181,31 @@ void USpellRiseEquipmentManagerComponent::BroadcastWeaponChangedIfNeeded()
 
 	LastBroadcastEquippedWeapon = EquippedWeapon;
 	OnWeaponChanged.Broadcast(EquippedWeapon);
+	BroadcastWeaponLoadoutChangedIfNeeded();
+}
+
+void USpellRiseEquipmentManagerComponent::BroadcastOffHandWeaponChangedIfNeeded()
+{
+	if (LastBroadcastEquippedOffHandWeapon == EquippedOffHandWeapon)
+	{
+		return;
+	}
+
+	LastBroadcastEquippedOffHandWeapon = EquippedOffHandWeapon;
+	OnOffHandWeaponChanged.Broadcast(EquippedOffHandWeapon);
+	BroadcastWeaponLoadoutChangedIfNeeded();
+}
+
+void USpellRiseEquipmentManagerComponent::BroadcastWeaponLoadoutChangedIfNeeded()
+{
+	if (LastBroadcastLoadoutMainHandWeapon == EquippedWeapon && LastBroadcastLoadoutOffHandWeapon == EquippedOffHandWeapon)
+	{
+		return;
+	}
+
+	LastBroadcastLoadoutMainHandWeapon = EquippedWeapon;
+	LastBroadcastLoadoutOffHandWeapon = EquippedOffHandWeapon;
+	OnWeaponLoadoutChanged.Broadcast(EquippedWeapon, EquippedOffHandWeapon);
 }
 
 AActor* USpellRiseEquipmentManagerComponent::ResolveOwnedWeaponActor(UClass* WeaponActorClass) const
@@ -1228,10 +1367,10 @@ void USpellRiseEquipmentManagerComponent::SnapItemWeaponToSocket(UEquippableItem
 	}
 
 	FName EquippedSocket = NAME_None;
-	FName StowedSocket = NAME_None;
-	ResolveWeaponSocketsFromConfig(WeaponConfigPtr, WeaponConfigStruct, EquippedSocket, StowedSocket);
+	FName HolsterSocket = NAME_None;
+	ResolveWeaponSocketsForItem(Item, IsOffHandWeaponItem(Item), EquippedSocket, HolsterSocket);
 
-	const FName TargetSocket = bEquip ? EquippedSocket : StowedSocket;
+	const FName TargetSocket = bEquip ? EquippedSocket : HolsterSocket;
 	if (TargetSocket == NAME_None)
 	{
 		return;
@@ -1269,9 +1408,9 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Local(int32 Qui
 	}
 
 	FName EquippedSocket = NAME_None;
-	FName StowedSocket = NAME_None;
-	ResolveWeaponSocketsFromConfig(WeaponConfigPtr, WeaponConfigStruct, EquippedSocket, StowedSocket);
-	const FName TargetSocket = bEquipped ? EquippedSocket : StowedSocket;
+	FName HolsterSocket = NAME_None;
+	ResolveWeaponSocketsForItem(Item, false, EquippedSocket, HolsterSocket);
+	const FName TargetSocket = bEquipped ? EquippedSocket : HolsterSocket;
 	if (TargetSocket == NAME_None)
 	{
 		return;
@@ -1316,6 +1455,8 @@ void USpellRiseEquipmentManagerComponent::ReconcileReplicatedQuickSlotVisuals()
 		const bool bShouldBeEquipped = (SlotIndex == ActiveQuickWeaponSlotIndex);
 		RefreshQuickSlotVisual_Local(SlotIndex, bShouldBeEquipped);
 	}
+
+	RefreshOffHandVisual_Local(ActiveOffHandItem != nullptr);
 }
 
 void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue)
@@ -1406,6 +1547,177 @@ bool USpellRiseEquipmentManagerComponent::IsWeaponItem(UEquippableItem* Item) co
 	return ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) && WeaponActorClass != nullptr;
 }
 
+bool USpellRiseEquipmentManagerComponent::IsOffHandWeaponItem(UEquippableItem* Item) const
+{
+	if (!IsWeaponItem(Item))
+	{
+		return false;
+	}
+
+	auto ReadBoolMetadata = [](const void* ContainerPtr, const UStruct* StructType, const TArray<FString>& Names) -> bool
+	{
+		if (!ContainerPtr || !StructType)
+		{
+			return false;
+		}
+
+		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		{
+			const FBoolProperty* BoolProperty = CastField<FBoolProperty>(*It);
+			if (!BoolProperty)
+			{
+				continue;
+			}
+
+			for (const FString& Name : Names)
+			{
+				if (It->GetName().Contains(Name, ESearchCase::IgnoreCase) && BoolProperty->GetPropertyValue_InContainer(ContainerPtr))
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	};
+
+	auto ReadTextMetadata = [](const void* ContainerPtr, const UStruct* StructType, const TArray<FString>& Names, const TArray<FString>& ExpectedValues) -> bool
+	{
+		if (!ContainerPtr || !StructType)
+		{
+			return false;
+		}
+
+		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		{
+			const FString PropertyName = It->GetName();
+			bool bNameMatches = false;
+			for (const FString& Name : Names)
+			{
+				if (PropertyName.Contains(Name, ESearchCase::IgnoreCase))
+				{
+					bNameMatches = true;
+					break;
+				}
+			}
+			if (!bNameMatches)
+			{
+				continue;
+			}
+
+			FString Value;
+			if (const FStrProperty* StrProperty = CastField<FStrProperty>(*It))
+			{
+				Value = StrProperty->GetPropertyValue_InContainer(ContainerPtr);
+			}
+			else if (const FNameProperty* NameProperty = CastField<FNameProperty>(*It))
+			{
+				Value = NameProperty->GetPropertyValue_InContainer(ContainerPtr).ToString();
+			}
+			else if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(*It))
+			{
+				const void* ValuePtr = EnumProperty->ContainerPtrToValuePtr<void>(ContainerPtr);
+				const int64 IntValue = EnumProperty->GetUnderlyingProperty()->GetSignedIntPropertyValue(ValuePtr);
+				Value = EnumProperty->GetEnum()->GetNameStringByValue(IntValue);
+			}
+			else if (const FByteProperty* ByteProperty = CastField<FByteProperty>(*It))
+			{
+				const UEnum* Enum = ByteProperty->Enum;
+				const void* ValuePtr = ByteProperty->ContainerPtrToValuePtr<void>(ContainerPtr);
+				const int64 IntValue = ByteProperty->GetUnsignedIntPropertyValue(ValuePtr);
+				Value = Enum ? Enum->GetNameStringByValue(IntValue) : FString::FromInt(static_cast<int32>(IntValue));
+			}
+
+			for (const FString& ExpectedValue : ExpectedValues)
+			{
+				if (Value.Contains(ExpectedValue, ESearchCase::IgnoreCase))
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	};
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct);
+
+	const TArray<FString> OffHandNames = { TEXT("OffHand"), TEXT("SecondaryHand"), TEXT("AllowedHand"), TEXT("WeaponHand"), TEXT("WeaponGrip") };
+	const TArray<FString> OffHandValues = { TEXT("OffHand"), TEXT("Secondary"), TEXT("Shield"), TEXT("OffHandOnly") };
+	if (ReadBoolMetadata(Item, Item->GetClass(), { TEXT("OffHand"), TEXT("OffHandOnly"), TEXT("Shield") }) ||
+		ReadBoolMetadata(WeaponConfigPtr, WeaponConfigStruct, { TEXT("OffHand"), TEXT("OffHandOnly"), TEXT("Shield") }) ||
+		ReadTextMetadata(Item, Item->GetClass(), OffHandNames, OffHandValues) ||
+		ReadTextMetadata(WeaponConfigPtr, WeaponConfigStruct, OffHandNames, OffHandValues))
+	{
+		return true;
+	}
+
+	return ResolveItemSlot(Item) == 9;
+}
+
+bool USpellRiseEquipmentManagerComponent::IsTwoHandedWeaponItem(UEquippableItem* Item) const
+{
+	if (!IsWeaponItem(Item))
+	{
+		return false;
+	}
+
+	auto ReadTwoHandedMetadata = [](const void* ContainerPtr, const UStruct* StructType) -> bool
+	{
+		if (!ContainerPtr || !StructType)
+		{
+			return false;
+		}
+
+		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		{
+			const FString PropertyName = It->GetName();
+			if (const FBoolProperty* BoolProperty = CastField<FBoolProperty>(*It))
+			{
+				if ((PropertyName.Contains(TEXT("TwoHand"), ESearchCase::IgnoreCase) || PropertyName.Contains(TEXT("TwoHanded"), ESearchCase::IgnoreCase)) &&
+					BoolProperty->GetPropertyValue_InContainer(ContainerPtr))
+				{
+					return true;
+				}
+			}
+
+			FString Value;
+			if (const FStrProperty* StrProperty = CastField<FStrProperty>(*It))
+			{
+				Value = StrProperty->GetPropertyValue_InContainer(ContainerPtr);
+			}
+			else if (const FNameProperty* NameProperty = CastField<FNameProperty>(*It))
+			{
+				Value = NameProperty->GetPropertyValue_InContainer(ContainerPtr).ToString();
+			}
+			else if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(*It))
+			{
+				const void* ValuePtr = EnumProperty->ContainerPtrToValuePtr<void>(ContainerPtr);
+				const int64 IntValue = EnumProperty->GetUnderlyingProperty()->GetSignedIntPropertyValue(ValuePtr);
+				Value = EnumProperty->GetEnum()->GetNameStringByValue(IntValue);
+			}
+
+			if ((PropertyName.Contains(TEXT("Grip"), ESearchCase::IgnoreCase) || PropertyName.Contains(TEXT("Hand"), ESearchCase::IgnoreCase)) &&
+				Value.Contains(TEXT("TwoHand"), ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct);
+
+	return ReadTwoHandedMetadata(Item, Item->GetClass()) || ReadTwoHandedMetadata(WeaponConfigPtr, WeaponConfigStruct);
+}
+
 int32 USpellRiseEquipmentManagerComponent::FindQuickSlotByItem(UEquippableItem* Item) const
 {
 	for (int32 Index = 0; Index < QuickWeaponSlots.Num(); ++Index)
@@ -1480,6 +1792,57 @@ bool USpellRiseEquipmentManagerComponent::HandleWeaponEquipIntent(UEquippableIte
 	return bAssigned;
 }
 
+bool USpellRiseEquipmentManagerComponent::HandleOffHandEquipIntent(UEquippableItem* Item)
+{
+	if (!Item || !GetOwner() || !GetOwner()->HasAuthority() || !IsOffHandWeaponItem(Item))
+	{
+		return false;
+	}
+
+	FString ValidationReason;
+	if (!ValidateItemOwnership(Item, ValidationReason))
+	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
+			TEXT("HandleOffHandEquipIntent rejeitado por ownership. Owner=%s Item=%s Reason=%s"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(Item),
+			*ValidationReason);
+		return false;
+	}
+
+	UEquippableItem* ActiveMainHandItem = QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex)
+		? QuickWeaponSlots[ActiveQuickWeaponSlotIndex]
+		: nullptr;
+	if (IsTwoHandedWeaponItem(ActiveMainHandItem))
+	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
+			TEXT("HandleOffHandEquipIntent rejeitado: main hand 2H ativa. Owner=%s OffHand=%s MainHand=%s"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(Item),
+			*GetNameSafe(ActiveMainHandItem));
+		return false;
+	}
+
+	if (ActiveOffHandItem && ActiveOffHandItem != Item)
+	{
+		RemoveOffHandWeapon_Server(false);
+	}
+
+	ActiveOffHandItem = Item;
+	SetNarrativeItemActiveState(Item, true);
+	GetOrSpawnWeaponActorForItem(Item);
+	RefreshOffHandVisual_Server(true);
+	ApplyGrantedAbilitiesForSlot(Item, 241);
+	RefreshEquippedOffHandWeaponReference();
+	BroadcastOffHandWeaponChangedIfNeeded();
+	if (AActor* OwnerActor = GetOwner())
+	{
+		OwnerActor->ForceNetUpdate();
+	}
+	OnQuickWeaponSlotsChanged.Broadcast();
+	return true;
+}
+
 bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippableItem* Item, int32 QuickSlotIndex)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !Item || !IsWeaponItem(Item) || !QuickWeaponSlots.IsValidIndex(QuickSlotIndex))
@@ -1493,6 +1856,16 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 			IsWeaponItem(Item) ? TEXT("true") : TEXT("false"),
 			QuickWeaponSlots.IsValidIndex(QuickSlotIndex) ? TEXT("true") : TEXT("false"));
 		return false;
+	}
+
+	if (IsOffHandWeaponItem(Item))
+	{
+		return HandleOffHandEquipIntent(Item);
+	}
+
+	if (IsTwoHandedWeaponItem(Item) && ActiveOffHandItem)
+	{
+		RemoveOffHandWeapon_Server(false);
 	}
 
 	FString ValidationReason;
@@ -1618,6 +1991,11 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 		return true;
 	}
 
+	if (IsTwoHandedWeaponItem(ItemToActivate) && ActiveOffHandItem)
+	{
+		RemoveOffHandWeapon_Server(false);
+	}
+
 	if (QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex))
 	{
 		if (UEquippableItem* PreviouslyActive = QuickWeaponSlots[ActiveQuickWeaponSlotIndex])
@@ -1684,13 +2062,40 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 		}
 	}
 
+	CleanupOrphanedWeaponActors_Server();
+	RefreshEquippedWeaponReference();
+	BroadcastWeaponChangedIfNeeded();
 	if (AActor* OwnerActor = GetOwner())
 	{
 		OwnerActor->ForceNetUpdate();
 	}
-	CleanupOrphanedWeaponActors_Server();
-	RefreshEquippedWeaponReference();
-	BroadcastWeaponChangedIfNeeded();
+	OnQuickWeaponSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestroyWeaponActor)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !ActiveOffHandItem)
+	{
+		return;
+	}
+
+	UEquippableItem* RemovedItem = ActiveOffHandItem;
+	RefreshOffHandVisual_Server(false);
+	SetNarrativeItemActiveState(RemovedItem, false);
+	RemoveGrantedAbilitiesForSlot(241);
+	ActiveOffHandItem = nullptr;
+
+	if (bDestroyWeaponActor)
+	{
+		DestroyWeaponActorForItem(RemovedItem);
+	}
+
+	RefreshEquippedOffHandWeaponReference();
+	BroadcastOffHandWeaponChangedIfNeeded();
+	if (AActor* OwnerActor = GetOwner())
+	{
+		OwnerActor->ForceNetUpdate();
+	}
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
@@ -2085,6 +2490,64 @@ void USpellRiseEquipmentManagerComponent::DestroyWeaponActorForItem(UEquippableI
 	}
 }
 
+void USpellRiseEquipmentManagerComponent::RefreshOffHandVisual_Local(bool bEquipped)
+{
+	UEquippableItem* Item = ActiveOffHandItem;
+	if (!Item)
+	{
+		return;
+	}
+
+	FName EquippedSocket = NAME_None;
+	FName HolsterSocket = NAME_None;
+	if (!ResolveWeaponSocketsForItem(Item, true, EquippedSocket, HolsterSocket))
+	{
+		return;
+	}
+
+	const FName TargetSocket = bEquipped ? EquippedSocket : HolsterSocket;
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) || !WeaponActorClass)
+	{
+		return;
+	}
+
+	AActor* WeaponActor = ResolveOwnedWeaponActor(WeaponActorClass);
+	if (!AttachMesh || !WeaponActor || TargetSocket == NAME_None)
+	{
+		return;
+	}
+
+	AttachWeaponActorToSocket(WeaponActor, AttachMesh, TargetSocket);
+}
+
+void USpellRiseEquipmentManagerComponent::RefreshOffHandVisual_Server(bool bEquipped)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !ActiveOffHandItem)
+	{
+		return;
+	}
+
+	AActor* WeaponActor = GetOrSpawnWeaponActorForItem(ActiveOffHandItem);
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
+	FName EquippedSocket = NAME_None;
+	FName HolsterSocket = NAME_None;
+	if (!WeaponActor || !AttachMesh || !ResolveWeaponSocketsForItem(ActiveOffHandItem, true, EquippedSocket, HolsterSocket))
+	{
+		return;
+	}
+
+	const FName TargetSocket = bEquipped ? EquippedSocket : HolsterSocket;
+	if (TargetSocket != NAME_None)
+	{
+		AttachWeaponActorToSocket(WeaponActor, AttachMesh, TargetSocket);
+	}
+}
+
 void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Server(int32 QuickSlotIndex, bool bEquipped)
 {
 	if (!QuickWeaponSlots.IsValidIndex(QuickSlotIndex))
@@ -2134,9 +2597,9 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Server(int32 Qu
 	}
 
 	FName EquippedSocket = NAME_None;
-	FName StowedSocket = NAME_None;
-	ResolveWeaponSocketsFromConfig(WeaponConfigPtr, WeaponConfigStruct, EquippedSocket, StowedSocket);
-	const FName TargetSocket = bEquipped ? EquippedSocket : StowedSocket;
+	FName HolsterSocket = NAME_None;
+	ResolveWeaponSocketsForItem(Item, false, EquippedSocket, HolsterSocket);
+	const FName TargetSocket = bEquipped ? EquippedSocket : HolsterSocket;
 	if (TargetSocket == NAME_None)
 	{
 		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
@@ -2209,6 +2672,12 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 		return;
 	}
 
+	if (RemovedEquippableItem == ActiveOffHandItem)
+	{
+		RemoveOffHandWeapon_Server(true);
+		return;
+	}
+
 
 
 	DestroyWeaponActorForItem(RemovedEquippableItem);
@@ -2251,6 +2720,10 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 				break;
 			}
 		}
+		if (MappedItem == ActiveOffHandItem)
+		{
+			bStillInQuickSlots = true;
+		}
 
 		if (!bStillInQuickSlots)
 		{
@@ -2275,6 +2748,10 @@ void USpellRiseEquipmentManagerComponent::OnRep_ActiveQuickSlotIndex()
 {
 	RefreshEquippedWeaponReference();
 	ReconcileReplicatedQuickSlotVisuals();
+	if (!QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex) || !QuickWeaponSlots[ActiveQuickWeaponSlotIndex])
+	{
+		BroadcastWeaponChangedIfNeeded();
+	}
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
@@ -2282,6 +2759,27 @@ void USpellRiseEquipmentManagerComponent::OnRep_EquippedWeapon()
 {
 	ReconcileReplicatedQuickSlotVisuals();
 	BroadcastWeaponChangedIfNeeded();
+	OnQuickWeaponSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::OnRep_ActiveOffHandItem()
+{
+	if (!ActiveOffHandItem)
+	{
+		EquippedOffHandWeapon = nullptr;
+	}
+	RefreshOffHandVisual_Local(ActiveOffHandItem != nullptr);
+	if (!ActiveOffHandItem)
+	{
+		BroadcastOffHandWeaponChangedIfNeeded();
+	}
+	OnQuickWeaponSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::OnRep_EquippedOffHandWeapon()
+{
+	RefreshOffHandVisual_Local(ActiveOffHandItem != nullptr);
+	BroadcastOffHandWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
 }
 
@@ -2320,6 +2818,10 @@ void USpellRiseEquipmentManagerComponent::CleanupOrphanedWeaponActors_Server()
 				bItemStillInQuickSlots = true;
 				break;
 			}
+		}
+		if (MappedItem == ActiveOffHandItem)
+		{
+			bItemStillInQuickSlots = true;
 		}
 
 		if (!MappedItem || !bItemStillInQuickSlots)

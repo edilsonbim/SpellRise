@@ -687,16 +687,28 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		{
 			SetDamage(0.f);
 		}
+		else if (Data.EvaluatedData.Attribute == GetDamageWasCriticalAttribute())
+		{
+			SetDamageWasCritical(0.f);
+		}
 		return;
 	}
 
 	const FGameplayAttribute& Attr = Data.EvaluatedData.Attribute;
 
+	if (Attr == GetDamageWasCriticalAttribute())
+	{
+		SetDamageWasCritical(FMath::Max(0.f, GetDamageWasCritical()));
+		return;
+	}
+
 	if (Attr == GetDamageAttribute())
 	{
 		++GResourceCombatRuntimeCounters.DamageExecAttempts;
 		const float TotalDamage = GetDamage();
+		const bool bWasCritical = GetDamageWasCritical() > 0.f;
 		SetDamage(0.f);
+		SetDamageWasCritical(0.f);
 
 		if (TotalDamage <= 0.f)
 		{
@@ -792,7 +804,7 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 				TotalDamage,
 				TargetCharacter,
 				DamageTypeTag,
-				false
+				bWasCritical
 			);
 
 		}
@@ -801,6 +813,7 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		{
 			FGameplayCueParameters CueParams;
 			CueParams.RawMagnitude = TotalDamage;
+			CueParams.Location = TargetCharacter ? TargetCharacter->GetDamageNumberWorldLocation() : FVector::ZeroVector;
 			TargetASC->ExecuteGameplayCue(SpellRiseTags::Cue_DamageNumber(), CueParams);
 		}
 

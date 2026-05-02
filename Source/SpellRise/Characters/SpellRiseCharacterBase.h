@@ -133,6 +133,9 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MultiHandleDeath();
 
+	UFUNCTION(NetMulticast, Reliable)
+	void MultiHandleCorpseDespawn();
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Catalyst")
 	UCatalystAttributeSet* GetCatalystAttributeSet() const { return CatalystAttributeSet; }
 
@@ -165,6 +168,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
 	USkeletalMeshComponent* GetVisualMeshComponent() const;
+
+	FVector GetDamageNumberWorldLocation() const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
 	USkeletalMeshComponent* GetEquipmentAttachMeshComponent() const;
@@ -296,6 +301,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float RespawnDelaySeconds = 30.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Corpse", meta=(ClampMin="0.0"))
+	float CorpseDespawnDelaySeconds = 5.f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float DeathMessageHideLeadTimeSeconds = 1.0f;
 
@@ -330,6 +338,7 @@ public:
 	TObjectPtr<class USpellRiseDeathScreenWidget> LocalDeathScreenWidget = nullptr;
 
 	FTimerHandle RespawnTimerHandle;
+	FTimerHandle CorpseDespawnTimerHandle;
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
 	FTimerHandle ASCInitializationRetryTimerHandle;
@@ -365,6 +374,8 @@ protected:
 	void SetCharacterInputEnabled(bool bEnabled);
 	void ScheduleRespawn_Server();
 	void ExecuteRespawn_Server();
+	void ScheduleCorpseDespawn_Server();
+	void ExecuteCorpseDespawn_Server();
 	void RefreshCombatLockFromDamage_Server(float DamageDelta);
 	bool IsCombatLockActive_Server(double* OutSecondsRemaining = nullptr) const;
 	void StopAllCharacterAudio(bool bIncludeAttachedActors);
