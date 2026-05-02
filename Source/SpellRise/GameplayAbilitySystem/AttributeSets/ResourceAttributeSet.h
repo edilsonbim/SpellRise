@@ -69,6 +69,10 @@ public:
 	FGameplayAttributeData Damage;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UResourceAttributeSet, Damage);
 
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Meta")
+	FGameplayAttributeData DamageWasCritical;
+	SPELLRISE_ATTRIBUTE_ACCESSORS(UResourceAttributeSet, DamageWasCritical);
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
 	TSubclassOf<UGameplayEffect> GE_Catalyst_AddCharge;
 

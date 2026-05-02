@@ -24,6 +24,8 @@ struct FReplicationFlags;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnQuickWeaponSlotsChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpellRiseWeaponChanged, AActor*, EquippedWeapon);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpellRiseOffHandWeaponChanged, AActor*, EquippedOffHandWeapon);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSpellRiseWeaponLoadoutChanged, AActor*, EquippedMainHandWeapon, AActor*, EquippedOffHandWeapon);
 
 USTRUCT()
 struct FSpellRiseAppliedEquipmentEntry : public FFastArraySerializerItem
@@ -116,6 +118,9 @@ public:
 	UEquippableItem* GetQuickWeaponItemByIndex(int32 QuickSlotIndex) const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	UEquippableItem* GetActiveOffHandItem() const { return ActiveOffHandItem; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	int32 GetActiveQuickWeaponSlotIndex() const { return ActiveQuickWeaponSlotIndex; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
@@ -124,11 +129,17 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	AActor* GetEquippedWeapon() const { return EquippedWeapon; }
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	AActor* GetEquippedOffHandWeapon() const { return EquippedOffHandWeapon; }
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment", meta=(DeterminesOutputType="ExpectedClass"))
 	AActor* GetEquippedWeaponTyped(TSubclassOf<AActor> ExpectedClass) const;
 
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon, BlueprintReadOnly, Category="SpellRise|Equipment")
 	TObjectPtr<AActor> EquippedWeapon = nullptr;
+
+	UPROPERTY(ReplicatedUsing=OnRep_EquippedOffHandWeapon, BlueprintReadOnly, Category="SpellRise|Equipment")
+	TObjectPtr<AActor> EquippedOffHandWeapon = nullptr;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	bool GetActiveEquippedWeaponSpawnPointLocation(FVector& OutLocation) const;
@@ -141,6 +152,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Weapon Changed"))
 	FOnSpellRiseWeaponChanged OnWeaponChanged;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Off Hand Weapon Changed"))
+	FOnSpellRiseOffHandWeaponChanged OnOffHandWeaponChanged;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Weapon Loadout Changed"))
+	FOnSpellRiseWeaponLoadoutChanged OnWeaponLoadoutChanged;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	bool EquipItem(UEquippableItem* Item);
@@ -179,8 +196,12 @@ private:
 	bool ExtractAbilitiesToGrantFromItem(UEquippableItem* Item, TArray<struct FSpellRiseGrantedAbility>& OutAbilities) const;
 	bool ResolveWeaponActorClassFromItem(UEquippableItem* Item, UClass*& OutWeaponActorClass, const void*& OutWeaponConfigPtr, const UStruct*& OutWeaponConfigStruct) const;
 	bool ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const;
+	bool ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutHolsterSocket) const;
 	void RefreshEquippedWeaponReference();
+	void RefreshEquippedOffHandWeaponReference();
 	void BroadcastWeaponChangedIfNeeded();
+	void BroadcastOffHandWeaponChangedIfNeeded();
+	void BroadcastWeaponLoadoutChangedIfNeeded();
 	AActor* ResolveOwnedWeaponActor(UClass* WeaponActorClass) const;
 	USceneComponent* ResolveWeaponSpawnPointComponent(AActor* WeaponActor) const;
 	USkeletalMeshComponent* ResolveEquipmentAttachMesh() const;
@@ -192,17 +213,23 @@ private:
 	void ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue);
 	void RemoveGrantedAbilitiesForSlot(uint8 SlotValue);
 	bool IsWeaponItem(UEquippableItem* Item) const;
+	bool IsOffHandWeaponItem(UEquippableItem* Item) const;
+	bool IsTwoHandedWeaponItem(UEquippableItem* Item) const;
 	int32 FindQuickSlotByItem(UEquippableItem* Item) const;
 	int32 FindFirstFreeQuickSlot() const;
 	bool HandleWeaponEquipIntent(UEquippableItem* Item);
+	bool HandleOffHandEquipIntent(UEquippableItem* Item);
 	bool ActivateQuickWeaponSlot_Server(int32 QuickSlotIndex);
 	bool AssignQuickWeaponSlot_Server(UEquippableItem* Item, int32 QuickSlotIndex);
 	void RemoveQuickWeaponSlot_Server(int32 QuickSlotIndex, bool bDestroyWeaponActor);
+	void RemoveOffHandWeapon_Server(bool bDestroyWeaponActor);
 	bool DropItem_Server(UNarrativeItem* Item, int32 QuantityToDrop);
 	bool SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation);
 	AActor* GetOrSpawnWeaponActorForItem(UEquippableItem* Item);
 	void DestroyWeaponActorForItem(UEquippableItem* Item);
 	void RefreshQuickSlotVisual_Server(int32 QuickSlotIndex, bool bEquipped);
+	void RefreshOffHandVisual_Server(bool bEquipped);
+	void RefreshOffHandVisual_Local(bool bEquipped);
 	void SetNarrativeItemActiveState(UEquippableItem* Item, bool bShouldBeActive);
 	void CleanupOrphanedWeaponActors_Server();
 	void BindInventoryRemovalHook();
@@ -214,6 +241,10 @@ private:
 	void OnRep_ActiveQuickSlotIndex();
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
+	UFUNCTION()
+	void OnRep_ActiveOffHandItem();
+	UFUNCTION()
+	void OnRep_EquippedOffHandWeapon();
 
 	FSpellRiseAppliedEquipmentEntry* AddEntry(UEquippableItem* Item, uint8 SlotValue);
 	bool RemoveEntryBySlot(uint8 SlotValue);
@@ -231,11 +262,23 @@ private:
 	UPROPERTY(ReplicatedUsing=OnRep_ActiveQuickSlotIndex)
 	int32 ActiveQuickWeaponSlotIndex = INDEX_NONE;
 
+	UPROPERTY(ReplicatedUsing=OnRep_ActiveOffHandItem)
+	TObjectPtr<UEquippableItem> ActiveOffHandItem = nullptr;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UNarrativeInventoryComponent> CachedInventoryComponent = nullptr;
 
 	UPROPERTY(Transient)
 	TObjectPtr<AActor> LastBroadcastEquippedWeapon = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> LastBroadcastEquippedOffHandWeapon = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> LastBroadcastLoadoutMainHandWeapon = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> LastBroadcastLoadoutOffHandWeapon = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Drop")
 	TSoftClassPtr<AActor> DropPickupActorClass;

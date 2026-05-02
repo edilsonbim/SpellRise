@@ -643,9 +643,9 @@ void UExecCalc_Damage::Execute_Implementation(
 		}
 	}
 
+	bool bCrit = false;
 	if (!bTrueDamage && FinalDamage > 0.f)
 	{
-		bool bCrit = false;
 		const float CritChancePct = CritChance01 * 100.f;
 		bCrit = (ForceCrit > 0.f) ? true : SR_RollChancePct(CritChancePct);
 
@@ -659,6 +659,15 @@ void UExecCalc_Damage::Execute_Implementation(
 	if (FinalDamage <= 0.f)
 	{
 		return;
+	}
+
+	if (bCrit)
+	{
+		OutExecutionOutput.AddOutputModifier(
+			FGameplayModifierEvaluatedData(
+				UResourceAttributeSet::GetDamageWasCriticalAttribute(),
+				EGameplayModOp::Additive,
+				1.f));
 	}
 
 	OutExecutionOutput.AddOutputModifier(
