@@ -80,6 +80,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bEndChannelOnInputRelease = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Activation")
+	bool AutoActivateWhenGranted = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input|Selection")
 	bool bKeepSelectedAfterAbilityEnds = false;
@@ -154,6 +157,10 @@ public:
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
+
+	virtual void OnGiveAbility(
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilitySpec& Spec) override;
 
 	virtual void InputPressed(
 		const FGameplayAbilitySpecHandle Handle,

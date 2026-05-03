@@ -1662,20 +1662,19 @@ void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const
 	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(EventReceiverActor, SanitizedEventData.EventTag, SanitizedEventData);
 }
 
-void ASpellRiseCharacterBase::MultiSendGameplayEventToActor_Implementation(AActor* TargetActor, const FGameplayEventData& EventData)
+void ASpellRiseCharacterBase::MultiSendGameplayEventToActor_Implementation(AActor* TargetActor, FGameplayEventData EventData)
 {
 	if (!TargetActor || !EventData.EventTag.IsValid())
 	{
 		return;
 	}
 
-	FGameplayEventData SanitizedEventData = EventData;
-	if (!FMath::IsFinite(SanitizedEventData.EventMagnitude))
+	if (!FMath::IsFinite(EventData.EventMagnitude))
 	{
-		SanitizedEventData.EventMagnitude = 0.f;
+		EventData.EventMagnitude = 0.f;
 	}
 
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, SanitizedEventData.EventTag, SanitizedEventData);
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(TargetActor, EventData.EventTag, EventData);
 }
 
 bool ASpellRiseCharacterBase::IsAllowedServerEventTag(const FGameplayTag& EventTag) const

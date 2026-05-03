@@ -117,7 +117,7 @@ public:
 	void ServerSendGameplayEventToSelf(const FGameplayEventData& EventData);
 
 	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|GAS")
-	void MultiSendGameplayEventToActor(AActor* TargetActor, const FGameplayEventData& EventData);
+	void MultiSendGameplayEventToActor(AActor* TargetActor, FGameplayEventData EventData);
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
 	bool IsDead() const;
