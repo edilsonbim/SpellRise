@@ -6,6 +6,11 @@ Padronizar execução técnica em fluxo AAA enxuto para build, revisão de autho
 ## Política fixa de engine
 - Toda build e toda validação devem usar apenas a Unreal Source em `C:\UnrealSource\UnrealEngine`.
 - Não usar engine do launcher para build, smoke ou validação final.
+- Usar `Build.bat` da Unreal Source não significa rebuildar a engine; o alvo deve ser sempre do projeto (`SpellRiseEditor`, `SpellRiseServer` ou `SpellRiseClient`).
+- Não rodar build completo se `UnrealEditor.exe` ou `LiveCodingConsole.exe` estiverem ativos. Fechar o editor ou desativar Live Coding antes da validação.
+- Para mudança de header com `UCLASS`, `UFUNCTION` ou `UPROPERTY`, rodar validação curta de UHT/target do projeto e reportar bloqueio se Live Coding impedir a compilação.
+- Escolher o target pelo escopo: `SpellRiseEditor` para UHT/editor, `SpellRiseServer` para Dedicated Server e `SpellRiseClient` apenas quando houver impacto específico no cliente.
+- Não executar `Clean`, apagar `Binaries`, `Intermediate`, `DerivedDataCache` ou disparar rebuild da engine sem pedido explícito.
 
 ## Pipeline padrão
 1. **Build**

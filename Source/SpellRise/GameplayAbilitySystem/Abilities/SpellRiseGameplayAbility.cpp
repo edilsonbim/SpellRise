@@ -201,6 +201,40 @@ void USpellRiseGameplayAbility::ActivateAbility(
 	}
 }
 
+void USpellRiseGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
+{
+	Super::OnGiveAbility(ActorInfo, Spec);
+
+	if (!AutoActivateWhenGranted || Spec.IsActive() || !ActorInfo)
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
+	if (!ASC)
+	{
+		return;
+	}
+
+	const EGameplayAbilityNetExecutionPolicy::Type ExecutionPolicy = GetNetExecutionPolicy();
+	const bool bCanActivateFromAuthority =
+		ActorInfo->IsNetAuthority() &&
+		(ExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerOnly ||
+		 ExecutionPolicy == EGameplayAbilityNetExecutionPolicy::ServerInitiated ||
+		 ExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalPredicted);
+
+	const bool bCanActivateLocally =
+		ActorInfo->IsLocallyControlled() &&
+		ExecutionPolicy == EGameplayAbilityNetExecutionPolicy::LocalOnly;
+
+	if (!bCanActivateFromAuthority && !bCanActivateLocally)
+	{
+		return;
+	}
+
+	ASC->TryActivateAbility(Spec.Handle);
+}
+
 void USpellRiseGameplayAbility::EndAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
