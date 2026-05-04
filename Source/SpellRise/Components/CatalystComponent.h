@@ -76,4 +76,7 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<ASpellRiseCharacterBase> OwnerCharacter;
+
+    UPROPERTY(Transient)
+    TObjectPtr<AActor> OwnerAbilityActor;
 };

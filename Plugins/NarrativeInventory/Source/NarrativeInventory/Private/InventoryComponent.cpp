@@ -233,7 +233,10 @@ int32 UNarrativeInventoryComponent::ConsumeItem(class UNarrativeItem* Item, cons
 	{
 		if (GetOwnerRole() < ROLE_Authority)
 		{
+			const int32 PredictedRemoveQuantity = FMath::Min(Quantity, Item->GetQuantity());
 			ServerConsumeItem(Item, Quantity);
+			OnItemRemoved.Broadcast(Item, PredictedRemoveQuantity);
+			OnInventoryUpdated.Broadcast();
 			return 0;
 		}
 
@@ -270,7 +273,34 @@ int32 UNarrativeInventoryComponent::ConsumeItemsByClass(TSoftClassPtr<class UNar
 
 	if (GetOwnerRole() < ROLE_Authority)
 	{
+		UClass* PredictedItemClass = ItemClass.Get();
+		if (!PredictedItemClass)
+		{
+			PredictedItemClass = ItemClass.LoadSynchronous();
+		}
+
+		if (PredictedItemClass)
+		{
+			int32 LeftToPredict = Quantity;
+			const TArray<UNarrativeItem*> MatchingStacks = FindItemsOfClass(PredictedItemClass, bCheckVisibility);
+			for (UNarrativeItem* Stack : MatchingStacks)
+			{
+				if (!Stack || LeftToPredict <= 0)
+				{
+					continue;
+				}
+
+				const int32 PredictedRemoveQuantity = FMath::Min(LeftToPredict, Stack->GetQuantity());
+				if (PredictedRemoveQuantity > 0)
+				{
+					OnItemRemoved.Broadcast(Stack, PredictedRemoveQuantity);
+					LeftToPredict -= PredictedRemoveQuantity;
+				}
+			}
+		}
+
 		ServerConsumeItemsByClass(ItemClass, Quantity, bCheckVisibility);
+		OnInventoryUpdated.Broadcast();
 		return 0;
 	}
 
@@ -311,7 +341,10 @@ bool UNarrativeInventoryComponent::RemoveItem(class UNarrativeItem* Item)
 	{
 		if (GetOwnerRole() < ROLE_Authority)
 		{
+			const int32 PredictedRemoveQuantity = Item->GetQuantity();
 			ServerRemoveItem(Item);
+			OnItemRemoved.Broadcast(Item, PredictedRemoveQuantity);
+			OnInventoryUpdated.Broadcast();
 			return false;
 		}
 
@@ -1053,6 +1086,10 @@ void UNarrativeInventoryComponent::StopLooting()
 {
 	if (GetOwnerRole() < ROLE_Authority)
 	{
+		if (LootSource)
+		{
+			OnEndLooting.Broadcast(LootSource);
+		}
 		ServerStopLooting();
 	}
 
@@ -1082,6 +1119,20 @@ bool UNarrativeInventoryComponent::RequestLootItem(class UNarrativeItem* ItemToL
 		{
 			if (GetOwnerRole() < ROLE_Authority)
 			{
+				const int32 PredictedAddQuantity = FMath::Min(Quantity, ItemToLoot->GetQuantity());
+				if (PredictedAddQuantity > 0)
+				{
+					FItemAddResult PredictedAddResult = FItemAddResult::AddedSome({ ItemToLoot }, Quantity, PredictedAddQuantity, FText::GetEmpty());
+					PredictedAddResult.ItemClass = ItemToLoot->GetClass();
+					OnItemAdded.Broadcast(PredictedAddResult);
+					OnInventoryUpdated.Broadcast();
+
+					if (LootSource->bIsVendor)
+					{
+						const int32 OldCurrency = GetCurrency();
+						OnCurrencyChanged.Broadcast(OldCurrency, FMath::Max(0, OldCurrency - LootSource->GetSellPrice(ItemToLoot->GetClass(), PredictedAddQuantity)));
+					}
+				}
 				ServerRequestLootItem(ItemToLoot, Quantity);
 				return true;
 			}
@@ -1123,6 +1174,18 @@ bool UNarrativeInventoryComponent::RequestStoreItem(class UNarrativeItem* ItemTo
 		{
 			if (GetOwnerRole() < ROLE_Authority)
 			{
+				const int32 PredictedRemoveQuantity = FMath::Min(Quantity, ItemToStore->GetQuantity());
+				if (PredictedRemoveQuantity > 0)
+				{
+					OnItemRemoved.Broadcast(ItemToStore, PredictedRemoveQuantity);
+					OnInventoryUpdated.Broadcast();
+
+					if (LootSource->bIsVendor)
+					{
+						const int32 OldCurrency = GetCurrency();
+						OnCurrencyChanged.Broadcast(OldCurrency, OldCurrency + LootSource->GetBuyPrice(ItemToStore->GetClass(), PredictedRemoveQuantity));
+					}
+				}
 				ServerRequestStoreItem(ItemToStore, Quantity);
 				return true;
 			}

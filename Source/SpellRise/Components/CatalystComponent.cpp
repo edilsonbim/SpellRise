@@ -7,6 +7,7 @@
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
+#include "AbilitySystemInterface.h"
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 
@@ -47,18 +48,17 @@ void UCatalystComponent::BeginPlay()
 
 bool UCatalystComponent::ResolveAbilitySystemComponent()
 {
-    if (!OwnerCharacter)
+    AActor* OwnerActor = GetOwner();
+    OwnerAbilityActor = OwnerActor;
+    OwnerCharacter = Cast<ASpellRiseCharacterBase>(OwnerActor);
+
+    UAbilitySystemComponent* GenericASC = nullptr;
+    if (IAbilitySystemInterface* AbilityOwner = Cast<IAbilitySystemInterface>(OwnerActor))
     {
-        OwnerCharacter = Cast<ASpellRiseCharacterBase>(GetOwner());
+        GenericASC = AbilityOwner->GetAbilitySystemComponent();
     }
 
-    if (!OwnerCharacter)
-    {
-        return false;
-    }
-
-    USpellRiseAbilitySystemComponent* ResolvedASC =
-        Cast<USpellRiseAbilitySystemComponent>(OwnerCharacter->GetAbilitySystemComponent());
+    USpellRiseAbilitySystemComponent* ResolvedASC = Cast<USpellRiseAbilitySystemComponent>(GenericASC);
 
     if (AbilitySystemComponent != ResolvedASC)
     {
@@ -159,7 +159,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnValidHit(AActor* TargetActor)
     AActor* SourceActor = AbilitySystemComponent->GetAvatarActor();
     if (!SourceActor)
     {
-        SourceActor = OwnerCharacter ? Cast<AActor>(OwnerCharacter) : GetOwner();
+        SourceActor = OwnerAbilityActor ? OwnerAbilityActor.Get() : GetOwner();
     }
 
     if (!SourceActor || !TargetActor || TargetActor == SourceActor)
@@ -219,7 +219,7 @@ bool UCatalystComponent::TryAddCatalystCharge_OnDamageTaken(AActor* InstigatorAc
     AActor* VictimActor = AbilitySystemComponent->GetAvatarActor();
     if (!VictimActor)
     {
-        VictimActor = OwnerCharacter ? Cast<AActor>(OwnerCharacter) : GetOwner();
+        VictimActor = OwnerAbilityActor ? OwnerAbilityActor.Get() : GetOwner();
     }
 
     if (!VictimActor)
