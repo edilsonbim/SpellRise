@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "ActiveGameplayEffectHandle.h"
 #include "GameplayAbilitySpec.h"
+#include "GameplayTagContainer.h"
 #include "HAL/Platform.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "SpellRiseEquipmentManagerComponent.generated.h"
@@ -212,6 +214,8 @@ private:
 	void ReconcileReplicatedQuickSlotVisuals();
 	void ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue);
 	void RemoveGrantedAbilitiesForSlot(uint8 SlotValue);
+	bool ExtractGrantedEffectsFromItem(UEquippableItem* Item, TArray<TSubclassOf<class UGameplayEffect>>& OutEffects) const;
+	bool ExtractSetByCallerMagnitudesFromItem(UEquippableItem* Item, TMap<FGameplayTag, float>& OutMagnitudes) const;
 	bool IsWeaponItem(UEquippableItem* Item) const;
 	bool IsOffHandWeaponItem(UEquippableItem* Item) const;
 	bool IsTwoHandedWeaponItem(UEquippableItem* Item) const;
@@ -254,6 +258,7 @@ private:
 	FSpellRiseEquipmentList EquipmentList;
 
 	TMap<uint8, TArray<FGameplayAbilitySpecHandle>> GrantedAbilityHandlesBySlot;
+	TMap<uint8, TArray<FActiveGameplayEffectHandle>> GrantedEffectHandlesBySlot;
 	TMap<TObjectPtr<UEquippableItem>, TObjectPtr<AActor>> SpawnedWeaponActorsByItem;
 
 	UPROPERTY(ReplicatedUsing=OnRep_QuickWeaponSlots)

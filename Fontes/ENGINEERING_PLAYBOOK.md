@@ -6,7 +6,11 @@ Padronizar execução técnica em fluxo AAA enxuto para build, revisão de autho
 ## Política fixa de engine
 - Toda build e toda validação devem usar apenas a Unreal Source em `C:\UnrealSource\UnrealEngine`.
 - Não usar engine do launcher para build, smoke ou validação final.
+- Quando o usuário pedir build sem especificar outro target, rodar somente o target `SpellRiseEditor Win64 Development` do projeto.
 - Usar `Build.bat` da Unreal Source não significa rebuildar a engine; o alvo deve ser sempre do projeto (`SpellRiseEditor`, `SpellRiseServer` ou `SpellRiseClient`).
+- Não usar `MSBuild`, `SpellRise.sln`, `Intermediate/ProjectFiles/SpellRise.vcxproj` ou build acionado por IDE como validação do agente, porque isso pode disparar fluxo de projeto gerado e compilar targets indesejados.
+- O comando padrão de build do editor é `C:\UnrealSource\UnrealEngine\Engine\Build\BatchFiles\Build.bat SpellRiseEditor Win64 Development "C:\Users\biM\Documents\Unreal Projects\SpellRise\SpellRise.uproject" -WaitMutex -NoHotReloadFromIDE`.
+- Não adicionar target manual de `ShaderCompileWorker` ao comando de build do agente.
 - Não rodar build completo se `UnrealEditor.exe` ou `LiveCodingConsole.exe` estiverem ativos. Fechar o editor ou desativar Live Coding antes da validação.
 - Para mudança de header com `UCLASS`, `UFUNCTION` ou `UPROPERTY`, rodar validação curta de UHT/target do projeto e reportar bloqueio se Live Coding impedir a compilação.
 - Escolher o target pelo escopo: `SpellRiseEditor` para UHT/editor, `SpellRiseServer` para Dedicated Server e `SpellRiseClient` apenas quando houver impacto específico no cliente.
