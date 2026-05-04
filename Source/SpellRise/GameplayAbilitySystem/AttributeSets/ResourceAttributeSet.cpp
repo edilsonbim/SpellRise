@@ -15,18 +15,13 @@
 #include "SpellRise/Core/SpellRiseGameState.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Characters/SpellRiseEnemyCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseResourceRuntime, Log, All);
 
 namespace SpellRiseTags
 {
-	inline const FGameplayTag& Cue_DamageNumber()
-	{
-		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Cue.DamageNumber"), false);
-		return Tag;
-	}
-
 	inline const FGameplayTag& Data_StabilityScalar()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.StabilityScalar"), false);
@@ -122,6 +117,15 @@ static FString ResolveCombatDisplayName(const AActor* Actor)
 	if (!Actor)
 	{
 		return TEXT("desconhecido");
+	}
+
+	if (const ASpellRiseEnemyCharacterBase* Enemy = Cast<ASpellRiseEnemyCharacterBase>(Actor))
+	{
+		const FString EnemyName = Enemy->GetEnemyDisplayName().ToString().TrimStartAndEnd();
+		if (!EnemyName.IsEmpty())
+		{
+			return EnemyName;
+		}
 	}
 
 	const APawn* Pawn = Cast<APawn>(Actor);
@@ -273,7 +277,9 @@ static FString ResolveDamageTypeLabel(const FGameplayTag& DamageTypeTag)
 
 static void SendCombatLogMessages(
 	ASpellRiseCharacterBase* SourceCharacter,
+	AActor* SourceActor,
 	ASpellRiseCharacterBase* TargetCharacter,
+	AActor* TargetActor,
 	float Damage,
 	const FGameplayTag& DamageTypeTag,
 	bool bTargetDied)
@@ -295,8 +301,8 @@ static void SendCombatLogMessages(
 		return;
 	}
 
-	const FString SourceName = ResolveCombatSourceName(SourceCharacter, TargetCharacter, DamageTypeTag);
-	const FString TargetName = ResolveCombatDisplayName(TargetCharacter);
+	const FString SourceName = ResolveCombatSourceName(SourceActor ? SourceActor : SourceCharacter, TargetActor ? TargetActor : TargetCharacter, DamageTypeTag);
+	const FString TargetName = ResolveCombatDisplayName(TargetActor ? TargetActor : TargetCharacter);
 	const FString DamageTypeLabel = ResolveDamageTypeLabel(DamageTypeTag);
 	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
 	UWorld* World = TargetCharacter ? TargetCharacter->GetWorld() : nullptr;
@@ -750,7 +756,22 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			SourceCharacter = Cast<ASpellRiseCharacterBase>(Ctx.GetOriginalInstigator());
 		}
 
+		ASpellRiseEnemyCharacterBase* SourceEnemy = nullptr;
+		if (!SourceCharacter)
+		{
+			SourceEnemy = Cast<ASpellRiseEnemyCharacterBase>(InstigatorActor);
+			if (!SourceEnemy && Ctx.GetEffectCauser())
+			{
+				SourceEnemy = Cast<ASpellRiseEnemyCharacterBase>(Ctx.GetEffectCauser()->GetInstigator());
+			}
+			if (!SourceEnemy && Ctx.GetOriginalInstigator())
+			{
+				SourceEnemy = Cast<ASpellRiseEnemyCharacterBase>(Ctx.GetOriginalInstigator());
+			}
+		}
+
 		ASpellRiseCharacterBase* TargetCharacter = Cast<ASpellRiseCharacterBase>(TargetASC->GetAvatarActor());
+		ASpellRiseEnemyCharacterBase* TargetEnemy = TargetCharacter ? nullptr : Cast<ASpellRiseEnemyCharacterBase>(TargetASC->GetAvatarActor());
 		const FGameplayTag DamageTypeTag = ResolveDamageTypeTag(Data.EffectSpec);
 		const bool bTargetDied = (GetHealth() <= KINDA_SMALL_NUMBER);
 		++GResourceCombatRuntimeCounters.DamageApplied;
@@ -764,7 +785,11 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 
 			TargetCharacter->MultiPlayHitReactionMontage(1.0f);
 		}
-		SendCombatLogMessages(SourceCharacter, TargetCharacter, TotalDamage, DamageTypeTag, bTargetDied);
+		else if (TargetEnemy && !bTargetDied)
+		{
+			TargetEnemy->MultiPlayHitReactionMontage(1.0f);
+		}
+		SendCombatLogMessages(SourceCharacter, InstigatorActor, TargetCharacter, TargetASC->GetAvatarActor(), TotalDamage, DamageTypeTag, bTargetDied);
 
 		const float CatalystChargeAmount = TotalDamage * CatalystScalar;
 		if (GE_Catalyst_AddCharge)
@@ -788,12 +813,26 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 					TargetCatalyst->TryAddCatalystCharge_OnDamageTaken(SourceCharacter);
 				}
 			}
+			else if (TargetEnemy)
+			{
+				if (UCatalystComponent* TargetCatalyst = TargetEnemy->GetCatalystComponent())
+				{
+					TargetCatalyst->TryAddCatalystCharge_OnDamageTaken(SourceCharacter ? Cast<AActor>(SourceCharacter) : Cast<AActor>(SourceEnemy));
+				}
+			}
 
 			if (SourceCharacter && SourceCharacter != TargetCharacter)
 			{
 				if (UCatalystComponent* SourceCatalyst = SourceCharacter->GetCatalystComponent())
 				{
 					SourceCatalyst->TryAddCatalystCharge_OnValidHit(TargetCharacter);
+				}
+			}
+			else if (SourceEnemy && SourceEnemy != TargetEnemy)
+			{
+				if (UCatalystComponent* SourceCatalyst = SourceEnemy->GetCatalystComponent())
+				{
+					SourceCatalyst->TryAddCatalystCharge_OnValidHit(TargetCharacter ? Cast<AActor>(TargetCharacter) : Cast<AActor>(TargetEnemy));
 				}
 			}
 		}
@@ -808,13 +847,14 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			);
 
 		}
-
-		if (SpellRiseTags::Cue_DamageNumber().IsValid())
+		else if (TargetEnemy)
 		{
-			FGameplayCueParameters CueParams;
-			CueParams.RawMagnitude = TotalDamage;
-			CueParams.Location = TargetCharacter ? TargetCharacter->GetDamageNumberWorldLocation() : FVector::ZeroVector;
-			TargetASC->ExecuteGameplayCue(SpellRiseTags::Cue_DamageNumber(), CueParams);
+			TargetEnemy->MultiShowDamagePop(
+				TotalDamage,
+				TargetEnemy,
+				DamageTypeTag,
+				bWasCritical
+			);
 		}
 
 		return;

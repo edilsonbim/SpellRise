@@ -77,7 +77,7 @@ public:
 //Called when the inventory is changed and the UI needs an update. 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
 
-/**Called on server when an item is added to this inventory*/
+/**Called when an item is added to this inventory. Server authoritative; client paths may broadcast locally for predicted UX. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnItemAdded, const FItemAddResult&, AddResult);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnItemRemoved, class UNarrativeItem*, Item, const int32, Amount);
 
@@ -353,15 +353,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnInventoryUpdated OnInventoryUpdated;
 
-	//Delegate for an item being added. Currently only called server side.
+	//Delegate for an item being added. Server authoritative; client paths may broadcast locally for predicted UX.
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnItemAdded OnItemAdded;
 
-	//Delegate for an item being removed. Called on server and client 
+	//Delegate for an item being removed. Server authoritative; client paths may broadcast locally for predicted UX.
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnItemRemoved OnItemRemoved;
 		
-	//Delegate for an item being Used. Currently only called server side.
+	//Delegate for an item being used. Server authoritative; client paths may broadcast locally for predicted UX.
 	UPROPERTY(BlueprintAssignable, Category = "Inventory")
 	FOnItemUsed OnItemUsed;
 

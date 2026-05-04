@@ -50,13 +50,14 @@ namespace
 		const FVector& TraceOriginLocation,
 		const FVector& FallbackLocation)
 	{
+		const FVector AdjustedFallbackLocation = FallbackLocation + FVector(0.f, 0.f, 12.f);
 		if (!World)
 		{
-			return FallbackLocation;
+			return AdjustedFallbackLocation;
 		}
 
-		const FVector TraceStart = TraceOriginLocation + FVector(0.f, 0.f, 80.f);
-		const FVector TraceEnd = TraceStart - FVector(0.f, 0.f, 3000.f);
+		const FVector TraceStart = TraceOriginLocation + FVector(0.f, 0.f, 120.f);
+		const FVector TraceEnd = TraceStart - FVector(0.f, 0.f, 5000.f);
 
 		FHitResult Hit;
 		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(FullLootGroundTrace), false, ActorToIgnore);
@@ -67,7 +68,7 @@ namespace
 			return Hit.ImpactPoint + FVector(0.f, 0.f, 8.f);
 		}
 
-		return FallbackLocation;
+		return AdjustedFallbackLocation;
 	}
 
 	static void StabilizeLootBagActor(AActor* LootBagActor)
@@ -105,34 +106,6 @@ namespace
 
 			MovementComp->StopMovementImmediately();
 			MovementComp->Deactivate();
-		}
-	}
-
-	static void SnapLootBagToGround(UWorld* World, AActor* LootBagActor)
-	{
-		if (!World || !LootBagActor)
-		{
-			return;
-		}
-
-		FVector Origin = FVector::ZeroVector;
-		FVector Extent = FVector::ZeroVector;
-		LootBagActor->GetActorBounds(true, Origin, Extent);
-
-		const FVector TraceStart = Origin + FVector(0.f, 0.f, FMath::Max(120.f, Extent.Z + 120.f));
-		const FVector TraceEnd = Origin - FVector(0.f, 0.f, 5000.f);
-		FHitResult Hit;
-		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(FullLootSnapGroundTrace), false, LootBagActor);
-
-		if (World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams)
-			|| World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams)
-			|| World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldDynamic, QueryParams))
-		{
-			const FVector SnappedLocation(
-				LootBagActor->GetActorLocation().X,
-				LootBagActor->GetActorLocation().Y,
-				Hit.ImpactPoint.Z + FMath::Max(2.f, Extent.Z + 2.f));
-			LootBagActor->SetActorLocation(SnappedLocation, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 	}
 
@@ -780,7 +753,6 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 	LootBagActor->SetMinNetUpdateFrequency(FMath::Max(1.0f, LootBagNetUpdateFrequency * 0.4f));
 	LootBagActor->FinishSpawning(SpawnTransform);
 	StabilizeLootBagActor(LootBagActor);
-	SnapLootBagToGround(World, LootBagActor);
 	ConfigureLootMarkerForVictimOnly(LootBagActor);
 
 	const FString DeadPlayerDisplayName = SanitizeDeadPlayerNameForNet(
