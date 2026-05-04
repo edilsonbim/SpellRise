@@ -4,6 +4,8 @@
 #include "Engine/ActorChannel.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
+#include "GameplayEffect.h"
+#include "GameplayTagContainer.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/UnrealType.h"
@@ -16,6 +18,7 @@
 #include "NarrativeItem.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentInstance.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
 
@@ -1483,29 +1486,98 @@ void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippab
 		return;
 	}
 
+	RemoveGrantedAbilitiesForSlot(SlotValue);
+
 	TArray<FSpellRiseGrantedAbility> AbilitiesToGrant;
-	if (!ExtractAbilitiesToGrantFromItem(Item, AbilitiesToGrant))
+	const bool bHasAbilitiesToGrant = ExtractAbilitiesToGrantFromItem(Item, AbilitiesToGrant);
+	if (bHasAbilitiesToGrant)
+	{
+		const TArray<FGameplayAbilitySpecHandle> Handles = CharacterOwner->GrantAbilities(AbilitiesToGrant);
+		UE_LOG(LogSpellRiseEquipmentTrace, Log,
+			TEXT("ApplyGrantedAbilitiesForSlot abilities aplicadas. Owner=%s Item=%s SlotValue=%d Requested=%d Granted=%d"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(Item),
+			SlotValue,
+			AbilitiesToGrant.Num(),
+			Handles.Num());
+		if (Handles.Num() > 0)
+		{
+			GrantedAbilityHandlesBySlot.Add(SlotValue, Handles);
+		}
+	}
+
+	TArray<TSubclassOf<UGameplayEffect>> EffectsToApply;
+	if (!ExtractGrantedEffectsFromItem(Item, EffectsToApply))
+	{
+		if (!bHasAbilitiesToGrant)
+		{
+			UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
+				TEXT("ApplyGrantedAbilitiesForSlot sem grants configurados. Owner=%s Item=%s SlotValue=%d"),
+				*GetNameSafe(GetOwner()),
+				*GetNameSafe(Item),
+				SlotValue);
+		}
+		return;
+	}
+
+	USpellRiseAbilitySystemComponent* ASC = Cast<USpellRiseAbilitySystemComponent>(CharacterOwner->GetAbilitySystemComponent());
+	if (!ASC)
 	{
 		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
-			TEXT("ApplyGrantedAbilitiesForSlot sem abilities para conceder. Owner=%s Item=%s SlotValue=%d"),
+			TEXT("ApplyGrantedAbilitiesForSlot abortado: ASC ausente para efeitos. Owner=%s Item=%s SlotValue=%d"),
 			*GetNameSafe(GetOwner()),
 			*GetNameSafe(Item),
 			SlotValue);
 		return;
 	}
 
-	RemoveGrantedAbilitiesForSlot(SlotValue);
-	const TArray<FGameplayAbilitySpecHandle> Handles = CharacterOwner->GrantAbilities(AbilitiesToGrant);
+	TMap<FGameplayTag, float> SetByCallerMagnitudes;
+	ExtractSetByCallerMagnitudesFromItem(Item, SetByCallerMagnitudes);
+
+	TArray<FActiveGameplayEffectHandle> AppliedEffectHandles;
+	for (const TSubclassOf<UGameplayEffect>& EffectClass : EffectsToApply)
+	{
+		if (!EffectClass)
+		{
+			continue;
+		}
+
+		FGameplayEffectContextHandle EffectContext = ASC->MakeEffectContext();
+		EffectContext.AddSourceObject(Item);
+		EffectContext.AddInstigator(CharacterOwner, CharacterOwner);
+
+		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, 1.f, EffectContext);
+		if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
+		{
+			continue;
+		}
+
+		for (const TPair<FGameplayTag, float>& Magnitude : SetByCallerMagnitudes)
+		{
+			if (Magnitude.Key.IsValid() && FMath::IsFinite(Magnitude.Value))
+			{
+				SpecHandle.Data->SetSetByCallerMagnitude(Magnitude.Key, Magnitude.Value);
+			}
+		}
+
+		const FActiveGameplayEffectHandle ActiveHandle = ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		if (ActiveHandle.IsValid())
+		{
+			AppliedEffectHandles.Add(ActiveHandle);
+		}
+	}
+
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
-		TEXT("ApplyGrantedAbilitiesForSlot executado. Owner=%s Item=%s SlotValue=%d Requested=%d Granted=%d"),
+		TEXT("ApplyGrantedAbilitiesForSlot effects aplicados. Owner=%s Item=%s SlotValue=%d Requested=%d Applied=%d SetByCaller=%d"),
 		*GetNameSafe(GetOwner()),
 		*GetNameSafe(Item),
 		SlotValue,
-		AbilitiesToGrant.Num(),
-		Handles.Num());
-	if (Handles.Num() > 0)
+		EffectsToApply.Num(),
+		AppliedEffectHandles.Num(),
+		SetByCallerMagnitudes.Num());
+	if (AppliedEffectHandles.Num() > 0)
 	{
-		GrantedAbilityHandlesBySlot.Add(SlotValue, Handles);
+		GrantedEffectHandlesBySlot.Add(SlotValue, AppliedEffectHandles);
 	}
 }
 
@@ -1522,6 +1594,21 @@ void USpellRiseEquipmentManagerComponent::RemoveGrantedAbilitiesForSlot(uint8 Sl
 		return;
 	}
 
+	if (USpellRiseAbilitySystemComponent* ASC = Cast<USpellRiseAbilitySystemComponent>(CharacterOwner->GetAbilitySystemComponent()))
+	{
+		TArray<FActiveGameplayEffectHandle> EffectHandlesToRemove;
+		if (GrantedEffectHandlesBySlot.RemoveAndCopyValue(SlotValue, EffectHandlesToRemove))
+		{
+			for (const FActiveGameplayEffectHandle& EffectHandle : EffectHandlesToRemove)
+			{
+				if (EffectHandle.IsValid())
+				{
+					ASC->RemoveActiveGameplayEffect(EffectHandle);
+				}
+			}
+		}
+	}
+
 	TArray<FGameplayAbilitySpecHandle> HandlesToRemove;
 	if (!GrantedAbilityHandlesBySlot.RemoveAndCopyValue(SlotValue, HandlesToRemove))
 	{
@@ -1532,6 +1619,145 @@ void USpellRiseEquipmentManagerComponent::RemoveGrantedAbilitiesForSlot(uint8 Sl
 	{
 		CharacterOwner->RemoveAbilities(HandlesToRemove);
 	}
+}
+
+bool USpellRiseEquipmentManagerComponent::ExtractGrantedEffectsFromItem(
+	UEquippableItem* Item,
+	TArray<TSubclassOf<UGameplayEffect>>& OutEffects) const
+{
+	OutEffects.Reset();
+	if (!Item)
+	{
+		return false;
+	}
+
+	static const FName GrantedEffectsPropertyName(TEXT("GrantedEffectsWhileEquipped"));
+	const FProperty* Property = Item->GetClass()->FindPropertyByName(GrantedEffectsPropertyName);
+	if (!Property)
+	{
+		return false;
+	}
+
+	const void* PropertyValuePtr = Property->ContainerPtrToValuePtr<void>(Item);
+	if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+	{
+		FScriptArrayHelper ArrayHelper(ArrayProperty, PropertyValuePtr);
+		for (int32 Index = 0; Index < ArrayHelper.Num(); ++Index)
+		{
+			UClass* EffectClass = nullptr;
+			if (const FClassProperty* ClassProperty = CastField<FClassProperty>(ArrayProperty->Inner))
+			{
+				if (ClassProperty->MetaClass && ClassProperty->MetaClass->IsChildOf(UGameplayEffect::StaticClass()))
+				{
+					EffectClass = Cast<UClass>(ClassProperty->GetObjectPropertyValue(ArrayHelper.GetRawPtr(Index)));
+				}
+			}
+			else if (const FSoftClassProperty* SoftClassProperty = CastField<FSoftClassProperty>(ArrayProperty->Inner))
+			{
+				const FSoftObjectPtr SoftClassPtr = SoftClassProperty->GetPropertyValue(ArrayHelper.GetRawPtr(Index));
+				EffectClass = Cast<UClass>(SoftClassPtr.LoadSynchronous());
+			}
+
+			if (EffectClass && EffectClass->IsChildOf(UGameplayEffect::StaticClass()))
+			{
+				OutEffects.AddUnique(EffectClass);
+			}
+		}
+	}
+	else if (const FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
+	{
+		if (ClassProperty->MetaClass && ClassProperty->MetaClass->IsChildOf(UGameplayEffect::StaticClass()))
+		{
+			UClass* EffectClass = Cast<UClass>(ClassProperty->GetObjectPropertyValue(PropertyValuePtr));
+			if (EffectClass && EffectClass->IsChildOf(UGameplayEffect::StaticClass()))
+			{
+				OutEffects.AddUnique(EffectClass);
+			}
+		}
+	}
+	else if (const FSoftClassProperty* SoftClassProperty = CastField<FSoftClassProperty>(Property))
+	{
+		const FSoftObjectPtr SoftClassPtr = SoftClassProperty->GetPropertyValue(PropertyValuePtr);
+		UClass* EffectClass = Cast<UClass>(SoftClassPtr.LoadSynchronous());
+		if (EffectClass && EffectClass->IsChildOf(UGameplayEffect::StaticClass()))
+		{
+			OutEffects.AddUnique(EffectClass);
+		}
+	}
+
+	return OutEffects.Num() > 0;
+}
+
+bool USpellRiseEquipmentManagerComponent::ExtractSetByCallerMagnitudesFromItem(
+	UEquippableItem* Item,
+	TMap<FGameplayTag, float>& OutMagnitudes) const
+{
+	OutMagnitudes.Reset();
+	if (!Item)
+	{
+		return false;
+	}
+
+	static const FName LegacyMagnitudeMapName(TEXT("SetSetByCallerMagnitude"));
+	static const FName MagnitudeMapName(TEXT("SetByCallerMagnitude"));
+	const FMapProperty* MapProperty = CastField<FMapProperty>(Item->GetClass()->FindPropertyByName(LegacyMagnitudeMapName));
+	if (!MapProperty)
+	{
+		MapProperty = CastField<FMapProperty>(Item->GetClass()->FindPropertyByName(MagnitudeMapName));
+	}
+
+	if (!MapProperty)
+	{
+		return false;
+	}
+
+	const FStructProperty* KeyProperty = CastField<FStructProperty>(MapProperty->KeyProp);
+	if (!KeyProperty || KeyProperty->Struct != FGameplayTag::StaticStruct())
+	{
+		return false;
+	}
+
+	const void* MapValuePtr = MapProperty->ContainerPtrToValuePtr<void>(Item);
+	FScriptMapHelper MapHelper(MapProperty, MapValuePtr);
+	for (int32 Index = 0; Index < MapHelper.GetMaxIndex(); ++Index)
+	{
+		if (!MapHelper.IsValidIndex(Index))
+		{
+			continue;
+		}
+
+		const FGameplayTag* Tag = reinterpret_cast<const FGameplayTag*>(MapHelper.GetKeyPtr(Index));
+		if (!Tag || !Tag->IsValid())
+		{
+			continue;
+		}
+
+		const uint8* ValuePtr = MapHelper.GetValuePtr(Index);
+		float Magnitude = 0.f;
+		if (const FFloatProperty* FloatProperty = CastField<FFloatProperty>(MapProperty->ValueProp))
+		{
+			Magnitude = FloatProperty->GetPropertyValue(ValuePtr);
+		}
+		else if (const FDoubleProperty* DoubleProperty = CastField<FDoubleProperty>(MapProperty->ValueProp))
+		{
+			Magnitude = static_cast<float>(DoubleProperty->GetPropertyValue(ValuePtr));
+		}
+		else if (const FIntProperty* IntProperty = CastField<FIntProperty>(MapProperty->ValueProp))
+		{
+			Magnitude = static_cast<float>(IntProperty->GetPropertyValue(ValuePtr));
+		}
+		else
+		{
+			continue;
+		}
+
+		if (FMath::IsFinite(Magnitude))
+		{
+			OutMagnitudes.Add(*Tag, Magnitude);
+		}
+	}
+
+	return OutMagnitudes.Num() > 0;
 }
 
 bool USpellRiseEquipmentManagerComponent::IsWeaponItem(UEquippableItem* Item) const
