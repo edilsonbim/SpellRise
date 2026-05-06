@@ -57,7 +57,8 @@ public class SpellRise : ModuleRules
 				"JsonUtilities",
 
 
-				"AudioMixer"
+				"AudioMixer",
+				"AIModule"
 			}
 		);
 

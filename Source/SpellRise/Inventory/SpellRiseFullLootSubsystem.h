@@ -20,6 +20,7 @@ public:
 
 	void HandleCharacterDeath(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride);
 	void HandleCharacterCorpseDespawn(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride, const FVector& CorpseLocation);
+	void RegisterTrackedLootBag(AActor* BagActor, UNarrativeInventoryComponent* InventoryComponent);
 
 private:
 	struct FTrackedLootBag
@@ -40,7 +41,7 @@ private:
 	float LootBagSpawnDelaySeconds = 3.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot", meta=(ClampMin="0.0"))
-	float LootBagEmptyDespawnDelaySeconds = 20.0f;
+	float LootBagEmptyDespawnDelaySeconds = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Policy")
 	bool bUseStrictDeathLootInventoryPolicy = false;
@@ -79,7 +80,6 @@ private:
 	FTimerHandle LootBagMonitorTimerHandle;
 	TArray<FTrackedLootBag> TrackedLootBags;
 
-	void RegisterTrackedLootBag(AActor* BagActor, UNarrativeInventoryComponent* InventoryComponent);
 	void ProcessCharacterDeathNow(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride, const FVector& DeathLocation);
 	void GatherEligibleInventoryComponents(AActor* OwnerActor, bool bOwnerIsPlayerState, TArray<UNarrativeInventoryComponent*>& OutInventoryComponents) const;
 	bool IsInventoryComponentEligibleForDeathLoot(const UNarrativeInventoryComponent* InventoryComponent, bool bOwnerIsPlayerState, FString& OutRejectReason) const;

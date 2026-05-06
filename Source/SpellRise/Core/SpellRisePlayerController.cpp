@@ -1204,6 +1204,15 @@ void ASpellRisePlayerController::BroadcastAbilitySlotsToHUD()
 			SlotView.CooldownRemaining = FMath::Max(0.f, TimeRemaining);
 			SlotView.CooldownDuration = FMath::Max(0.f, CooldownDuration);
 			SlotView.bIsOnCooldown = SlotView.CooldownRemaining > KINDA_SMALL_NUMBER;
+			if (SlotView.bIsOnCooldown)
+			{
+				const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+				SlotView.CooldownCapturedWorldTimeSeconds = NowSeconds;
+				SlotView.CooldownEndWorldTimeSeconds = NowSeconds + static_cast<double>(SlotView.CooldownRemaining);
+				SlotView.CooldownStartWorldTimeSeconds = SlotView.CooldownDuration > KINDA_SMALL_NUMBER
+					? SlotView.CooldownEndWorldTimeSeconds - static_cast<double>(SlotView.CooldownDuration)
+					: NowSeconds;
+			}
 			SlotView.bIsActive = Spec.IsActive();
 			break;
 		}

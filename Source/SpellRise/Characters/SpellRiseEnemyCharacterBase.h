@@ -23,6 +23,7 @@ class UGameplayEffect;
 class UAnimMontage;
 class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
+class USpellRiseEnemyEquipmentComponent;
 class UNarrativeInventoryComponent;
 
 USTRUCT(BlueprintType)
@@ -35,9 +36,6 @@ struct FSpellRiseEnemyGrantedAbility
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Grant", meta=(ClampMin="1"))
 	int32 AbilityLevel = 1;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Grant", meta=(Categories="InputTag"))
-	FGameplayTag InputTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Grant")
 	bool bAutoActivateIfNoInputTag = false;
@@ -88,6 +86,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|Death")
 	bool IsEnemyDead() const;
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Enemy|AI")
+	void StopEnemyAILogic_Server();
+
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="SpellRise|Enemy|Death")
 	void HandleDeath();
 
@@ -134,6 +135,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Enemy|Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCatalystComponent> CatalystComponent = nullptr;
 
+	UPROPERTY(Transient)
+	TObjectPtr<USpellRiseEnemyEquipmentComponent> EnemyEquipmentComponent = nullptr;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS")
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Minimal;
 
@@ -152,11 +156,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Regen")
 	TArray<TSubclassOf<UGameplayEffect>> GE_RegenEffects;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Death")
+	UPROPERTY(Transient)
 	FGameplayTag DeadStateTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Death")
 	TSubclassOf<UGameplayEffect> GE_Death = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Death|Corpse", meta=(ClampMin="0.0"))
+	float CorpseDespawnDelaySeconds = 20.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Enemy|Death")
 	bool bIsDead = false;
@@ -200,6 +207,8 @@ protected:
 	UPROPERTY(Transient)
 	bool bEnemyLootProcessedForCurrentDeath = false;
 
+	FTimerHandle CorpseDespawnTimerHandle;
+
 	virtual void InitializeAbilitySystem();
 	virtual void BindASCDelegates();
 	virtual void ApplyEnemyAttributeFallbacks_Server();
@@ -207,6 +216,8 @@ protected:
 	virtual void ApplyEnemyDeathState_Server();
 	virtual void SpawnEnemyLootBag_Server();
 	virtual FVector ResolveEnemyLootBagSpawnLocation_Server() const;
+	virtual void ScheduleCorpseDespawn_Server();
+	virtual void ExecuteCorpseDespawn_Server();
 
 	UFUNCTION()
 	void OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount);

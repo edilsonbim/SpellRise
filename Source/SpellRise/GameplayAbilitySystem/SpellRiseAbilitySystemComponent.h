@@ -47,9 +47,14 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnRep_ActivateAbilities() override;
+	virtual void NotifyAbilityCommit(UGameplayAbility* Ability) override;
+	virtual void NotifyAbilityActivated(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability) override;
+	virtual void NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, bool bWasCancelled) override;
 	virtual int32 HandleGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload) override;
 	void OnGameplayEffectAppliedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle ActiveHandle);
+	void OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle ActiveHandle);
 	void OnGameplayEffectRemovedFromSelf(const FActiveGameplayEffect& ActiveEffect);
+	void BroadcastEquipmentAbilityStateChanged() const;
 	bool TryAdvanceActiveComboMontage();
 
 public:

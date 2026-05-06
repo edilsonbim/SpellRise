@@ -1998,7 +1998,7 @@ void ASpellRiseCharacterBase::ScheduleCorpseDespawn_Server()
 		CorpseDespawnTimerHandle,
 		this,
 		&ASpellRiseCharacterBase::ExecuteCorpseDespawn_Server,
-		FMath::Max(0.f, CorpseDespawnDelaySeconds),
+		FMath::Max(20.f, CorpseDespawnDelaySeconds),
 		false);
 }
 

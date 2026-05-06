@@ -12,6 +12,7 @@
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGA_MeleeCombo.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityTagRelationshipMapping.h"
@@ -25,6 +26,23 @@ namespace
 	{
 		static const FGameplayTag PrimaryTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Primary"), false);
 		return PrimaryTag;
+	}
+
+	bool HasCooldownTag(const FGameplayTagContainer& Tags)
+	{
+		static const FGameplayTag CooldownRootTag = FGameplayTag::RequestGameplayTag(TEXT("Cooldown"), false);
+		return CooldownRootTag.IsValid() && Tags.HasTag(CooldownRootTag);
+	}
+
+	bool GameplayEffectSpecHasCooldownTag(const FGameplayEffectSpec& Spec)
+	{
+		FGameplayTagContainer Tags;
+		Spec.GetAllAssetTags(Tags);
+		if (Spec.Def)
+		{
+			Tags.AppendTags(Spec.Def->GetGrantedTags());
+		}
+		return HasCooldownTag(Tags);
 	}
 }
 
@@ -44,7 +62,45 @@ void USpellRiseAbilitySystemComponent::BeginPlay()
 
 
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf);
+	OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &USpellRiseAbilitySystemComponent::OnActiveGameplayEffectAddedToSelf);
 	OnAnyGameplayEffectRemovedDelegate().AddUObject(this, &USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf);
+}
+
+void USpellRiseAbilitySystemComponent::NotifyAbilityCommit(UGameplayAbility* Ability)
+{
+	Super::NotifyAbilityCommit(Ability);
+	BroadcastEquipmentAbilityStateChanged();
+}
+
+void USpellRiseAbilitySystemComponent::NotifyAbilityActivated(
+	const FGameplayAbilitySpecHandle Handle,
+	UGameplayAbility* Ability)
+{
+	Super::NotifyAbilityActivated(Handle, Ability);
+	BroadcastEquipmentAbilityStateChanged();
+}
+
+void USpellRiseAbilitySystemComponent::NotifyAbilityEnded(
+	const FGameplayAbilitySpecHandle Handle,
+	UGameplayAbility* Ability,
+	const bool bWasCancelled)
+{
+	Super::NotifyAbilityEnded(Handle, Ability, bWasCancelled);
+	BroadcastEquipmentAbilityStateChanged();
+}
+
+void USpellRiseAbilitySystemComponent::BroadcastEquipmentAbilityStateChanged() const
+{
+	AActor* CurrentAvatarActor = GetAvatarActor();
+	if (!CurrentAvatarActor)
+	{
+		return;
+	}
+
+	if (USpellRiseEquipmentManagerComponent* EquipmentManager = CurrentAvatarActor->FindComponentByClass<USpellRiseEquipmentManagerComponent>())
+	{
+		EquipmentManager->OnHUDEquipmentSlotsChanged.Broadcast();
+	}
 }
 
 int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload)
@@ -227,6 +283,22 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		CueParams.SourceObject = Spec.Def;
 		AddGameplayCue(FillShieldCueTag, CueParams);
 	}
+
+	if (GameplayEffectSpecHasCooldownTag(Spec))
+	{
+		BroadcastEquipmentAbilityStateChanged();
+	}
+}
+
+void USpellRiseAbilitySystemComponent::OnActiveGameplayEffectAddedToSelf(
+	UAbilitySystemComponent* SourceASC,
+	const FGameplayEffectSpec& Spec,
+	FActiveGameplayEffectHandle ActiveHandle)
+{
+	if (GameplayEffectSpecHasCooldownTag(Spec))
+	{
+		BroadcastEquipmentAbilityStateChanged();
+	}
 }
 
 void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FActiveGameplayEffect& ActiveEffect)
@@ -238,6 +310,7 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FAc
 	FGameplayTagContainer AssetTags;
 	if (Def)
 	{
+		ActiveEffect.Spec.GetAllAssetTags(AssetTags);
 		AssetTags.AppendTags(Def->GetGrantedTags());
 	}
 
@@ -259,6 +332,11 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FAc
 	if (FillShieldCueTag.IsValid() && Def && GetNameSafe(Def).Contains(TEXT("GE_FillShield"), ESearchCase::IgnoreCase))
 	{
 		RemoveGameplayCue(FillShieldCueTag);
+	}
+
+	if (HasCooldownTag(AssetTags))
+	{
+		BroadcastEquipmentAbilityStateChanged();
 	}
 }
 
