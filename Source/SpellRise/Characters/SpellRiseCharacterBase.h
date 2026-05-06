@@ -302,7 +302,7 @@ public:
 	float RespawnDelaySeconds = 30.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Corpse", meta=(ClampMin="0.0"))
-	float CorpseDespawnDelaySeconds = 5.f;
+	float CorpseDespawnDelaySeconds = 20.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float DeathMessageHideLeadTimeSeconds = 1.0f;

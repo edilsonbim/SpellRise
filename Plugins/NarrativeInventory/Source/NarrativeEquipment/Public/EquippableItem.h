@@ -9,20 +9,20 @@
 UENUM(BlueprintType)
 enum class EEquippableSlot : uint8 
 {
-	ES_Torso UMETA(DisplayName="Torso"),
-	ES_Legs UMETA(DisplayName = "Legs"),
-	ES_Feet UMETA(DisplayName = "Feet"),
-	ES_Helmet UMETA(DisplayName = "Helmet"),
-	ES_Hands UMETA(DisplayName = "Hands"),
-	ES_Backpack UMETA(DisplayName = "Backpack"),
-	ES_Necklace UMETA(DisplayName = "Necklace"),
-	ES_Holster UMETA(DisplayName = "Holster"),
-	ES_Weapon UMETA(DisplayName = "Weapon"),
-	ES_Custom1 UMETA(DisplayName = "Custom1"),
-	ES_Custom2 UMETA(DisplayName = "Custom2"),
-	ES_Custom3 UMETA(DisplayName = "Custom3"),
-	ES_Custom4 UMETA(DisplayName = "Custom4"),
-	ES_Custom5 UMETA(DisplayName = "Custom5"),
+	ES_Torso = 0 UMETA(DisplayName="Torso"),
+	ES_Legs = 1 UMETA(DisplayName = "Legs"),
+	ES_Feet = 2 UMETA(DisplayName = "Feet"),
+	ES_Helmet = 3 UMETA(DisplayName = "Head"),
+	ES_Hands = 4 UMETA(DisplayName = "Hands"),
+	ES_Backpack = 5 UMETA(DisplayName = "Backpack"),
+	ES_Necklace = 6 UMETA(DisplayName = "Necklace"),
+	ES_Weapon = 8 UMETA(DisplayName = "Weapon Slot 1"),
+	ES_Holster = 7 UMETA(DisplayName = "Weapon Slot 2"),
+	ES_Custom1 = 9 UMETA(DisplayName = "Off Hand"),
+	ES_Custom2 = 10 UMETA(DisplayName = "Quick Slot 1"),
+	ES_Custom3 = 11 UMETA(DisplayName = "Quick Slot 2"),
+	ES_Custom4 = 12 UMETA(DisplayName = "Quick Slot 3"),
+	ES_Custom5 = 13 UMETA(DisplayName = "Quick Slot 4"),
 };
 
 /**

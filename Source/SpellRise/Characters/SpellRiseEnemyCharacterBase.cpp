@@ -3,7 +3,9 @@
 #include "SpellRise/Characters/SpellRiseEnemyCharacterBase.h"
 
 #include "AbilitySystemComponent.h"
+#include "AIController.h"
 #include "Animation/AnimInstance.h"
+#include "BehaviorTree/BlackboardComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Engine/EngineTypes.h"
@@ -12,11 +14,13 @@
 #include "GameplayAbilitySpec.h"
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
+#include "BrainComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/SoftObjectPath.h"
 
 #include "InventoryFunctionLibrary.h"
 #include "SpellRise/Components/CatalystComponent.h"
+#include "SpellRise/Components/SpellRiseEnemyEquipmentComponent.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
@@ -24,6 +28,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
+#include "SpellRise/Inventory/SpellRiseFullLootSubsystem.h"
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 #include "SpellRise/Inventory/SpellRiseLootBagNameComponent.h"
 
@@ -130,6 +135,7 @@ ASpellRiseEnemyCharacterBase::ASpellRiseEnemyCharacterBase()
 	CatalystAttributeSet = CreateDefaultSubobject<UCatalystAttributeSet>(TEXT("CatalystAttributeSet"));
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
 	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
+	EnemyEquipmentComponent = CreateDefaultSubobject<USpellRiseEnemyEquipmentComponent>(TEXT("EnemyEquipmentComponent"));
 
 	DeadStateTag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"), false);
 	EnemyDisplayName = FText::FromString(TEXT("Enemy"));
@@ -159,6 +165,10 @@ void ASpellRiseEnemyCharacterBase::BeginPlay()
 		ApplyEnemyAttributeFallbacks_Server();
 		ApplyEnemyStartupEffects_Server();
 		GrantEnemyStartupAbilities_Server();
+		if (EnemyEquipmentComponent)
+		{
+			EnemyEquipmentComponent->ApplyLoadout_Server();
+		}
 		bStartupInitialized = true;
 	}
 }
@@ -179,6 +189,14 @@ void ASpellRiseEnemyCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayRea
 			.RemoveAll(this);
 	}
 
+	if (HasAuthority())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(CorpseDespawnTimerHandle);
+		}
+	}
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -194,6 +212,10 @@ void ASpellRiseEnemyCharacterBase::PossessedBy(AController* NewController)
 		ApplyEnemyAttributeFallbacks_Server();
 		ApplyEnemyStartupEffects_Server();
 		GrantEnemyStartupAbilities_Server();
+		if (EnemyEquipmentComponent)
+		{
+			EnemyEquipmentComponent->ApplyLoadout_Server();
+		}
 		bStartupInitialized = true;
 	}
 }
@@ -336,10 +358,6 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantEnemyStart
 
 		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
 		FGameplayAbilitySpec Spec(Grant.Ability, FinalLevel, INDEX_NONE, this);
-		if (Grant.InputTag.IsValid())
-		{
-			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
-		}
 
 		const FGameplayAbilitySpecHandle Handle = AbilitySystemComponent->GiveAbility(Spec);
 		if (Handle.IsValid())
@@ -348,7 +366,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantEnemyStart
 			StartupGrantedAbilityHandles.AddUnique(Handle);
 		}
 
-		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
+		if (Grant.bAutoActivateIfNoInputTag)
 		{
 			AbilitySystemComponent->TryActivateAbility(Handle);
 		}
@@ -377,11 +395,13 @@ void ASpellRiseEnemyCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, in
 	{
 		if (HasAuthority())
 		{
+			StopEnemyAILogic_Server();
 			MultiHandleDeath();
+			ScheduleCorpseDespawn_Server();
 		}
 		else
 		{
-			HandleDeath();
+			HandleDeath_Implementation();
 		}
 	}
 }
@@ -432,12 +452,54 @@ void ASpellRiseEnemyCharacterBase::ApplyEnemyDeathState_Server()
 	}
 
 	AbilitySystemComponent->CancelAllAbilities();
+	StopEnemyAILogic_Server();
 	SpawnEnemyLootBag_Server();
+	ScheduleCorpseDespawn_Server();
 
 	if (!DeadStateTag.IsValid())
 	{
 		MultiHandleDeath();
 	}
+}
+
+void ASpellRiseEnemyCharacterBase::ScheduleCorpseDespawn_Server()
+{
+	if (!HasAuthority() || CorpseDespawnDelaySeconds < 0.0f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || World->GetTimerManager().IsTimerActive(CorpseDespawnTimerHandle))
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		CorpseDespawnTimerHandle,
+		this,
+		&ASpellRiseEnemyCharacterBase::ExecuteCorpseDespawn_Server,
+		FMath::Max(20.0f, CorpseDespawnDelaySeconds),
+		false);
+}
+
+void ASpellRiseEnemyCharacterBase::ExecuteCorpseDespawn_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (USkeletalMeshComponent* VisualMesh = GetMesh())
+	{
+		VisualMesh->SetSimulatePhysics(false);
+		VisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		VisualMesh->SetVisibility(false, true);
+	}
+
+	SetActorEnableCollision(false);
+	SetActorHiddenInGame(true);
+	ForceNetUpdate();
 }
 
 void ASpellRiseEnemyCharacterBase::SpawnEnemyLootBag_Server()
@@ -525,6 +587,11 @@ void ASpellRiseEnemyCharacterBase::SpawnEnemyLootBag_Server()
 		return;
 	}
 
+	if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
+	{
+		FullLootSubsystem->RegisterTrackedLootBag(LootBagActor, LootBagInventory);
+	}
+
 	LootBagActor->ForceNetUpdate();
 	UE_LOG(LogSpellRiseEnemyRuntime, Verbose, TEXT("Enemy loot bag criada. Enemy=%s Bag=%s Items=%d"),
 		*GetNameSafe(this),
@@ -558,7 +625,45 @@ FVector ASpellRiseEnemyCharacterBase::ResolveEnemyLootBagSpawnLocation_Server() 
 
 void ASpellRiseEnemyCharacterBase::MultiHandleDeath_Implementation()
 {
-	HandleDeath();
+	HandleDeath_Implementation();
+}
+
+void ASpellRiseEnemyCharacterBase::StopEnemyAILogic_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	AAIController* AIController = Cast<AAIController>(GetController());
+	if (!AIController)
+	{
+		return;
+	}
+
+	if (UBrainComponent* BrainComponent = AIController->GetBrainComponent())
+	{
+		BrainComponent->StopLogic(TEXT("Enemy dead"));
+	}
+
+	if (UBlackboardComponent* BlackboardComponent = AIController->GetBlackboardComponent())
+	{
+		static const FName TargetKeys[] =
+		{
+			TEXT("TargetActor"),
+			TEXT("Target"),
+			TEXT("CombatTarget"),
+			TEXT("EnemyTarget"),
+			TEXT("AttackTarget"),
+			TEXT("Player"),
+			TEXT("TargetPlayer")
+		};
+
+		for (const FName& TargetKey : TargetKeys)
+		{
+			BlackboardComponent->ClearValue(TargetKey);
+		}
+	}
 }
 
 void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
@@ -574,6 +679,11 @@ void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
 
 	if (HasAuthority())
 	{
+		if (EnemyEquipmentComponent)
+		{
+			EnemyEquipmentComponent->ClearLoadout_Server();
+		}
+
 		for (const FGameplayAbilitySpecHandle& Handle : StartupGrantedAbilityHandles)
 		{
 			if (Handle.IsValid())

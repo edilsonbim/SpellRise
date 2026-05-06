@@ -8,6 +8,7 @@
 
 class UNarrativeInventoryComponent;
 class UNarrativeInteractableComponent;
+class UNarrativeItem;
 
 UCLASS(Blueprintable)
 class SPELLRISE_API ASpellRiseLootBagActor : public AActor
@@ -30,6 +31,16 @@ protected:
 	UFUNCTION()
 	void OnRep_DeadPlayerDisplayName();
 
+	UFUNCTION()
+	void HandleInventoryUpdated();
+
+	UFUNCTION()
+	void HandleInventoryItemRemoved(UNarrativeItem* Item, int32 Amount);
+
+	void BindInventoryEmptyDespawn_Server();
+	void ScheduleEmptyDespawnIfNeeded_Server();
+	void ExecuteEmptyDespawn_Server();
+	bool IsLootInventoryEmpty() const;
 	void ApplyDeadPlayerNameToInteractable();
 	FString SanitizeDisplayNameForNet(const FString& InDisplayName) const;
 	UNarrativeInteractableComponent* ResolveLootInteractable();
@@ -45,4 +56,9 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNarrativeInventoryComponent> CachedInventoryComponent = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Lifetime", meta=(ClampMin="0.0"))
+	float EmptyDespawnDelaySeconds = 0.0f;
+
+	FTimerHandle EmptyDespawnTimerHandle;
 };

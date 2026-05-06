@@ -178,6 +178,7 @@ void USpellRiseEquipmentManagerComponent::GetLifetimeReplicatedProps(TArray<FLif
 	DOREPLIFETIME(ThisClass, QuickWeaponSlots);
 	DOREPLIFETIME(ThisClass, ActiveQuickWeaponSlotIndex);
 	DOREPLIFETIME(ThisClass, ActiveOffHandItem);
+	DOREPLIFETIME(ThisClass, bOffHandSuppressedByTwoHandedWeapon);
 	DOREPLIFETIME(ThisClass, EquippedWeapon);
 	DOREPLIFETIME(ThisClass, EquippedOffHandWeapon);
 }
@@ -633,6 +634,252 @@ AActor* USpellRiseEquipmentManagerComponent::GetEquippedWeaponTyped(TSubclassOf<
 	return nullptr;
 }
 
+FName USpellRiseEquipmentManagerComponent::GetHUDEquipmentSlotName(ESpellRiseHUDEquipmentSlot Slot)
+{
+	switch (Slot)
+	{
+	case ESpellRiseHUDEquipmentSlot::WeaponSlot1:
+		return TEXT("WeaponSlot1");
+	case ESpellRiseHUDEquipmentSlot::WeaponSlot2:
+		return TEXT("WeaponSlot2");
+	case ESpellRiseHUDEquipmentSlot::OffHand:
+		return TEXT("OffHand");
+	case ESpellRiseHUDEquipmentSlot::QuickSlot1:
+		return TEXT("QuickSlot1");
+	case ESpellRiseHUDEquipmentSlot::QuickSlot2:
+		return TEXT("QuickSlot2");
+	case ESpellRiseHUDEquipmentSlot::QuickSlot3:
+		return TEXT("QuickSlot3");
+	case ESpellRiseHUDEquipmentSlot::QuickSlot4:
+		return TEXT("QuickSlot4");
+	case ESpellRiseHUDEquipmentSlot::Backpack:
+		return TEXT("BackpackItem");
+	case ESpellRiseHUDEquipmentSlot::Necklace:
+		return TEXT("NecklaceItem");
+	case ESpellRiseHUDEquipmentSlot::Head:
+		return TEXT("HeadItem");
+	case ESpellRiseHUDEquipmentSlot::Torso:
+		return TEXT("TorsoItem");
+	case ESpellRiseHUDEquipmentSlot::Hands:
+		return TEXT("HandsItem");
+	case ESpellRiseHUDEquipmentSlot::Legs:
+		return TEXT("LegsItem");
+	case ESpellRiseHUDEquipmentSlot::Feet:
+		return TEXT("FeetItem");
+	default:
+		return NAME_None;
+	}
+}
+
+UEquippableItem* USpellRiseEquipmentManagerComponent::GetEquippedItemByNarrativeSlot(EEquippableSlot Slot) const
+{
+	const FSpellRiseAppliedEquipmentEntry* Entry = EquipmentList.FindBySlot(static_cast<uint8>(Slot));
+	return Entry ? Entry->SourceItem : nullptr;
+}
+
+FSpellRiseHUDEquipmentSlotView USpellRiseEquipmentManagerComponent::GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot Slot) const
+{
+	FSpellRiseHUDEquipmentSlotView View;
+	View.Slot = Slot;
+	View.SlotName = GetHUDEquipmentSlotName(Slot);
+
+	switch (Slot)
+	{
+	case ESpellRiseHUDEquipmentSlot::WeaponSlot1:
+		View.Item = QuickWeaponSlots.IsValidIndex(0) ? QuickWeaponSlots[0] : nullptr;
+		View.bIsActive = View.Item && ActiveQuickWeaponSlotIndex == 0;
+		View.bIsStowed = View.Item && !View.bIsActive;
+		break;
+	case ESpellRiseHUDEquipmentSlot::WeaponSlot2:
+		View.Item = QuickWeaponSlots.IsValidIndex(1) ? QuickWeaponSlots[1] : nullptr;
+		View.bIsActive = View.Item && ActiveQuickWeaponSlotIndex == 1;
+		View.bIsStowed = View.Item && !View.bIsActive;
+		break;
+	case ESpellRiseHUDEquipmentSlot::OffHand:
+		View.Item = ActiveOffHandItem;
+		View.bIsBlockedByTwoHandedWeapon = View.Item && bOffHandSuppressedByTwoHandedWeapon;
+		View.bIsActive = View.Item && !View.bIsBlockedByTwoHandedWeapon;
+		View.bIsStowed = View.Item && View.bIsBlockedByTwoHandedWeapon;
+		break;
+	case ESpellRiseHUDEquipmentSlot::QuickSlot1:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Custom2);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::QuickSlot2:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Custom3);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::QuickSlot3:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Custom4);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::QuickSlot4:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Custom5);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Backpack:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Backpack);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Necklace:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Necklace);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Head:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Helmet);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Torso:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Torso);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Hands:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Hands);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Legs:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Legs);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	case ESpellRiseHUDEquipmentSlot::Feet:
+		View.Item = GetEquippedItemByNarrativeSlot(EEquippableSlot::ES_Feet);
+		View.bIsActive = View.Item != nullptr;
+		break;
+	default:
+		break;
+	}
+
+	View.bHasItem = View.Item != nullptr;
+	View.bIsTwoHandedWeapon = View.Item && IsTwoHandedWeaponItem(View.Item);
+	return View;
+}
+
+TArray<FSpellRiseHUDEquipmentSlotView> USpellRiseEquipmentManagerComponent::GetHUDEquipmentSlotViews() const
+{
+	TArray<FSpellRiseHUDEquipmentSlotView> Views;
+	Views.Reserve(14);
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::WeaponSlot1));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::WeaponSlot2));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::OffHand));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::QuickSlot1));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::QuickSlot2));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::QuickSlot3));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::QuickSlot4));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Backpack));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Necklace));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Head));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Torso));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Hands));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Legs));
+	Views.Add(GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot::Feet));
+	return Views;
+}
+
+TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::GetAbilitiesToGrantPreviewForItem(UEquippableItem* Item) const
+{
+	TArray<FSpellRiseEquipmentAbilityPreview> PreviewAbilities;
+
+	TArray<FSpellRiseGrantedAbility> AbilitiesToGrant;
+	if (!ExtractAbilitiesToGrantFromItem(Item, AbilitiesToGrant))
+	{
+		return PreviewAbilities;
+	}
+
+	const ASpellRiseCharacterBase* CharacterOwner = Cast<ASpellRiseCharacterBase>(GetOwner());
+	const USpellRiseAbilitySystemComponent* ASC = CharacterOwner
+		? Cast<USpellRiseAbilitySystemComponent>(CharacterOwner->GetAbilitySystemComponent())
+		: nullptr;
+	const FGameplayAbilityActorInfo* ActorInfo = ASC ? ASC->AbilityActorInfo.Get() : nullptr;
+
+	PreviewAbilities.Reserve(AbilitiesToGrant.Num());
+	for (const FSpellRiseGrantedAbility& AbilityToGrant : AbilitiesToGrant)
+	{
+		if (!AbilityToGrant.Ability)
+		{
+			continue;
+		}
+
+		FSpellRiseEquipmentAbilityPreview& Preview = PreviewAbilities.AddDefaulted_GetRef();
+		Preview.Ability = AbilityToGrant.Ability;
+		Preview.AbilityLevel = AbilityToGrant.AbilityLevel;
+		Preview.InputTag = AbilityToGrant.InputTag;
+		Preview.bAutoActivateIfNoInputTag = AbilityToGrant.bAutoActivateIfNoInputTag;
+
+		if (!ASC)
+		{
+			continue;
+		}
+
+		for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+		{
+			if (!Spec.Ability || Spec.Ability->GetClass() != AbilityToGrant.Ability)
+			{
+				continue;
+			}
+
+			Preview.GrantedSpecHandle = Spec.Handle;
+			Preview.bIsCurrentlyGranted = true;
+			Preview.bIsActive = Spec.IsActive();
+
+			if (ActorInfo)
+			{
+				float TimeRemaining = 0.f;
+				float CooldownDuration = 0.f;
+				Spec.Ability->GetCooldownTimeRemainingAndDuration(Spec.Handle, ActorInfo, TimeRemaining, CooldownDuration);
+				Preview.CooldownRemaining = FMath::Max(0.f, TimeRemaining);
+				Preview.CooldownDuration = FMath::Max(0.f, CooldownDuration);
+				Preview.bIsOnCooldown = Preview.CooldownRemaining > KINDA_SMALL_NUMBER;
+				if (Preview.bIsOnCooldown)
+				{
+					const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+					Preview.CooldownCapturedWorldTimeSeconds = NowSeconds;
+					Preview.CooldownEndWorldTimeSeconds = NowSeconds + static_cast<double>(Preview.CooldownRemaining);
+					Preview.CooldownStartWorldTimeSeconds = Preview.CooldownDuration > KINDA_SMALL_NUMBER
+						? Preview.CooldownEndWorldTimeSeconds - static_cast<double>(Preview.CooldownDuration)
+						: NowSeconds;
+				}
+			}
+			break;
+		}
+	}
+
+	return PreviewAbilities;
+}
+
+float USpellRiseEquipmentManagerComponent::GetAbilityPreviewCooldownRemainingAtCurrentTime(
+	const UObject* WorldContextObject,
+	const FSpellRiseEquipmentAbilityPreview& Preview)
+{
+	if (!Preview.bIsOnCooldown)
+	{
+		return 0.f;
+	}
+
+	const UWorld* World = WorldContextObject ? WorldContextObject->GetWorld() : nullptr;
+	const double NowSeconds = World ? World->GetTimeSeconds() : Preview.CooldownCapturedWorldTimeSeconds;
+	if (Preview.CooldownEndWorldTimeSeconds > 0.0)
+	{
+		return FMath::Max(0.f, static_cast<float>(Preview.CooldownEndWorldTimeSeconds - NowSeconds));
+	}
+
+	return FMath::Max(0.f, Preview.CooldownRemaining);
+}
+
+float USpellRiseEquipmentManagerComponent::GetAbilityPreviewCooldownPercentAtCurrentTime(
+	const UObject* WorldContextObject,
+	const FSpellRiseEquipmentAbilityPreview& Preview,
+	const bool bReadyProgress)
+{
+	if (Preview.CooldownDuration <= KINDA_SMALL_NUMBER)
+	{
+		return bReadyProgress ? 1.f : 0.f;
+	}
+
+	const float Remaining = GetAbilityPreviewCooldownRemainingAtCurrentTime(WorldContextObject, Preview);
+	const float RemainingPercent = FMath::Clamp(Remaining / Preview.CooldownDuration, 0.f, 1.f);
+	return bReadyProgress ? 1.f - RemainingPercent : RemainingPercent;
+}
+
 void USpellRiseEquipmentManagerComponent::ApplyReplicatedEquipmentVisual(USpellRiseEquipmentInstance& EquipmentInstance, bool bEquipped)
 {
 	ApplyVisualForItem(EquipmentInstance.GetSourceItem(), bEquipped);
@@ -651,6 +898,8 @@ void USpellRiseEquipmentManagerComponent::HandleEntryAdded(const FSpellRiseAppli
 		ApplyVisualForItem(Entry.SourceItem, true);
 		SyncNarrativeEquipmentComponentState(Entry.SourceItem, true);
 	}
+
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::HandleEntryRemoved(const FSpellRiseAppliedEquipmentEntry& Entry)
@@ -666,6 +915,8 @@ void USpellRiseEquipmentManagerComponent::HandleEntryRemoved(const FSpellRiseApp
 		ApplyVisualForItem(Entry.SourceItem, false);
 		SyncNarrativeEquipmentComponentState(Entry.SourceItem, false);
 	}
+
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 bool USpellRiseEquipmentManagerComponent::ValidateItemOwnership(UEquippableItem* Item, FString& OutReason) const
@@ -807,6 +1058,7 @@ FSpellRiseAppliedEquipmentEntry* USpellRiseEquipmentManagerComponent::AddEntry(U
 	{
 		NetOwnerActor->ForceNetUpdate();
 	}
+	OnHUDEquipmentSlotsChanged.Broadcast();
 	return &NewEntry;
 }
 
@@ -842,6 +1094,7 @@ bool USpellRiseEquipmentManagerComponent::RemoveEntryBySlot(uint8 SlotValue)
 		{
 			OwnerActor->ForceNetUpdate();
 		}
+		OnHUDEquipmentSlotsChanged.Broadcast();
 		return true;
 	}
 
@@ -1459,7 +1712,7 @@ void USpellRiseEquipmentManagerComponent::ReconcileReplicatedQuickSlotVisuals()
 		RefreshQuickSlotVisual_Local(SlotIndex, bShouldBeEquipped);
 	}
 
-	RefreshOffHandVisual_Local(ActiveOffHandItem != nullptr);
+	RefreshOffHandVisual_Local(IsOffHandGameplayActive());
 }
 
 void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue)
@@ -1944,6 +2197,59 @@ bool USpellRiseEquipmentManagerComponent::IsTwoHandedWeaponItem(UEquippableItem*
 	return ReadTwoHandedMetadata(Item, Item->GetClass()) || ReadTwoHandedMetadata(WeaponConfigPtr, WeaponConfigStruct);
 }
 
+bool USpellRiseEquipmentManagerComponent::IsOffHandGameplayActive() const
+{
+	return ActiveOffHandItem != nullptr && !bOffHandSuppressedByTwoHandedWeapon;
+}
+
+void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	if (!ActiveOffHandItem)
+	{
+		RemoveGrantedAbilitiesForSlot(241);
+		bOffHandSuppressedByTwoHandedWeapon = false;
+		EquippedOffHandWeapon = nullptr;
+		BroadcastOffHandWeaponChangedIfNeeded();
+		OnHUDEquipmentSlotsChanged.Broadcast();
+		return;
+	}
+
+	UEquippableItem* ActiveMainHandItem = QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex)
+		? QuickWeaponSlots[ActiveQuickWeaponSlotIndex]
+		: nullptr;
+	const bool bShouldSuppress = IsTwoHandedWeaponItem(ActiveMainHandItem);
+	bOffHandSuppressedByTwoHandedWeapon = bShouldSuppress;
+
+	GetOrSpawnWeaponActorForItem(ActiveOffHandItem);
+	if (bShouldSuppress)
+	{
+		RemoveGrantedAbilitiesForSlot(241);
+		SetNarrativeItemActiveState(ActiveOffHandItem, false);
+		RefreshOffHandVisual_Server(false);
+		RefreshEquippedOffHandWeaponReference();
+	}
+	else
+	{
+		SetNarrativeItemActiveState(ActiveOffHandItem, true);
+		RefreshOffHandVisual_Server(true);
+		ApplyGrantedAbilitiesForSlot(ActiveOffHandItem, 241);
+		RefreshEquippedOffHandWeaponReference();
+	}
+
+	BroadcastOffHandWeaponChangedIfNeeded();
+	if (AActor* OwnerActor = GetOwner())
+	{
+		OwnerActor->ForceNetUpdate();
+	}
+	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
+}
+
 int32 USpellRiseEquipmentManagerComponent::FindQuickSlotByItem(UEquippableItem* Item) const
 {
 	for (int32 Index = 0; Index < QuickWeaponSlots.Num(); ++Index)
@@ -1952,6 +2258,26 @@ int32 USpellRiseEquipmentManagerComponent::FindQuickSlotByItem(UEquippableItem* 
 		{
 			return Index;
 		}
+	}
+
+	return INDEX_NONE;
+}
+
+int32 USpellRiseEquipmentManagerComponent::GetPreferredQuickWeaponSlotForItem(UEquippableItem* Item) const
+{
+	if (!Item)
+	{
+		return INDEX_NONE;
+	}
+
+	const uint8 SlotValue = ResolveItemSlot(Item);
+	if (SlotValue == static_cast<uint8>(EEquippableSlot::ES_Weapon))
+	{
+		return 0;
+	}
+	if (SlotValue == static_cast<uint8>(EEquippableSlot::ES_Holster))
+	{
+		return 1;
 	}
 
 	return INDEX_NONE;
@@ -2002,7 +2328,31 @@ bool USpellRiseEquipmentManagerComponent::HandleWeaponEquipIntent(UEquippableIte
 		return bActivated;
 	}
 
-	int32 SlotToUse = FindFirstFreeQuickSlot();
+	int32 SlotToUse = GetPreferredQuickWeaponSlotForItem(Item);
+	if (SlotToUse != INDEX_NONE && QuickWeaponSlots.IsValidIndex(SlotToUse) && QuickWeaponSlots[SlotToUse] == Item)
+	{
+		return ActivateQuickWeaponSlot_Server(SlotToUse);
+	}
+	if (SlotToUse != INDEX_NONE && (!QuickWeaponSlots.IsValidIndex(SlotToUse)))
+	{
+		SlotToUse = INDEX_NONE;
+	}
+	if (SlotToUse != INDEX_NONE && QuickWeaponSlots.IsValidIndex(SlotToUse) && QuickWeaponSlots[SlotToUse] && QuickWeaponSlots[SlotToUse] != Item)
+	{
+		const int32 FreeSlot = FindFirstFreeQuickSlot();
+		if (FreeSlot != INDEX_NONE)
+		{
+			SlotToUse = FreeSlot;
+		}
+	}
+	if (SlotToUse == INDEX_NONE)
+	{
+		SlotToUse = FindFirstFreeQuickSlot();
+	}
+	if (SlotToUse == INDEX_NONE)
+	{
+		SlotToUse = GetPreferredQuickWeaponSlotForItem(Item);
+	}
 	if (SlotToUse == INDEX_NONE)
 	{
 		SlotToUse = (ActiveQuickWeaponSlotIndex == 0) ? 1 : 0;
@@ -2039,15 +2389,7 @@ bool USpellRiseEquipmentManagerComponent::HandleOffHandEquipIntent(UEquippableIt
 	UEquippableItem* ActiveMainHandItem = QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex)
 		? QuickWeaponSlots[ActiveQuickWeaponSlotIndex]
 		: nullptr;
-	if (IsTwoHandedWeaponItem(ActiveMainHandItem))
-	{
-		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
-			TEXT("HandleOffHandEquipIntent rejeitado: main hand 2H ativa. Owner=%s OffHand=%s MainHand=%s"),
-			*GetNameSafe(GetOwner()),
-			*GetNameSafe(Item),
-			*GetNameSafe(ActiveMainHandItem));
-		return false;
-	}
+	const bool bSuppressedByTwoHanded = IsTwoHandedWeaponItem(ActiveMainHandItem);
 
 	if (ActiveOffHandItem && ActiveOffHandItem != Item)
 	{
@@ -2055,10 +2397,18 @@ bool USpellRiseEquipmentManagerComponent::HandleOffHandEquipIntent(UEquippableIt
 	}
 
 	ActiveOffHandItem = Item;
-	SetNarrativeItemActiveState(Item, true);
+	bOffHandSuppressedByTwoHandedWeapon = bSuppressedByTwoHanded;
+	SetNarrativeItemActiveState(Item, !bSuppressedByTwoHanded);
 	GetOrSpawnWeaponActorForItem(Item);
-	RefreshOffHandVisual_Server(true);
-	ApplyGrantedAbilitiesForSlot(Item, 241);
+	RefreshOffHandVisual_Server(!bSuppressedByTwoHanded);
+	if (bSuppressedByTwoHanded)
+	{
+		RemoveGrantedAbilitiesForSlot(241);
+	}
+	else
+	{
+		ApplyGrantedAbilitiesForSlot(Item, 241);
+	}
 	RefreshEquippedOffHandWeaponReference();
 	BroadcastOffHandWeaponChangedIfNeeded();
 	if (AActor* OwnerActor = GetOwner())
@@ -2066,6 +2416,7 @@ bool USpellRiseEquipmentManagerComponent::HandleOffHandEquipIntent(UEquippableIt
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 	return true;
 }
 
@@ -2087,11 +2438,6 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	if (IsOffHandWeaponItem(Item))
 	{
 		return HandleOffHandEquipIntent(Item);
-	}
-
-	if (IsTwoHandedWeaponItem(Item) && ActiveOffHandItem)
-	{
-		RemoveOffHandWeapon_Server(false);
 	}
 
 	FString ValidationReason;
@@ -2169,7 +2515,9 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	}
 	RefreshEquippedWeaponReference();
 	BroadcastWeaponChangedIfNeeded();
+	RefreshOffHandSuppression_Server();
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("AssignQuickWeaponSlot concluido. Owner=%s Item=%s Slot=%d ActiveQuickSlot=%d SpawnedWeapon=%s Slot0=%s Slot1=%s"),
@@ -2217,11 +2565,6 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 		return true;
 	}
 
-	if (IsTwoHandedWeaponItem(ItemToActivate) && ActiveOffHandItem)
-	{
-		RemoveOffHandWeapon_Server(false);
-	}
-
 	if (QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex))
 	{
 		if (UEquippableItem* PreviouslyActive = QuickWeaponSlots[ActiveQuickWeaponSlotIndex])
@@ -2241,7 +2584,9 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 	}
 	RefreshEquippedWeaponReference();
 	BroadcastWeaponChangedIfNeeded();
+	RefreshOffHandSuppression_Server();
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("ActivateQuickWeaponSlot concluido. Owner=%s Slot=%d Item=%s EquippedWeapon=%s"),
 		*GetNameSafe(GetOwner()),
@@ -2291,11 +2636,13 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 	CleanupOrphanedWeaponActors_Server();
 	RefreshEquippedWeaponReference();
 	BroadcastWeaponChangedIfNeeded();
+	RefreshOffHandSuppression_Server();
 	if (AActor* OwnerActor = GetOwner())
 	{
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestroyWeaponActor)
@@ -2310,6 +2657,7 @@ void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestr
 	SetNarrativeItemActiveState(RemovedItem, false);
 	RemoveGrantedAbilitiesForSlot(241);
 	ActiveOffHandItem = nullptr;
+	bOffHandSuppressedByTwoHandedWeapon = false;
 
 	if (bDestroyWeaponActor)
 	{
@@ -2323,6 +2671,7 @@ void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestr
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, int32 QuantityToDrop)
@@ -2905,7 +3254,6 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 	}
 
 
-
 	DestroyWeaponActorForItem(RemovedEquippableItem);
 
 
@@ -2968,6 +3316,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_QuickWeaponSlots()
 {
 	ReconcileReplicatedQuickSlotVisuals();
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_ActiveQuickSlotIndex()
@@ -2979,6 +3328,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_ActiveQuickSlotIndex()
 		BroadcastWeaponChangedIfNeeded();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_EquippedWeapon()
@@ -2986,6 +3336,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_EquippedWeapon()
 	ReconcileReplicatedQuickSlotVisuals();
 	BroadcastWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_ActiveOffHandItem()
@@ -2994,19 +3345,29 @@ void USpellRiseEquipmentManagerComponent::OnRep_ActiveOffHandItem()
 	{
 		EquippedOffHandWeapon = nullptr;
 	}
-	RefreshOffHandVisual_Local(ActiveOffHandItem != nullptr);
+	RefreshOffHandVisual_Local(IsOffHandGameplayActive());
 	if (!ActiveOffHandItem)
 	{
 		BroadcastOffHandWeaponChangedIfNeeded();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::OnRep_OffHandSuppressedByTwoHandedWeapon()
+{
+	RefreshOffHandVisual_Local(IsOffHandGameplayActive());
+	BroadcastOffHandWeaponChangedIfNeeded();
+	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_EquippedOffHandWeapon()
 {
-	RefreshOffHandVisual_Local(ActiveOffHandItem != nullptr);
+	RefreshOffHandVisual_Local(IsOffHandGameplayActive());
 	BroadcastOffHandWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
 }
 
 UEquippableItem* USpellRiseEquipmentManagerComponent::GetQuickWeaponItemByIndex(int32 QuickSlotIndex) const

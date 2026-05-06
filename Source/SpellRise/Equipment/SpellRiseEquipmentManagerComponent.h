@@ -9,6 +9,7 @@
 #include "GameplayTagContainer.h"
 #include "HAL/Platform.h"
 #include "Net/Serialization/FastArraySerializer.h"
+#include "EquippableItem.h"
 #include "SpellRiseEquipmentManagerComponent.generated.h"
 
 class UEquippableItem;
@@ -25,9 +26,104 @@ class FOutBunch;
 struct FReplicationFlags;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnQuickWeaponSlotsChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSpellRiseHUDEquipmentSlotsChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpellRiseWeaponChanged, AActor*, EquippedWeapon);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSpellRiseOffHandWeaponChanged, AActor*, EquippedOffHandWeapon);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSpellRiseWeaponLoadoutChanged, AActor*, EquippedMainHandWeapon, AActor*, EquippedOffHandWeapon);
+
+UENUM(BlueprintType)
+enum class ESpellRiseHUDEquipmentSlot : uint8
+{
+	WeaponSlot1 UMETA(DisplayName="Weapon Slot 1"),
+	WeaponSlot2 UMETA(DisplayName="Weapon Slot 2"),
+	OffHand UMETA(DisplayName="Off Hand"),
+	QuickSlot1 UMETA(DisplayName="Quick Slot 1"),
+	QuickSlot2 UMETA(DisplayName="Quick Slot 2"),
+	QuickSlot3 UMETA(DisplayName="Quick Slot 3"),
+	QuickSlot4 UMETA(DisplayName="Quick Slot 4"),
+	Backpack UMETA(DisplayName="Backpack"),
+	Necklace UMETA(DisplayName="Necklace"),
+	Head UMETA(DisplayName="Head"),
+	Torso UMETA(DisplayName="Torso"),
+	Hands UMETA(DisplayName="Hands"),
+	Legs UMETA(DisplayName="Legs"),
+	Feet UMETA(DisplayName="Feet"),
+};
+
+USTRUCT(BlueprintType)
+struct FSpellRiseHUDEquipmentSlotView
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	ESpellRiseHUDEquipmentSlot Slot = ESpellRiseHUDEquipmentSlot::WeaponSlot1;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	FName SlotName = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	TObjectPtr<UEquippableItem> Item = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	bool bHasItem = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	bool bIsActive = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	bool bIsStowed = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	bool bIsBlockedByTwoHandedWeapon = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|HUD")
+	bool bIsTwoHandedWeapon = false;
+};
+
+USTRUCT(BlueprintType)
+struct FSpellRiseEquipmentAbilityPreview
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	TSubclassOf<class UGameplayAbility> Ability = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	int32 AbilityLevel = 1;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	FGameplayTag InputTag;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	bool bAutoActivateIfNoInputTag = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	FGameplayAbilitySpecHandle GrantedSpecHandle;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	bool bIsCurrentlyGranted = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	bool bIsActive = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	float CooldownRemaining = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	float CooldownDuration = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	double CooldownCapturedWorldTimeSeconds = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	double CooldownStartWorldTimeSeconds = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	double CooldownEndWorldTimeSeconds = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
+	bool bIsOnCooldown = false;
+};
 
 USTRUCT()
 struct FSpellRiseAppliedEquipmentEntry : public FFastArraySerializerItem
@@ -123,7 +219,25 @@ public:
 	UEquippableItem* GetActiveOffHandItem() const { return ActiveOffHandItem; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	bool IsOffHandSuppressedByTwoHandedWeapon() const { return bOffHandSuppressedByTwoHandedWeapon; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	int32 GetActiveQuickWeaponSlotIndex() const { return ActiveQuickWeaponSlotIndex; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|HUD")
+	FSpellRiseHUDEquipmentSlotView GetHUDEquipmentSlotView(ESpellRiseHUDEquipmentSlot Slot) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|HUD")
+	TArray<FSpellRiseHUDEquipmentSlotView> GetHUDEquipmentSlotViews() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Abilities")
+	TArray<FSpellRiseEquipmentAbilityPreview> GetAbilitiesToGrantPreviewForItem(UEquippableItem* Item) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Abilities", meta=(WorldContext="WorldContextObject"))
+	static float GetAbilityPreviewCooldownRemainingAtCurrentTime(const UObject* WorldContextObject, const FSpellRiseEquipmentAbilityPreview& Preview);
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Abilities", meta=(WorldContext="WorldContextObject"))
+	static float GetAbilityPreviewCooldownPercentAtCurrentTime(const UObject* WorldContextObject, const FSpellRiseEquipmentAbilityPreview& Preview, bool bReadyProgress = false);
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	AActor* GetActiveEquippedWeaponActor() const;
@@ -151,6 +265,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Quick Weapon Slots Changed"))
 	FOnQuickWeaponSlotsChanged OnQuickWeaponSlotsChanged;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On HUD Equipment Slots Changed"))
+	FOnSpellRiseHUDEquipmentSlotsChanged OnHUDEquipmentSlotsChanged;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintAssignable, Category="SpellRise|Equipment|Events", meta=(DisplayName="On Weapon Changed"))
 	FOnSpellRiseWeaponChanged OnWeaponChanged;
@@ -219,8 +336,11 @@ private:
 	bool IsWeaponItem(UEquippableItem* Item) const;
 	bool IsOffHandWeaponItem(UEquippableItem* Item) const;
 	bool IsTwoHandedWeaponItem(UEquippableItem* Item) const;
+	bool IsOffHandGameplayActive() const;
+	void RefreshOffHandSuppression_Server();
 	int32 FindQuickSlotByItem(UEquippableItem* Item) const;
 	int32 FindFirstFreeQuickSlot() const;
+	int32 GetPreferredQuickWeaponSlotForItem(UEquippableItem* Item) const;
 	bool HandleWeaponEquipIntent(UEquippableItem* Item);
 	bool HandleOffHandEquipIntent(UEquippableItem* Item);
 	bool ActivateQuickWeaponSlot_Server(int32 QuickSlotIndex);
@@ -248,10 +368,14 @@ private:
 	UFUNCTION()
 	void OnRep_ActiveOffHandItem();
 	UFUNCTION()
+	void OnRep_OffHandSuppressedByTwoHandedWeapon();
+	UFUNCTION()
 	void OnRep_EquippedOffHandWeapon();
 
 	FSpellRiseAppliedEquipmentEntry* AddEntry(UEquippableItem* Item, uint8 SlotValue);
 	bool RemoveEntryBySlot(uint8 SlotValue);
+	UEquippableItem* GetEquippedItemByNarrativeSlot(EEquippableSlot Slot) const;
+	static FName GetHUDEquipmentSlotName(ESpellRiseHUDEquipmentSlot Slot);
 
 private:
 	UPROPERTY(Replicated)
@@ -269,6 +393,9 @@ private:
 
 	UPROPERTY(ReplicatedUsing=OnRep_ActiveOffHandItem)
 	TObjectPtr<UEquippableItem> ActiveOffHandItem = nullptr;
+
+	UPROPERTY(ReplicatedUsing=OnRep_OffHandSuppressedByTwoHandedWeapon)
+	bool bOffHandSuppressedByTwoHandedWeapon = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNarrativeInventoryComponent> CachedInventoryComponent = nullptr;

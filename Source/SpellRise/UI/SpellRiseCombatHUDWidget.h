@@ -26,6 +26,15 @@ struct FSpellRiseAbilitySlotView
 	float CooldownDuration = 0.f;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|HUD")
+	double CooldownCapturedWorldTimeSeconds = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|HUD")
+	double CooldownStartWorldTimeSeconds = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|HUD")
+	double CooldownEndWorldTimeSeconds = 0.0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|HUD")
 	bool bIsActive = false;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|HUD")
