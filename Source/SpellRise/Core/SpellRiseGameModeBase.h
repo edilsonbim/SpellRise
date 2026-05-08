@@ -33,7 +33,7 @@ protected:
 	bool bRequireSteamAuthOnDedicatedServer = true;
 
 	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
-	bool bAllowDevOfflineIdFallback = true;
+	bool bAllowDevOfflineIdFallback = false;
 
 	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
 	FString DevOfflineIdPrefix = TEXT("DEV");

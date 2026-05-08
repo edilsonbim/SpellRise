@@ -67,6 +67,8 @@ $env:SR_PG_CONN = "host=<RDS_ENDPOINT> port=5432 dbname=spellrise_db user=spellr
 .\SpellRiseServer.exe /Game/Maps/Map2/Map2 -log -Port=7777 -NetDriverListenPort=7777 -unattended -NoCrashDialog -SRPersistenceProvider=postgres
 ```
 
+`postgres` e o provider padrão. Em staging/producao use `-SRPersistenceRequirePostgres` para bloquear fallback. O provider `file` exige pedido explícito (`-SRPersistenceProvider=file`) ou fallback autorizado (`-SRPersistenceAllowFileFallback`) e não deve ser usado para persistência sensível de produção.
+
 ## 4.2 NoSteam (sem persistencia)
 
 ```powershell

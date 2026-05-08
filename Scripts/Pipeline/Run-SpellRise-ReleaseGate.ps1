@@ -61,7 +61,7 @@ function Add-StepResult {
         Name = $Name
         ExitCode = $ExitCode
         LogPath = $LogPath
-        Status = if ($ExitCode -eq 0) { 'PASS' } else { 'FAIL' }
+        Status = $(if ($ExitCode -eq 0) { 'PASS' } else { 'FAIL' })
     }
 
     $summary[$Area] += $entry
@@ -77,7 +77,7 @@ if (-not $NoBuild) {
             $target,
             $Platform,
             $Configuration,
-            "`\"$uproject`\"",
+            ('"{0}"' -f $uproject),
             '-WaitMutex',
             '-NoHotReloadFromIDE'
         )
@@ -91,7 +91,7 @@ if (-not $NoPackage) {
     $clientLog = Join-Path $runDir 'SpellRiseClient-package.log'
     $clientArgs = @(
         'BuildCookRun',
-        "-project=`\"$uproject`\"",
+        ('-project="{0}"' -f $uproject),
         '-noP4',
         '-client',
         "-clientconfig=$Configuration",
@@ -101,7 +101,7 @@ if (-not $NoPackage) {
         '-stage',
         '-pak',
         '-archive',
-        "-archivedirectory=`\"$ClientArchiveDir`\""
+        ('-archivedirectory="{0}"' -f $ClientArchiveDir)
     )
     $clientResult = Invoke-SpellRiseProcess -FilePath $runUatBat -Arguments $clientArgs -LogPath $clientLog -WorkingDirectory $ProjectRoot
     Add-StepResult -Area 'Package' -Name 'SpellRiseClient' -ExitCode $clientResult.ExitCode -LogPath $clientLog
@@ -109,7 +109,7 @@ if (-not $NoPackage) {
     $serverLog = Join-Path $runDir 'SpellRiseServer-package.log'
     $serverArgs = @(
         'BuildCookRun',
-        "-project=`\"$uproject`\"",
+        ('-project="{0}"' -f $uproject),
         '-noP4',
         '-server',
         "-serverconfig=$Configuration",
@@ -119,7 +119,7 @@ if (-not $NoPackage) {
         '-stage',
         '-pak',
         '-archive',
-        "-archivedirectory=`\"$ServerArchiveDir`\""
+        ('-archivedirectory="{0}"' -f $ServerArchiveDir)
     )
     $serverResult = Invoke-SpellRiseProcess -FilePath $runUatBat -Arguments $serverArgs -LogPath $serverLog -WorkingDirectory $ProjectRoot
     Add-StepResult -Area 'Package' -Name 'SpellRiseServer' -ExitCode $serverResult.ExitCode -LogPath $serverLog
@@ -159,11 +159,12 @@ if (-not $NoSmoke) {
         if ($NoSteam) { $smokeArgs += '-NoSteam' }
         if ($SkipLagLoss) { $smokeArgs += '-SkipLagLoss' }
 
-        $smokeResult = Invoke-SpellRiseProcess -FilePath 'powershell.exe' -Arguments @(
-            '-ExecutionPolicy', 'Bypass', '-File', "`\"$smokeScript`\""
-        ) + $smokeArgs -LogPath $smokeLog -WorkingDirectory $ProjectRoot
+        $smokeProcessArgs = @(
+            '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $smokeScript)
+        ) + $smokeArgs
+        $smokeResult = Invoke-SpellRiseProcess -FilePath 'powershell.exe' -Arguments $smokeProcessArgs -LogPath $smokeLog -WorkingDirectory $ProjectRoot
 
-        $summary.Smoke = @{ ExitCode = $smokeResult.ExitCode; LogPath = $smokeLog; Status = if ($smokeResult.ExitCode -eq 0) { 'PASS' } else { 'FAIL' } }
+        $summary.Smoke = @{ ExitCode = $smokeResult.ExitCode; LogPath = $smokeLog; Status = $(if ($smokeResult.ExitCode -eq 0) { 'PASS' } else { 'FAIL' }) }
         if ($smokeResult.ExitCode -ne 0) { $summary.Status = 'FAIL' }
     }
 }

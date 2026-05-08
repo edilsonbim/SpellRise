@@ -123,9 +123,23 @@ namespace
 		const FSpellRisePersistenceSnapshotCounters Counters = RecordSnapshotWriteResult(SnapshotType, bSuccess);
 		if (bSuccess)
 		{
+			UE_LOG(LogSpellRisePersistenceFile, Log,
+				TEXT("[Persistence][FileSnapshotSucceeded] Type=%s Reason=%s SuccessCount=%lld FailureCount=%lld Path=%s"),
+				GetSnapshotTypeLabel(SnapshotType),
+				Reason ? Reason : TEXT("unspecified"),
+				Counters.SuccessCount,
+				Counters.FailureCount,
+				*Path);
 		}
 		else
 		{
+			UE_LOG(LogSpellRisePersistenceFile, Warning,
+				TEXT("[Persistence][FileSnapshotRejected] Type=%s Reason=%s SuccessCount=%lld FailureCount=%lld Path=%s"),
+				GetSnapshotTypeLabel(SnapshotType),
+				Reason ? Reason : TEXT("unspecified"),
+				Counters.SuccessCount,
+				Counters.FailureCount,
+				*Path);
 		}
 	}
 

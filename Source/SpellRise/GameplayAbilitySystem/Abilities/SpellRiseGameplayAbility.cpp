@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "TimerManager.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
@@ -100,6 +101,11 @@ bool USpellRiseGameplayAbility::HasServerAuthority() const
 bool USpellRiseGameplayAbility::IsLocallyControlledAbility() const
 {
 	return CurrentActorInfo && CurrentActorInfo->IsLocallyControlled();
+}
+
+bool USpellRiseGameplayAbility::HasPC() const
+{
+	return Cast<APlayerController>(GetControllerFromActorInfo()) != nullptr;
 }
 
 USpellRiseAbilitySystemComponent* USpellRiseGameplayAbility::GetSpellRiseAbilitySystemComponentFromActorInfo() const

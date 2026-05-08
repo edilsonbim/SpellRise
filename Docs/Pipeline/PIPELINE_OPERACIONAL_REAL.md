@@ -19,19 +19,19 @@ Transformar as fases de documentação em um pipeline executável, alinhado com 
 - nenhuma automação substitui authority review, RPC review e leitura dos logs.
 
 ## Estrutura recomendada
-- copiar os scripts para `Scripts/`
-- manter este documento em `Fontes/`
-- usar `Run-SpellRise-ReleaseGate.ps1` como ponto de entrada padrão
-- usar `Run-SpellRise-PersistenceGate.ps1` quando tocar save/load/auth/session
-- usar `Run-SpellRise-CombatLab.ps1` quando tocar combate, fórmula, prediction ou projectile flow
+- scripts ficam em `Scripts/Pipeline/`
+- documentação de pipeline fica em `Docs/Pipeline/`
+- usar `Scripts/Pipeline/Run-SpellRise-ReleaseGate.ps1` como ponto de entrada padrão
+- usar `Scripts/Pipeline/Run-SpellRise-PersistenceGate.ps1` quando tocar save/load/auth/session
+- usar `Scripts/Pipeline/Run-SpellRise-CombatLab.ps1` quando tocar combate, fórmula, prediction ou projectile flow
 
 ## Fluxo recomendado de equipe
 1. BuildGuardian resolve build local.
 2. Especialista do domínio fecha correção.
 3. ReplicationSentinel revisa authority/RPC/OnRep.
-4. `Run-SpellRise-ReleaseGate.ps1` valida package + parity + smoke.
-5. `Run-SpellRise-PersistenceGate.ps1` entra quando a mudança toca persistência.
-6. `Run-SpellRise-CombatLab.ps1` fecha o recorte de combate/balance/regressão.
+4. `Scripts/Pipeline/Run-SpellRise-ReleaseGate.ps1` valida package + parity + smoke.
+5. `Scripts/Pipeline/Run-SpellRise-PersistenceGate.ps1` entra quando a mudança toca persistência.
+6. `Scripts/Pipeline/Run-SpellRise-CombatLab.ps1` fecha o recorte de combate/balance/regressão.
 
 ## Limites atuais
 Este pacote já é operacional, mas ainda depende de:
@@ -40,4 +40,4 @@ Este pacote já é operacional, mas ainda depende de:
 - hooks de automação específicos do jogo para cenários mais profundos de persistência e combat lab.
 
 ## Próximo ganho recomendado
-Depois de colocar estes scripts no projeto, o próximo passo de maior valor é integrar o `Run-SpellRise-ReleaseGate.ps1` em um gate local padronizado e depois em CI.
+O próximo passo de maior valor é integrar o `Scripts/Pipeline/Run-SpellRise-ReleaseGate.ps1` em um gate local padronizado e depois em CI.

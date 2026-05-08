@@ -161,6 +161,7 @@ USpellRiseEquipmentManagerComponent::USpellRiseEquipmentManagerComponent(const F
 {
 	SetIsReplicatedByDefault(true);
 	QuickWeaponSlots.SetNum(2);
+	QuickWeaponActors.SetNum(2);
 	DropPickupActorClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C")));
 }
 
@@ -176,6 +177,7 @@ void USpellRiseEquipmentManagerComponent::GetLifetimeReplicatedProps(TArray<FLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ThisClass, EquipmentList);
 	DOREPLIFETIME(ThisClass, QuickWeaponSlots);
+	DOREPLIFETIME(ThisClass, QuickWeaponActors);
 	DOREPLIFETIME(ThisClass, ActiveQuickWeaponSlotIndex);
 	DOREPLIFETIME(ThisClass, ActiveOffHandItem);
 	DOREPLIFETIME(ThisClass, bOffHandSuppressedByTwoHandedWeapon);
@@ -590,6 +592,22 @@ AActor* USpellRiseEquipmentManagerComponent::GetActiveEquippedWeaponActor() cons
 	return ResolveOwnedWeaponActor(WeaponActorClass);
 }
 
+AActor* USpellRiseEquipmentManagerComponent::GetEquippedWeapon(TSubclassOf<AActor> ExpectedClass) const
+{
+	if (!EquippedWeapon)
+	{
+		return nullptr;
+	}
+
+	UClass* ExpectedWeaponClass = ExpectedClass.Get();
+	if (!ExpectedWeaponClass || EquippedWeapon->IsA(ExpectedWeaponClass))
+	{
+		return EquippedWeapon;
+	}
+
+	return nullptr;
+}
+
 bool USpellRiseEquipmentManagerComponent::GetActiveEquippedWeaponSpawnPointLocation(FVector& OutLocation) const
 {
 	if (AActor* WeaponActor = GetActiveEquippedWeaponActor())
@@ -620,18 +638,7 @@ bool USpellRiseEquipmentManagerComponent::GetActiveEquippedWeaponSpawnPointTrans
 
 AActor* USpellRiseEquipmentManagerComponent::GetEquippedWeaponTyped(TSubclassOf<AActor> ExpectedClass) const
 {
-	if (!EquippedWeapon)
-	{
-		return nullptr;
-	}
-
-	UClass* ExpectedWeaponClass = ExpectedClass.Get();
-	if (!ExpectedWeaponClass || EquippedWeapon->IsA(ExpectedWeaponClass))
-	{
-		return EquippedWeapon;
-	}
-
-	return nullptr;
+	return GetEquippedWeapon(ExpectedClass);
 }
 
 FName USpellRiseEquipmentManagerComponent::GetHUDEquipmentSlotName(ESpellRiseHUDEquipmentSlot Slot)
@@ -1420,7 +1427,20 @@ void USpellRiseEquipmentManagerComponent::RefreshEquippedWeaponReference()
 		return;
 	}
 
-	EquippedWeapon = GetOrSpawnWeaponActorForItem(ActiveItem);
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		EquippedWeapon = GetOrSpawnWeaponActorForItem(ActiveItem);
+		if (QuickWeaponActors.IsValidIndex(ActiveQuickWeaponSlotIndex))
+		{
+			QuickWeaponActors[ActiveQuickWeaponSlotIndex] = EquippedWeapon;
+		}
+		return;
+	}
+
+	if (QuickWeaponActors.IsValidIndex(ActiveQuickWeaponSlotIndex))
+	{
+		EquippedWeapon = QuickWeaponActors[ActiveQuickWeaponSlotIndex];
+	}
 }
 
 void USpellRiseEquipmentManagerComponent::RefreshEquippedOffHandWeaponReference()
@@ -1552,6 +1572,7 @@ void USpellRiseEquipmentManagerComponent::PrepareWeaponActorForAttachment(AActor
 	}
 
 	WeaponActor->SetReplicateMovement(false);
+	WeaponActor->bNetUseOwnerRelevancy = true;
 }
 
 bool USpellRiseEquipmentManagerComponent::AttachWeaponActorToSocket(AActor* WeaponActor, USkeletalMeshComponent* AttachMesh, FName TargetSocket) const
@@ -1673,17 +1694,30 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Local(int32 Qui
 	}
 
 	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
-	AActor* WeaponActor = ResolveOwnedWeaponActor(WeaponActorClass);
+	AActor* WeaponActor = QuickWeaponActors.IsValidIndex(QuickSlotIndex)
+		? QuickWeaponActors[QuickSlotIndex].Get()
+		: nullptr;
 	if (!AttachMesh || !WeaponActor)
 	{
 		UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
-			TEXT("RefreshQuickSlotVisual_Local aguardando actor/mesh. Owner=%s Item=%s Slot=%d Equipped=%s AttachMesh=%s WeaponActor=%s"),
+			TEXT("RefreshQuickSlotVisual_Local aguardando actor/mesh replicado do slot. Owner=%s Item=%s Slot=%d Equipped=%s AttachMesh=%s WeaponActor=%s"),
 			*GetNameSafe(GetOwner()),
 			*GetNameSafe(Item),
 			QuickSlotIndex,
 			bEquipped ? TEXT("true") : TEXT("false"),
 			*GetNameSafe(AttachMesh),
 			*GetNameSafe(WeaponActor));
+		if (UWorld* World = GetWorld())
+		{
+			const TWeakObjectPtr<USpellRiseEquipmentManagerComponent> WeakThis(this);
+			World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis]()
+			{
+				if (USpellRiseEquipmentManagerComponent* Component = WeakThis.Get())
+				{
+					Component->ReconcileReplicatedQuickSlotVisuals();
+				}
+			}));
+		}
 		return;
 	}
 
@@ -1859,18 +1893,32 @@ void USpellRiseEquipmentManagerComponent::RemoveGrantedAbilitiesForSlot(uint8 Sl
 					ASC->RemoveActiveGameplayEffect(EffectHandle);
 				}
 			}
+			UE_LOG(LogSpellRiseEquipmentTrace, Log,
+				TEXT("RemoveGrantedAbilitiesForSlot effects removidos. Owner=%s SlotValue=%d Count=%d"),
+				*GetNameSafe(GetOwner()),
+				SlotValue,
+				EffectHandlesToRemove.Num());
 		}
 	}
 
 	TArray<FGameplayAbilitySpecHandle> HandlesToRemove;
 	if (!GrantedAbilityHandlesBySlot.RemoveAndCopyValue(SlotValue, HandlesToRemove))
 	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
+			TEXT("RemoveGrantedAbilitiesForSlot sem ability handles. Owner=%s SlotValue=%d"),
+			*GetNameSafe(GetOwner()),
+			SlotValue);
 		return;
 	}
 
 	if (HandlesToRemove.Num() > 0)
 	{
 		CharacterOwner->RemoveAbilities(HandlesToRemove);
+		UE_LOG(LogSpellRiseEquipmentTrace, Log,
+			TEXT("RemoveGrantedAbilitiesForSlot abilities removidas. Owner=%s SlotValue=%d Count=%d"),
+			*GetNameSafe(GetOwner()),
+			SlotValue,
+			HandlesToRemove.Num());
 	}
 }
 
@@ -2176,11 +2224,47 @@ bool USpellRiseEquipmentManagerComponent::IsTwoHandedWeaponItem(UEquippableItem*
 			{
 				const void* ValuePtr = EnumProperty->ContainerPtrToValuePtr<void>(ContainerPtr);
 				const int64 IntValue = EnumProperty->GetUnderlyingProperty()->GetSignedIntPropertyValue(ValuePtr);
-				Value = EnumProperty->GetEnum()->GetNameStringByValue(IntValue);
+				const UEnum* Enum = EnumProperty->GetEnum();
+				Value = Enum ? Enum->GetNameStringByValue(IntValue) : FString();
+				if (Enum)
+				{
+					Value += TEXT(" ");
+					Value += Enum->GetDisplayNameTextByValue(IntValue).ToString();
+				}
+			}
+			else if (const FByteProperty* ByteProperty = CastField<FByteProperty>(*It))
+			{
+				const void* ValuePtr = ByteProperty->ContainerPtrToValuePtr<void>(ContainerPtr);
+				const int64 IntValue = ByteProperty->GetUnsignedIntPropertyValue(ValuePtr);
+				if (ByteProperty->Enum)
+				{
+					Value = ByteProperty->Enum->GetNameStringByValue(IntValue);
+					Value += TEXT(" ");
+					Value += ByteProperty->Enum->GetDisplayNameTextByValue(IntValue).ToString();
+				}
+				else
+				{
+					Value = FString::FromInt(static_cast<int32>(IntValue));
+				}
+			}
+			else if (const FIntProperty* IntProperty = CastField<FIntProperty>(*It))
+			{
+				const void* ValuePtr = IntProperty->ContainerPtrToValuePtr<void>(ContainerPtr);
+				const int32 IntValue = IntProperty->GetPropertyValue(ValuePtr);
+				if ((PropertyName.Contains(TEXT("Hand"), ESearchCase::IgnoreCase) ||
+					PropertyName.Contains(TEXT("Grip"), ESearchCase::IgnoreCase)) &&
+					IntValue >= 2)
+				{
+					return true;
+				}
 			}
 
 			if ((PropertyName.Contains(TEXT("Grip"), ESearchCase::IgnoreCase) || PropertyName.Contains(TEXT("Hand"), ESearchCase::IgnoreCase)) &&
-				Value.Contains(TEXT("TwoHand"), ESearchCase::IgnoreCase))
+				(Value.Contains(TEXT("TwoHand"), ESearchCase::IgnoreCase) ||
+					Value.Contains(TEXT("Two Hand"), ESearchCase::IgnoreCase) ||
+					Value.Contains(TEXT("BothHand"), ESearchCase::IgnoreCase) ||
+					Value.Contains(TEXT("Both Hand"), ESearchCase::IgnoreCase) ||
+					Value.Contains(TEXT("2H"), ESearchCase::IgnoreCase)))
 			{
 				return true;
 			}
@@ -2194,7 +2278,14 @@ bool USpellRiseEquipmentManagerComponent::IsTwoHandedWeaponItem(UEquippableItem*
 	const UStruct* WeaponConfigStruct = nullptr;
 	ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct);
 
-	return ReadTwoHandedMetadata(Item, Item->GetClass()) || ReadTwoHandedMetadata(WeaponConfigPtr, WeaponConfigStruct);
+	const bool bTwoHanded = ReadTwoHandedMetadata(Item, Item->GetClass()) || ReadTwoHandedMetadata(WeaponConfigPtr, WeaponConfigStruct);
+	UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
+		TEXT("IsTwoHandedWeaponItem. Owner=%s Item=%s WeaponClass=%s Result=%s"),
+		*GetNameSafe(GetOwner()),
+		*GetNameSafe(Item),
+		*GetNameSafe(WeaponActorClass),
+		bTwoHanded ? TEXT("true") : TEXT("false"));
+	return bTwoHanded;
 }
 
 bool USpellRiseEquipmentManagerComponent::IsOffHandGameplayActive() const
@@ -2223,6 +2314,7 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 		? QuickWeaponSlots[ActiveQuickWeaponSlotIndex]
 		: nullptr;
 	const bool bShouldSuppress = IsTwoHandedWeaponItem(ActiveMainHandItem);
+	const bool bWasSuppressed = bOffHandSuppressedByTwoHandedWeapon;
 	bOffHandSuppressedByTwoHandedWeapon = bShouldSuppress;
 
 	GetOrSpawnWeaponActorForItem(ActiveOffHandItem);
@@ -2240,6 +2332,15 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 		ApplyGrantedAbilitiesForSlot(ActiveOffHandItem, 241);
 		RefreshEquippedOffHandWeaponReference();
 	}
+
+	UE_LOG(LogSpellRiseEquipmentTrace, Log,
+		TEXT("RefreshOffHandSuppression. Owner=%s OffHand=%s MainHand=%s WasSuppressed=%s NowSuppressed=%s OffHandActor=%s"),
+		*GetNameSafe(GetOwner()),
+		*GetNameSafe(ActiveOffHandItem),
+		*GetNameSafe(ActiveMainHandItem),
+		bWasSuppressed ? TEXT("true") : TEXT("false"),
+		bOffHandSuppressedByTwoHandedWeapon ? TEXT("true") : TEXT("false"),
+		*GetNameSafe(EquippedOffHandWeapon));
 
 	BroadcastOffHandWeaponChangedIfNeeded();
 	if (AActor* OwnerActor = GetOwner())
@@ -2463,6 +2564,10 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 			SetNarrativeItemActiveState(ExistingItem, false);
 		}
 		QuickWeaponSlots[ExistingSlot] = nullptr;
+		if (QuickWeaponActors.IsValidIndex(ExistingSlot))
+		{
+			QuickWeaponActors[ExistingSlot] = nullptr;
+		}
 		RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + ExistingSlot));
 		if (bMovedFromActiveSlot)
 		{
@@ -2474,6 +2579,10 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	{
 		UEquippableItem* ReplacedItem = QuickWeaponSlots[QuickSlotIndex];
 		QuickWeaponSlots[QuickSlotIndex] = nullptr;
+		if (QuickWeaponActors.IsValidIndex(QuickSlotIndex))
+		{
+			QuickWeaponActors[QuickSlotIndex] = nullptr;
+		}
 		SetNarrativeItemActiveState(ReplacedItem, false);
 		RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + QuickSlotIndex));
 		if (bReplacingActiveSlot)
@@ -2486,6 +2595,10 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	QuickWeaponSlots[QuickSlotIndex] = Item;
 	SetNarrativeItemActiveState(Item, true);
 	AActor* SpawnedWeaponActor = GetOrSpawnWeaponActorForItem(Item);
+	if (QuickWeaponActors.IsValidIndex(QuickSlotIndex))
+	{
+		QuickWeaponActors[QuickSlotIndex] = SpawnedWeaponActor;
+	}
 
 	if (bShouldKeepAssignedSlotActive)
 	{
@@ -2606,6 +2719,10 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 
 	UEquippableItem* RemovedItem = QuickWeaponSlots[QuickSlotIndex];
 	QuickWeaponSlots[QuickSlotIndex] = nullptr;
+	if (QuickWeaponActors.IsValidIndex(QuickSlotIndex))
+	{
+		QuickWeaponActors[QuickSlotIndex] = nullptr;
+	}
 	SetNarrativeItemActiveState(RemovedItem, false);
 	RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + QuickSlotIndex));
 
@@ -3037,6 +3154,11 @@ AActor* USpellRiseEquipmentManagerComponent::GetOrSpawnWeaponActorForItem(UEquip
 		return nullptr;
 	}
 
+	SpawnedWeapon->SetReplicates(true);
+	SpawnedWeapon->SetReplicateMovement(false);
+	SpawnedWeapon->bNetUseOwnerRelevancy = true;
+	SpawnedWeapon->SetNetUpdateFrequency(15.0f);
+
 	SpawnedWeaponActorsByItem.Add(Item, SpawnedWeapon);
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("GetOrSpawnWeaponActorForItem spawnou arma. Item=%s WeaponActor=%s WeaponClass=%s"),
@@ -3091,9 +3213,22 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandVisual_Local(bool bEquip
 		return;
 	}
 
-	AActor* WeaponActor = ResolveOwnedWeaponActor(WeaponActorClass);
+	AActor* WeaponActor = EquippedOffHandWeapon;
+	if (!IsValid(WeaponActor))
+	{
+		WeaponActor = ResolveOwnedWeaponActor(WeaponActorClass);
+	}
 	if (!AttachMesh || !WeaponActor || TargetSocket == NAME_None)
 	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
+			TEXT("RefreshOffHandVisual_Local aguardando actor/mesh. Owner=%s Item=%s Equipped=%s AttachMesh=%s WeaponActor=%s ReplicatedOffHand=%s Socket=%s"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(Item),
+			bEquipped ? TEXT("true") : TEXT("false"),
+			*GetNameSafe(AttachMesh),
+			*GetNameSafe(WeaponActor),
+			*GetNameSafe(EquippedOffHandWeapon),
+			*TargetSocket.ToString());
 		return;
 	}
 
@@ -3147,6 +3282,10 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Server(int32 Qu
 	}
 
 	AActor* WeaponActor = GetOrSpawnWeaponActorForItem(Item);
+	if (QuickWeaponActors.IsValidIndex(QuickSlotIndex))
+	{
+		QuickWeaponActors[QuickSlotIndex] = WeaponActor;
+	}
 	if (!WeaponActor)
 	{
 		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
@@ -3198,6 +3337,7 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Server(int32 Qu
 			*TargetSocket.ToString(),
 			*GetNameSafe(AttachMesh));
 		AttachWeaponActorToSocket(WeaponActor, AttachMesh, TargetSocket);
+		WeaponActor->ForceNetUpdate();
 	}
 	else
 	{
@@ -3313,6 +3453,17 @@ void USpellRiseEquipmentManagerComponent::HandleInventoryItemRemoved(UNarrativeI
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_QuickWeaponSlots()
+{
+	if (QuickWeaponActors.Num() != QuickWeaponSlots.Num())
+	{
+		QuickWeaponActors.SetNum(QuickWeaponSlots.Num());
+	}
+	ReconcileReplicatedQuickSlotVisuals();
+	OnQuickWeaponSlotsChanged.Broadcast();
+	OnHUDEquipmentSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::OnRep_QuickWeaponActors()
 {
 	ReconcileReplicatedQuickSlotVisuals();
 	OnQuickWeaponSlotsChanged.Broadcast();

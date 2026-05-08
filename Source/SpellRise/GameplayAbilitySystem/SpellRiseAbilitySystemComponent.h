@@ -126,10 +126,14 @@ protected:
 
 	bool AbilitySpecMatchesInputTag(const FGameplayAbilitySpec& Spec, const FGameplayTag& InputTag) const;
 	void GetAbilitySpecsFromInputTag(const FGameplayTag& InputTag, TArray<FGameplayAbilitySpecHandle>& OutSpecHandles) const;
+	void RecordAbilityActivationFailure(const FGameplayAbilitySpec& Spec, const FGameplayTagContainer& FailureTags, const TCHAR* Context);
 
 	void MarkSpecInputPressed(FGameplayAbilitySpec& Spec);
 	void MarkSpecInputReleased(FGameplayAbilitySpec& Spec);
 
 	UPROPERTY(Transient)
 	bool bComboAdvanceRequested = false;
+
+	UPROPERTY(Transient)
+	TMap<FString, int32> AbilityActivationFailureCountByReason;
 };

@@ -1133,6 +1133,14 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
+	UE_LOG(LogSpellRiseCharacterRuntime, Log,
+		TEXT("[Control][PossessedBy] Character=%s Controller=%s PlayerState=%s Local=%d Authority=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(NewController),
+		*GetNameSafe(GetPlayerState()),
+		IsLocallyControlled() ? 1 : 0,
+		HasAuthority() ? 1 : 0);
+
 	ForceServerAnimTick();
 	EnsureAnimInstanceInitialized();
 
@@ -1178,9 +1186,40 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	ApplyStartupEffects();
 }
 
+void ASpellRiseCharacterBase::OnRep_Controller()
+{
+	Super::OnRep_Controller();
+
+	UE_LOG(LogSpellRiseCharacterRuntime, Log,
+		TEXT("[Control][OnRep_Controller] Character=%s Controller=%s PlayerState=%s Local=%d Authority=%d Dead=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetController()),
+		*GetNameSafe(GetPlayerState()),
+		IsLocallyControlled() ? 1 : 0,
+		HasAuthority() ? 1 : 0,
+		IsDead() ? 1 : 0);
+
+	ForceServerAnimTick();
+	EnsureAnimInstanceInitialized();
+	InitASCActorInfo();
+	BindASCDelegates();
+	SyncDeadStateFromASC(TEXT("OnRep_Controller"));
+	ResetLocalDeathPresentation();
+	SetCharacterInputEnabled(!IsDead());
+}
+
 void ASpellRiseCharacterBase::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
+
+	UE_LOG(LogSpellRiseCharacterRuntime, Log,
+		TEXT("[Control][OnRep_PlayerState] Character=%s Controller=%s PlayerState=%s Local=%d Authority=%d Dead=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetController()),
+		*GetNameSafe(GetPlayerState()),
+		IsLocallyControlled() ? 1 : 0,
+		HasAuthority() ? 1 : 0,
+		IsDead() ? 1 : 0);
 
 	ForceServerAnimTick();
 	EnsureAnimInstanceInitialized();
@@ -1428,22 +1467,39 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 {
 	if (!IsLocallyControlled())
 	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
+			TEXT("[Control][InputSkip] Character=%s Reason=not_locally_controlled Controller=%s PlayerState=%s WantedEnabled=%d Authority=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(GetController()),
+			*GetNameSafe(GetPlayerState()),
+			bEnabled ? 1 : 0,
+			HasAuthority() ? 1 : 0);
 		return;
 	}
 
 	APlayerController* PC = Cast<APlayerController>(GetController());
 	if (!PC)
 	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
+			TEXT("[Control][InputSkip] Character=%s Reason=missing_player_controller Controller=%s PlayerState=%s WantedEnabled=%d Authority=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(GetController()),
+			*GetNameSafe(GetPlayerState()),
+			bEnabled ? 1 : 0,
+			HasAuthority() ? 1 : 0);
 		return;
 	}
+
+	UE_LOG(LogSpellRiseCharacterRuntime, Log,
+		TEXT("[Control][InputState] Character=%s Controller=%s Enabled=%d Authority=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(PC),
+		bEnabled ? 1 : 0,
+		HasAuthority() ? 1 : 0);
 
 	if (bEnabled)
 	{
 		ResetLocalDeathPresentation();
-		if (ASpellRisePlayerController* SRPC = Cast<ASpellRisePlayerController>(PC))
-		{
-			SRPC->SetCombatHUDSuppressedByDeath(false);
-		}
 		EnableInput(PC);
 		PC->SetIgnoreMoveInput(false);
 		PC->SetIgnoreLookInput(false);
@@ -1459,10 +1515,6 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 	DisableInput(PC);
 	PC->SetIgnoreMoveInput(true);
 	PC->SetIgnoreLookInput(true);
-	if (ASpellRisePlayerController* SRPC = Cast<ASpellRisePlayerController>(PC))
-	{
-		SRPC->SetCombatHUDSuppressedByDeath(true);
-	}
 }
 
 void ASpellRiseCharacterBase::ApplyRegenStartupEffects()

@@ -242,8 +242,8 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	AActor* GetActiveEquippedWeaponActor() const;
 
-	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
-	AActor* GetEquippedWeapon() const { return EquippedWeapon; }
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment", meta=(DeterminesOutputType="ExpectedClass"))
+	AActor* GetEquippedWeapon(TSubclassOf<AActor> ExpectedClass = nullptr) const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	AActor* GetEquippedOffHandWeapon() const { return EquippedOffHandWeapon; }
@@ -362,6 +362,8 @@ private:
 	UFUNCTION()
 	void OnRep_QuickWeaponSlots();
 	UFUNCTION()
+	void OnRep_QuickWeaponActors();
+	UFUNCTION()
 	void OnRep_ActiveQuickSlotIndex();
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
@@ -387,6 +389,9 @@ private:
 
 	UPROPERTY(ReplicatedUsing=OnRep_QuickWeaponSlots)
 	TArray<TObjectPtr<UEquippableItem>> QuickWeaponSlots;
+
+	UPROPERTY(ReplicatedUsing=OnRep_QuickWeaponActors)
+	TArray<TObjectPtr<AActor>> QuickWeaponActors;
 
 	UPROPERTY(ReplicatedUsing=OnRep_ActiveQuickSlotIndex)
 	int32 ActiveQuickWeaponSlotIndex = INDEX_NONE;

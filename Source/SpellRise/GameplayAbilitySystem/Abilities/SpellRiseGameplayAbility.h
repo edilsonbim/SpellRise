@@ -135,6 +135,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
 	bool IsLocallyControlledAbility() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
+	bool HasPC() const;
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
 	USpellRiseAbilitySystemComponent* GetSpellRiseAbilitySystemComponentFromActorInfo() const;
 

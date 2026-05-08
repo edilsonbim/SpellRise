@@ -61,5 +61,8 @@ private:
 	TSet<FString> SaveInProgressPersistentIds;
 	TMap<FString, TArray<double>> LatencyByOperationMs;
 	TMap<FString, int32> FailureCountByOperation;
+	FString ActiveProviderName;
+	FString PersistenceOperationalMode;
+	FString PersistenceBlockReason;
 	bool bWorldDirty = true;
 };

@@ -12,9 +12,44 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseChatRuntime, Log, All);
 
 namespace
 {
+	constexpr int32 MaxChatNameChars = 32;
+	constexpr int32 MaxChatTextChars = 256;
+	constexpr int32 MaxChatTimeTextChars = 16;
+
 	static FText BuildChatTimeText()
 	{
 		return FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
+	}
+
+	static FString SanitizeBoundedChatString(FString Value, const int32 MaxChars, const TCHAR* Fallback = TEXT(""))
+	{
+		Value.TrimStartAndEndInline();
+		Value.ReplaceInline(TEXT("\r"), TEXT(" "));
+		Value.ReplaceInline(TEXT("\n"), TEXT(" "));
+		Value.ReplaceInline(TEXT("\t"), TEXT(" "));
+
+		const int32 SafeMaxChars = FMath::Max(1, MaxChars);
+		if (Value.Len() > SafeMaxChars)
+		{
+			Value.LeftInline(SafeMaxChars, EAllowShrinking::No);
+		}
+
+		if (Value.IsEmpty() && Fallback)
+		{
+			Value = Fallback;
+		}
+
+		return Value;
+	}
+
+	static FSpellRiseChatMessage BuildBoundedChatMessage(FName Name, const FText& Text, const FText& TimeText, const uint8 Channel)
+	{
+		FSpellRiseChatMessage Message;
+		Message.Name = FName(*SanitizeBoundedChatString(Name.ToString(), MaxChatNameChars, TEXT("Sistema")));
+		Message.Text = FText::FromString(SanitizeBoundedChatString(Text.ToString(), MaxChatTextChars));
+		Message.TimeText = FText::FromString(SanitizeBoundedChatString(TimeText.ToString(), MaxChatTimeTextChars));
+		Message.Channel = Channel;
+		return Message;
 	}
 
 	static ASpellRisePlayerController* FindSenderControllerByName(UWorld* World, const FName DeclaredName)
@@ -105,11 +140,11 @@ namespace
 			return;
 		}
 
-		FSpellRiseChatMessage Message;
-		Message.Name = FName(TEXT("Sistema"));
-		Message.Text = FText::FromString(MessageText);
-		Message.TimeText = BuildChatTimeText();
-		Message.Channel = Channel;
+		const FSpellRiseChatMessage Message = BuildBoundedChatMessage(
+			FName(TEXT("Sistema")),
+			FText::FromString(MessageText),
+			BuildChatTimeText(),
+			Channel);
 		TargetController->ClientReceiveChatMessage(Message);
 	}
 }
@@ -184,11 +219,7 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 		return;
 	}
 
-	FSpellRiseChatMessage Message;
-	Message.Name = Name;
-	Message.Text = Text;
-	Message.TimeText = TimeText;
-	Message.Channel = Channel;
+	const FSpellRiseChatMessage Message = BuildBoundedChatMessage(Name, Text, TimeText, Channel);
 
 	Multi_ReceivePublicMessage(Message);
 }
@@ -203,11 +234,11 @@ void USpellRiseChatComponent::SendCombatToPlayer(
 		return;
 	}
 
-	FSpellRiseChatMessage Message;
-	Message.Name = FName(TEXT("Combat"));
-	Message.Text = Text;
-	Message.TimeText = TimeText;
-	Message.Channel = SpellRiseChatChannel::Combat;
+	const FSpellRiseChatMessage Message = BuildBoundedChatMessage(
+		FName(TEXT("Combat")),
+		Text,
+		TimeText,
+		SpellRiseChatChannel::Combat);
 
 	TargetPlayerController->ClientReceiveChatMessage(Message);
 }

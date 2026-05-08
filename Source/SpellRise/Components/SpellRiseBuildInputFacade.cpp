@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Blueprint/UserWidget.h"
+#include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "UObject/UnrealType.h"
 
@@ -381,9 +382,20 @@ void USpellRiseBuildInputFacade::OnBuildInteractPressed()
 	const bool bHandledByNarrative = HandleMalletInteraction(true);
 	if (!bHandledByNarrative)
 	{
+		FString RateRejectReason;
+		if (!CanSubmitBuildConfirmCommand(RateRejectReason))
+		{
+			UE_LOG(LogSpellRiseBuildInputFacade, Verbose, TEXT("[Build][ConfirmRejected] Reason=%s Owner=%s"),
+				*RateRejectReason,
+				*GetNameSafe(GetOwner()));
+			return;
+		}
+
 		UObject* BuildingComponent = ResolveEBSBuildingComponent();
 		if (!BuildingComponent)
 		{
+			UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Build][ConfirmRejected] Reason=missing_build_component Owner=%s"),
+				*GetNameSafe(GetOwner()));
 			return;
 		}
 
@@ -392,21 +404,23 @@ void USpellRiseBuildInputFacade::OnBuildInteractPressed()
 			FString RejectReason;
 			if (!CanConfirmBuild(BuildingComponent, RejectReason))
 			{
+				UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Build][ConfirmRejected] Reason=%s Owner=%s Component=%s"),
+					*RejectReason,
+					*GetNameSafe(GetOwner()),
+					*GetNameSafe(BuildingComponent));
 				return;
 			}
 		}
 
-		CallFirstAvailableNoParamFunction(
-			BuildingComponent,
-			{
-				TEXT("ServerConfirmBuild"),
-				TEXT("ServerPlaceBuilding"),
-				TEXT("ConfirmBuild"),
-				TEXT("PlaceBuilding"),
-				TEXT("BuildInteractPressed"),
-				TEXT("Build"),
-				TEXT("TryBuild")
-			});
+		const AActor* OwnerActor = GetOwner();
+		const bool bAuthorityFallbackAllowed = OwnerActor && OwnerActor->HasAuthority();
+		if (!CallBuildConfirmFunction(BuildingComponent, bAuthorityFallbackAllowed))
+		{
+			UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Build][ConfirmRejected] Reason=no_allowed_confirm_function Owner=%s Component=%s AuthorityFallback=%d"),
+				*GetNameSafe(GetOwner()),
+				*GetNameSafe(BuildingComponent),
+				bAuthorityFallbackAllowed ? 1 : 0);
+		}
 	}
 }
 
@@ -912,4 +926,59 @@ bool USpellRiseBuildInputFacade::CanConfirmBuild(UObject* BuildingComponent, FSt
 	}
 
 	return true;
+}
+
+bool USpellRiseBuildInputFacade::CanSubmitBuildConfirmCommand(FString& OutRejectReason)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		OutRejectReason = TEXT("missing_world");
+		return false;
+	}
+
+	const double NowSeconds = World->GetTimeSeconds();
+	const double MinInterval = FMath::Max(0.05, static_cast<double>(MinBuildConfirmCommandIntervalSeconds));
+	if ((NowSeconds - LastBuildConfirmCommandTimeSeconds) < MinInterval)
+	{
+		OutRejectReason = TEXT("confirm_rate_limited");
+		return false;
+	}
+
+	LastBuildConfirmCommandTimeSeconds = NowSeconds;
+	OutRejectReason = TEXT("accepted");
+	return true;
+}
+
+bool USpellRiseBuildInputFacade::CallBuildConfirmFunction(UObject* BuildingComponent, bool bAuthorityFallbackAllowed) const
+{
+	if (!BuildingComponent)
+	{
+		return false;
+	}
+
+	if (CallFirstAvailableNoParamFunction(
+		BuildingComponent,
+		{
+			TEXT("ServerConfirmBuild"),
+			TEXT("ServerPlaceBuilding")
+		}))
+	{
+		return true;
+	}
+
+	if (!bAuthorityFallbackAllowed)
+	{
+		return false;
+	}
+
+	return CallFirstAvailableNoParamFunction(
+		BuildingComponent,
+		{
+			TEXT("ConfirmBuild"),
+			TEXT("PlaceBuilding"),
+			TEXT("BuildInteractPressed"),
+			TEXT("Build"),
+			TEXT("TryBuild")
+		});
 }

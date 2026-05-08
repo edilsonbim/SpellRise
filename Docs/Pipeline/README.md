@@ -24,17 +24,17 @@ Starter kit operacional para transformar a documentação das fases 1-4 em gate 
 
 ### Release gate
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Run-SpellRise-ReleaseGate.ps1 -NoSteam
+powershell -ExecutionPolicy Bypass -File .\Scripts\Pipeline\Run-SpellRise-ReleaseGate.ps1 -NoSteam
 ```
 
 ### Persistence gate
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Run-SpellRise-PersistenceGate.ps1 -NoSteam
+powershell -ExecutionPolicy Bypass -File .\Scripts\Pipeline\Run-SpellRise-PersistenceGate.ps1 -NoSteam
 ```
 
 ### Combat lab
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Run-SpellRise-CombatLab.ps1 -RunSmokeGate -ScenarioIds CL-007,CL-008,CL-012
+powershell -ExecutionPolicy Bypass -File .\Scripts\Pipeline\Run-SpellRise-CombatLab.ps1 -RunSmokeGate -ScenarioIds CL-007,CL-008,CL-012
 ```
 
 ## Observação

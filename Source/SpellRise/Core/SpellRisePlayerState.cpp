@@ -161,11 +161,13 @@ void ASpellRisePlayerState::ServerSetRespawnBedReferenceData_Implementation(cons
 	FString RejectReason;
 	if (!CheckRespawnBedServerRateLimit(RejectReason))
 	{
+		AuditRejectedRespawnBedRpc(RejectReason, InActorName, InClassPath, RequestLocation);
 		return;
 	}
 
 	if (!ValidateRespawnBedPayload(OwnerController, InActorName, InClassPath, RequestLocation, RejectReason))
 	{
+		AuditRejectedRespawnBedRpc(RejectReason, InActorName, InClassPath, RequestLocation);
 		return;
 	}
 
@@ -187,6 +189,7 @@ void ASpellRisePlayerState::ServerSetRespawnBedReferenceData_Implementation(cons
 	AActor* ResolvedBedActor = ResolveRespawnBedActorOnServer(SanitizedActorName, SanitizedClassPath, RequestLocation);
 	if (!ResolvedBedActor)
 	{
+		AuditRejectedRespawnBedRpc(TEXT("bed_actor_not_resolved"), InActorName, InClassPath, RequestLocation);
 		return;
 	}
 
@@ -233,10 +236,12 @@ bool ASpellRisePlayerState::CheckRespawnBedServerRateLimit(FString& OutRejectRea
 
 void ASpellRisePlayerState::OnRep_RespawnBedData()
 {
+	RecordOnRepTelemetry(TEXT("RespawnBedData"));
 }
 
 void ASpellRisePlayerState::OnRep_PersistenceProfileApplied()
 {
+	RecordOnRepTelemetry(TEXT("PersistenceProfileApplied"));
 }
 
 void ASpellRisePlayerState::AppendCombatLogEvent_Server(
@@ -280,9 +285,58 @@ void ASpellRisePlayerState::AppendCombatLogEvent_Server(
 
 	if (CombatLogTruncatedCount > 0 && (CombatLogTruncatedCount % 10) == 0)
 	{
+		UE_LOG(LogSpellRiseCombatLog, Warning,
+			TEXT("[Net][CombatLogOverflow] PlayerState=%s TruncatedCount=%lld MaxEntries=%d CurrentEntries=%d"),
+			*GetNameSafe(this),
+			CombatLogTruncatedCount,
+			MaxEntries,
+			CombatLog.Entries.Num());
 	}
 
 	ForceNetUpdate();
+}
+
+void ASpellRisePlayerState::AuditRejectedRespawnBedRpc(
+	const FString& RejectReason,
+	const FString& InActorName,
+	const FString& InClassPath,
+	const FVector& InLocation)
+{
+	const int32 RejectCount = ++RejectedRpcCountByReason.FindOrAdd(RejectReason);
+	UE_LOG(LogSpellRiseRespawnSecurity, Warning,
+		TEXT("[RPC][Rejected] Rpc=ServerSetRespawnBedReferenceData Reason=%s Count=%d PlayerState=%s Owner=%s ActorNameLen=%d ClassPathLen=%d Location=%s"),
+		*RejectReason,
+		RejectCount,
+		*GetNameSafe(this),
+		*GetNameSafe(GetOwner()),
+		InActorName.Len(),
+		InClassPath.Len(),
+		*InLocation.ToCompactString());
+}
+
+void ASpellRisePlayerState::RecordOnRepTelemetry(const TCHAR* RepName)
+{
+	const FString RepKey = RepName ? RepName : TEXT("unknown");
+	UWorld* World = GetWorld();
+	const double NowSeconds = World ? World->GetTimeSeconds() : 0.0;
+	double& WindowStart = OnRepWindowStartByName.FindOrAdd(RepKey);
+	int32& Count = OnRepCountByName.FindOrAdd(RepKey);
+
+	if (WindowStart <= 0.0 || (NowSeconds - WindowStart) >= 60.0)
+	{
+		WindowStart = NowSeconds;
+		Count = 0;
+	}
+
+	++Count;
+	if (Count == 1 || (Count % 30) == 0)
+	{
+		UE_LOG(LogSpellRiseCombatLog, Verbose,
+			TEXT("[Net][OnRepRate] PlayerState=%s Rep=%s CountIn60s=%d"),
+			*GetNameSafe(this),
+			*RepKey,
+			Count);
+	}
 }
 
 void ASpellRisePlayerState::MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR* Reason)

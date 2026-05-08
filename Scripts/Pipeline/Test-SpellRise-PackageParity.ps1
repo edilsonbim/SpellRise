@@ -59,7 +59,7 @@ if ([string]::IsNullOrWhiteSpace($serverExe)) {
 }
 
 $result = [ordered]@{
-    Status = if ($reasons.Count -eq 0) { 'PASS' } else { 'FAIL' }
+    Status = $(if ($reasons.Count -eq 0) { 'PASS' } else { 'FAIL' })
     ClientPackageDir = $ClientPackageDir
     ServerPackageDir = $ServerPackageDir
     ClientExecutable = $clientExe

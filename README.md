@@ -22,14 +22,19 @@ SpellRise é um MMORPG PvP hardcore (UE 5.7) com combate skill-based e arquitetu
 - `Fontes/` documentação técnica e operacional
 
 ## Documentação canônica
+- `Fontes/FONTE_INDEX.md`
+- `Fontes/PROJECT_STATE.md`
 - `Fontes/AGENTS.md`
 - `Fontes/ARCHITECTURE.md`
 - `Fontes/ATTRIBUTE_MATRIX.md`
 - `Fontes/MULTIPLAYER_RULES.md`
+- `Fontes/SECURITY_MODEL.md`
 - `Fontes/COMBAT_DESIGN_PHILOSOPHY.md`
+- `Fontes/REFERENCIAS_JOGOS.md`
 - `Fontes/BACKLOG.md`
 - `Fontes/BUG_LOG.md`
 - `Fontes/CHANGELOG.md`
+- `Fontes/ENGINEERING_PLAYBOOK.md`
 
 ## Observação
 Toda validação de build/smoke deve usar a Unreal Source local, não a engine da launcher.

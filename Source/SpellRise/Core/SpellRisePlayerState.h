@@ -117,6 +117,8 @@ private:
 	};
 
 	bool CheckRespawnBedServerRateLimit(FString& OutRejectReason);
+	void AuditRejectedRespawnBedRpc(const FString& RejectReason, const FString& InActorName, const FString& InClassPath, const FVector& InLocation);
+	void RecordOnRepTelemetry(const TCHAR* RepName);
 
 	bool ValidateRespawnBedPayload(
 		const AController* OwnerController,
@@ -136,6 +138,9 @@ private:
 	int32 RespawnBedRpcRateLimitMaxCountPerWindow = 2;
 
 	FRespawnBedRpcRateState RespawnBedRpcRateState;
+	TMap<FString, int32> RejectedRpcCountByReason;
+	TMap<FString, int32> OnRepCountByName;
+	TMap<FString, double> OnRepWindowStartByName;
 
 	void MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR* Reason);
 

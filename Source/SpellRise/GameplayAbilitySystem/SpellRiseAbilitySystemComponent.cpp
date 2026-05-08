@@ -19,6 +19,7 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCombo, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCues, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCObservability, Log, All);
 
 namespace
 {
@@ -43,6 +44,22 @@ namespace
 			Tags.AppendTags(Spec.Def->GetGrantedTags());
 		}
 		return HasCooldownTag(Tags);
+	}
+
+	FString BuildGameplayTagContainerSummary(const FGameplayTagContainer& Tags)
+	{
+		if (Tags.Num() <= 0)
+		{
+			return TEXT("none");
+		}
+
+		TArray<FString> TagStrings;
+		Tags.ToStringSimple().ParseIntoArray(TagStrings, TEXT(","), true);
+		for (FString& TagString : TagStrings)
+		{
+			TagString.TrimStartAndEndInline();
+		}
+		return FString::Join(TagStrings, TEXT("|"));
 	}
 }
 
@@ -550,6 +567,7 @@ bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputTag(FGameplay
 				const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
 				if (!Spec.Ability->CanActivateAbility(Spec.Handle, ActorInfo, nullptr, nullptr, &FailureTags))
 				{
+					RecordAbilityActivationFailure(Spec, FailureTags, TEXT("SR_TryActivateAbilityByInputTag"));
 				}
 			}
 			return bActivated;
@@ -675,6 +693,7 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			return;
 		}
 
+		RecordAbilityActivationFailure(*Spec, FailureTags, TEXT("SR_ProcessAbilityInput"));
 	};
 
 	AActor* Avatar = GetAvatarActor();
@@ -796,6 +815,27 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
+}
+
+void USpellRiseAbilitySystemComponent::RecordAbilityActivationFailure(
+	const FGameplayAbilitySpec& Spec,
+	const FGameplayTagContainer& FailureTags,
+	const TCHAR* Context)
+{
+	const FString FailureReason = BuildGameplayTagContainerSummary(FailureTags);
+	const FString AbilityName = GetNameSafe(Spec.Ability);
+	const FString CounterKey = FString::Printf(TEXT("%s|%s"), *AbilityName, *FailureReason);
+	const int32 FailureCount = ++AbilityActivationFailureCountByReason.FindOrAdd(CounterKey);
+
+	UE_LOG(LogSpellRiseASCObservability, Warning,
+		TEXT("[GAS][AbilityActivationFailed] Context=%s Ability=%s HandleValid=%d FailureTags=%s Count=%d Owner=%s Avatar=%s"),
+		Context ? Context : TEXT("unknown"),
+		*AbilityName,
+		Spec.Handle.IsValid() ? 1 : 0,
+		*FailureReason,
+		FailureCount,
+		*GetNameSafe(GetOwnerActor()),
+		*GetNameSafe(GetAvatarActor()));
 }
 
 void USpellRiseAbilitySystemComponent::SetTagRelationshipMapping(USpellRiseAbilityTagRelationshipMapping* NewMapping)

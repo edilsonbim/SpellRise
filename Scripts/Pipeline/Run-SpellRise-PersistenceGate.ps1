@@ -23,8 +23,8 @@ $releaseGateScript = Join-Path $PSScriptRoot 'Run-SpellRise-ReleaseGate.ps1'
 $gateLog = Join-Path $runDir 'release-gate.log'
 
 $gateArgs = @(
-    '-ProjectRoot', "`\"$ProjectRoot`\"",
-    '-UnrealRoot', "`\"$UnrealRoot`\"",
+    '-ProjectRoot', ('"{0}"' -f $ProjectRoot),
+    '-UnrealRoot', ('"{0}"' -f $UnrealRoot),
     '-Configuration', $Configuration,
     '-Platform', $Platform,
     '-OnlineProfile', $OnlineProfile,
@@ -36,18 +36,19 @@ if ($NoSmoke) { $gateArgs += '-NoSmoke' }
 if ($NoSteam) { $gateArgs += '-NoSteam' }
 if ($SkipLagLoss) { $gateArgs += '-SkipLagLoss' }
 
-$gateResult = Invoke-SpellRiseProcess -FilePath 'powershell.exe' -Arguments @(
-    '-ExecutionPolicy', 'Bypass', '-File', "`\"$releaseGateScript`\""
-) + $gateArgs -LogPath $gateLog -WorkingDirectory $ProjectRoot
+$gateProcessArgs = @(
+    '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $releaseGateScript)
+) + $gateArgs
+$gateResult = Invoke-SpellRiseProcess -FilePath 'powershell.exe' -Arguments $gateProcessArgs -LogPath $gateLog -WorkingDirectory $ProjectRoot
 
 $checklist = @()
 $checklist += '# Persistence Gate Checklist'
 $checklist += ''
-$checklist += "RunDir: `$runDir`"
+$checklist += ('RunDir: `{0}`' -f $runDir)
 $checklist += ''
 $checklist += '## Automated baseline'
 $checklist += "- ReleaseGateExitCode: $($gateResult.ExitCode)"
-$checklist += "- ReleaseGateLog: `$gateLog`"
+$checklist += ('- ReleaseGateLog: `{0}`' -f $gateLog)
 $checklist += ''
 $checklist += '## Manual persistence checks'
 $checklist += '- [ ] login/sessão com identidade esperada do cenário'

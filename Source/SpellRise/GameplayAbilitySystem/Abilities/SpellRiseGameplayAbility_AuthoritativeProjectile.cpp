@@ -2,10 +2,21 @@
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility_AuthoritativeProjectile.h"
 
 #include "AbilitySystemComponent.h"
+#include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/Projectiles/SR_ProjectileBase.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseProjectileAbility, Log, All);
+
+namespace
+{
+	bool IsFiniteVector(const FVector& Vector)
+	{
+		return FMath::IsFinite(Vector.X) && FMath::IsFinite(Vector.Y) && FMath::IsFinite(Vector.Z);
+	}
+}
 
 USpellRiseGameplayAbility_AuthoritativeProjectile::USpellRiseGameplayAbility_AuthoritativeProjectile()
 {
@@ -58,30 +69,36 @@ bool USpellRiseGameplayAbility_AuthoritativeProjectile::SpawnAuthoritativeProjec
 {
 	if (!ProjectileClass)
 	{
+		UE_LOG(LogSpellRiseProjectileAbility, Warning, TEXT("[Projectile][TargetRejected] Reason=missing_projectile_class Ability=%s"),
+			*GetNameSafe(this));
 		return false;
 	}
 
 	if (bRequireServerAuthorityForSpawn && !HasServerAuthority())
 	{
+		UE_LOG(LogSpellRiseProjectileAbility, Warning, TEXT("[Projectile][TargetRejected] Reason=missing_server_authority Ability=%s"),
+			*GetNameSafe(this));
 		return false;
 	}
 
 	UWorld* World = GetWorld();
 	if (!World)
 	{
+		UE_LOG(LogSpellRiseProjectileAbility, Warning, TEXT("[Projectile][TargetRejected] Reason=missing_world Ability=%s"),
+			*GetNameSafe(this));
 		return false;
 	}
 
 	const FTransform SpawnTransform = ResolveProjectileSpawnTransform();
 	const FVector SpawnLocation = SpawnTransform.GetLocation();
-	const FVector ToTarget = TargetLocation - SpawnLocation;
-	if (ToTarget.IsNearlyZero())
+	FString TargetRejectReason;
+	if (!ValidateProjectileTargetLocation(SpawnLocation, TargetLocation, TargetRejectReason))
 	{
-		return false;
-	}
-
-	if (MaxProjectileRange > 0.0f && ToTarget.SizeSquared() > FMath::Square(MaxProjectileRange))
-	{
+		UE_LOG(LogSpellRiseProjectileAbility, Warning, TEXT("[Projectile][TargetRejected] Reason=%s Ability=%s Spawn=%s Target=%s"),
+			*TargetRejectReason,
+			*GetNameSafe(this),
+			*SpawnLocation.ToCompactString(),
+			*TargetLocation.ToCompactString());
 		return false;
 	}
 
@@ -115,6 +132,94 @@ bool USpellRiseGameplayAbility_AuthoritativeProjectile::SpawnAuthoritativeProjec
 		BuildProjectileEffectSpec(),
 		DebuffEffectClass);
 
+	UE_LOG(LogSpellRiseProjectileAbility, Verbose, TEXT("[Projectile][Spawned] Ability=%s Projectile=%s Spawn=%s Target=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(Projectile),
+		*SpawnLocation.ToCompactString(),
+		*TargetLocation.ToCompactString());
+
+	return true;
+}
+
+bool USpellRiseGameplayAbility_AuthoritativeProjectile::ValidateProjectileTargetLocation(
+	const FVector& SpawnLocation,
+	const FVector& TargetLocation,
+	FString& OutRejectReason) const
+{
+	OutRejectReason.Reset();
+
+	if (!IsFiniteVector(SpawnLocation) || !IsFiniteVector(TargetLocation))
+	{
+		OutRejectReason = TEXT("non_finite_location");
+		return false;
+	}
+
+	const FVector ToTarget = TargetLocation - SpawnLocation;
+	if (ToTarget.IsNearlyZero())
+	{
+		OutRejectReason = TEXT("zero_length_target");
+		return false;
+	}
+
+	const double TargetDistanceSq = ToTarget.SizeSquared();
+	if (MaxProjectileRange > 0.0f && TargetDistanceSq > FMath::Square(static_cast<double>(MaxProjectileRange)))
+	{
+		OutRejectReason = TEXT("range_exceeded");
+		return false;
+	}
+
+	if (MaxTargetAngleFromAvatarForwardDegrees > 0.0f && MaxTargetAngleFromAvatarForwardDegrees < 180.0f)
+	{
+		const AActor* AvatarActor = GetAvatarActorFromActorInfo();
+		if (!AvatarActor)
+		{
+			OutRejectReason = TEXT("missing_avatar");
+			return false;
+		}
+
+		const FVector Forward = AvatarActor->GetActorForwardVector().GetSafeNormal();
+		const FVector Direction = ToTarget.GetSafeNormal();
+		const double MinDot = FMath::Cos(FMath::DegreesToRadians(static_cast<double>(MaxTargetAngleFromAvatarForwardDegrees)));
+		if (FVector::DotProduct(Forward, Direction) < MinDot)
+		{
+			OutRejectReason = TEXT("angle_exceeded");
+			return false;
+		}
+	}
+
+	if (bRequireServerLineOfSightToTarget)
+	{
+		const UWorld* World = GetWorld();
+		const AActor* AvatarActor = GetAvatarActorFromActorInfo();
+		if (!World || !AvatarActor)
+		{
+			OutRejectReason = TEXT("missing_los_context");
+			return false;
+		}
+
+		FHitResult Hit;
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(SpellRiseProjectileTargetValidation), false);
+		QueryParams.AddIgnoredActor(AvatarActor);
+		if (const APawn* InstigatorPawn = Cast<APawn>(AvatarActor))
+		{
+			QueryParams.AddIgnoredActor(InstigatorPawn);
+		}
+
+		const bool bHit = World->LineTraceSingleByChannel(
+			Hit,
+			SpawnLocation,
+			TargetLocation,
+			TargetValidationTraceChannel,
+			QueryParams);
+
+		if (bHit && Hit.bBlockingHit && FVector::DistSquared(Hit.ImpactPoint, TargetLocation) > FMath::Square(75.0))
+		{
+			OutRejectReason = TEXT("line_of_sight_blocked");
+			return false;
+		}
+	}
+
+	OutRejectReason = TEXT("accepted");
 	return true;
 }
 

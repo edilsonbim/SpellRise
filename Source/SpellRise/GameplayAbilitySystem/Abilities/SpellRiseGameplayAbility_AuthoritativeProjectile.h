@@ -43,6 +43,7 @@ protected:
 
 protected:
 	bool SpawnAuthoritativeProjectile(const FVector& TargetLocation);
+	bool ValidateProjectileTargetLocation(const FVector& SpawnLocation, const FVector& TargetLocation, FString& OutRejectReason) const;
 	FGameplayEffectSpecHandle BuildProjectileEffectSpec() const;
 	FTransform ResolveProjectileSpawnTransform() const;
 	FRotator ResolveProjectileSpawnRotation(const FVector& SpawnLocation, const FVector& TargetLocation) const;
@@ -75,6 +76,15 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Ability|Projectile")
 	bool bRequireServerAuthorityForSpawn = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Ability|Projectile|Validation", meta=(ClampMin="0.0", ClampMax="180.0"))
+	float MaxTargetAngleFromAvatarForwardDegrees = 80.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Ability|Projectile|Validation")
+	bool bRequireServerLineOfSightToTarget = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Ability|Projectile|Validation")
+	TEnumAsByte<ECollisionChannel> TargetValidationTraceChannel = ECC_Visibility;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|Projectile")
 	bool bAwaitingProjectileTargetConfirmation = false;

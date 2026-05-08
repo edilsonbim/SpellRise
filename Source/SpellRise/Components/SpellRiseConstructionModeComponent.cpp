@@ -68,6 +68,7 @@ void USpellRiseConstructionModeComponent::ServerSetConstructionMode_Implementati
 	FString RejectReason;
 	if (!CanAcceptConstructionToggle(bEnableConstructionMode, RejectReason))
 	{
+		AuditRejectedConstructionModeRpc(RejectReason, bEnableConstructionMode);
 		return;
 	}
 
@@ -142,4 +143,15 @@ bool USpellRiseConstructionModeComponent::IsBlockedForConstructionEntry(FString&
 	}
 
 	return false;
+}
+
+void USpellRiseConstructionModeComponent::AuditRejectedConstructionModeRpc(const FString& RejectReason, bool bRequestedEnable)
+{
+	++RejectedConstructionModeRpcCount;
+	UE_LOG(LogSpellRiseConstructionMode, Warning,
+		TEXT("[RPC][Rejected] Rpc=ServerSetConstructionMode Reason=%s Count=%d Owner=%s RequestedEnable=%d"),
+		*RejectReason,
+		RejectedConstructionModeRpcCount,
+		*GetNameSafe(GetOwner()),
+		bRequestedEnable ? 1 : 0);
 }

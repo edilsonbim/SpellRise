@@ -33,6 +33,7 @@ Manter um conjunto enxuto de documentos vivos para guiar desenvolvimento, revis�
 ## Regra de manutenção
 - Documento vivo fica em `Fontes/`.
 - Auditorias, relatórios de ciclo, planos faseados e pós-mortem devem sair de `Fontes/` e ir para `Docs/Archive/` ou pasta equivalente.
+- Scripts operacionais devem ficar em `Scripts/`; documentação de pipeline deve ficar em `Docs/Pipeline/`.
 - `Fontes/` deve conter regra atual, não histórico extenso.
 
 ## Critério de inclusão em Fontes

@@ -35,7 +35,7 @@ $scenarioCatalog = @{
 foreach ($scenarioId in $ScenarioIds) {
     $matrix.Add([ordered]@{
         Scenario = $scenarioId
-        Name = if ($scenarioCatalog.ContainsKey($scenarioId)) { $scenarioCatalog[$scenarioId] } else { 'Unknown scenario' }
+        Name = $(if ($scenarioCatalog.ContainsKey($scenarioId)) { $scenarioCatalog[$scenarioId] } else { 'Unknown scenario' })
         Mode = 'Pending'
         Expected = 'Definir conforme COMBAT_LAB_TEST_MATRIX.md'
         Actual = ''
@@ -53,11 +53,12 @@ if ($RunSmokeGate) {
         if ($NoSteam) { $smokeArgs += '-NoSteam' }
         if ($SkipLagLoss) { $smokeArgs += '-SkipLagLoss' }
 
-        $smokeResult = Invoke-SpellRiseProcess -FilePath 'powershell.exe' -Arguments @(
-            '-ExecutionPolicy', 'Bypass', '-File', "`\"$smokeScript`\""
-        ) + $smokeArgs -LogPath $smokeLog -WorkingDirectory $ProjectRoot
+        $smokeProcessArgs = @(
+            '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $smokeScript)
+        ) + $smokeArgs
+        $smokeResult = Invoke-SpellRiseProcess -FilePath 'powershell.exe' -Arguments $smokeProcessArgs -LogPath $smokeLog -WorkingDirectory $ProjectRoot
 
-        $smokeSummary = @{ Status = if ($smokeResult.ExitCode -eq 0) { 'PASS' } else { 'FAIL' }; ExitCode = $smokeResult.ExitCode; LogPath = $smokeLog }
+        $smokeSummary = @{ Status = $(if ($smokeResult.ExitCode -eq 0) { 'PASS' } else { 'FAIL' }); ExitCode = $smokeResult.ExitCode; LogPath = $smokeLog }
     }
     else {
         $smokeSummary = @{ Status = 'MANUAL_REQUIRED'; ExitCode = 2; LogPath = '' }
@@ -73,7 +74,7 @@ Write-SpellRiseTextFile -Path (Join-Path $runDir 'combat-lab-matrix.csv') -Conte
 $md = @()
 $md += '# Combat Lab Run'
 $md += ''
-$md += "RunDir: `$runDir`"
+$md += ('RunDir: `{0}`' -f $runDir)
 $md += ''
 $md += '| Scenario | Nome | Status | Evidence |'
 $md += '|---|---|---|---|'
@@ -81,7 +82,7 @@ foreach ($row in $matrix) { $md += "| $($row.Scenario) | $($row.Name) | $($row.S
 if ($null -ne $smokeSummary) {
     $md += ''
     $md += "SmokeStatus: $($smokeSummary.Status)"
-    if ($smokeSummary.LogPath) { $md += "SmokeLog: `$($smokeSummary.LogPath)`" }
+    if ($smokeSummary.LogPath) { $md += ('SmokeLog: `{0}`' -f $smokeSummary.LogPath) }
 }
 Write-SpellRiseTextFile -Path (Join-Path $runDir 'combat-lab-run.md') -Content ($md -join [Environment]::NewLine)
 
