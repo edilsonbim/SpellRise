@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Projectiles/SR_ProjectileBase.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseProjectileAbility, Log, All);
@@ -260,6 +261,18 @@ FTransform USpellRiseGameplayAbility_AuthoritativeProjectile::ResolveProjectileS
 {
 	if (const AActor* AvatarActor = GetAvatarActorFromActorInfo())
 	{
+		if (const ASpellRiseCharacterBase* SpellRiseCharacter = Cast<ASpellRiseCharacterBase>(AvatarActor))
+		{
+			if (const USpellRiseEquipmentManagerComponent* EquipmentManager = SpellRiseCharacter->GetSpellRiseEquipmentManager())
+			{
+				FTransform WeaponSpawnTransform;
+				if (EquipmentManager->GetActiveEquippedWeaponSpawnPointTransform(WeaponSpawnTransform))
+				{
+					return WeaponSpawnTransform;
+				}
+			}
+		}
+
 		return FTransform(AvatarActor->GetActorRotation(), AvatarActor->GetActorLocation());
 	}
 

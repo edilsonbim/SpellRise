@@ -26,9 +26,9 @@ void UCatalystAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UCatalystAttributeSet, CatalystCharge, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UCatalystAttributeSet, CatalystXP, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UCatalystAttributeSet, CatalystLevel, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UCatalystAttributeSet, CatalystCharge, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UCatalystAttributeSet, CatalystXP, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UCatalystAttributeSet, CatalystLevel, COND_OwnerOnly, REPNOTIFY_Always);
 }
 
 void UCatalystAttributeSet::OnRep_CatalystCharge(const FGameplayAttributeData& OldValue)

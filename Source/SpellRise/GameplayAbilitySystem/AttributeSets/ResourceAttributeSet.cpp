@@ -151,7 +151,7 @@ static FString ResolveCombatSourceName(const AActor* SourceActor, const AActor* 
 {
 	if (IsFallDamageTypeTag(DamageTypeTag) && (!SourceActor || SourceActor == TargetActor))
 	{
-		return TEXT("queda");
+		return TEXT("fall");
 	}
 
 	return ResolveCombatDisplayName(SourceActor);
@@ -220,59 +220,59 @@ static FString ResolveDamageTypeLabel(const FGameplayTag& DamageTypeTag)
 	const FString TagName = DamageTypeTag.ToString();
 	if (TagName.Contains(TEXT("Data.DamageType.Fall"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("queda");
+		return TEXT("fall");
 	}
 	if (TagName.Contains(TEXT("Spell.Fire"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("fogo");
+		return TEXT("fire");
 	}
 	if (TagName.Contains(TEXT("Spell.Cold"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("gelo");
+		return TEXT("cold");
 	}
 	if (TagName.Contains(TEXT("Spell.Shock"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("choque");
+		return TEXT("shock");
 	}
 	if (TagName.Contains(TEXT("Spell.Acid"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("acido");
+		return TEXT("acid");
 	}
 	if (TagName.Contains(TEXT("Physical.Slashing"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("cortante");
+		return TEXT("slashing");
 	}
 	if (TagName.Contains(TEXT("Physical.Piercing"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("perfurante");
+		return TEXT("piercing");
 	}
 	if (TagName.Contains(TEXT("Physical.Bashing"), ESearchCase::IgnoreCase) ||
 		TagName.Contains(TEXT("Physical.Impact"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("impacto");
+		return TEXT("impact");
 	}
 	if (TagName.Contains(TEXT("Poison"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("veneno");
+		return TEXT("poison");
 	}
 	if (TagName.Contains(TEXT("Bleed"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("sangramento");
+		return TEXT("bleed");
 	}
 	if (TagName.Contains(TEXT("Curse"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("maldicao");
+		return TEXT("curse");
 	}
 	if (TagName.Contains(TEXT("Divine"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("divino");
+		return TEXT("divine");
 	}
 	if (TagName.Contains(TEXT("Almighty"), ESearchCase::IgnoreCase))
 	{
-		return TEXT("supremo");
+		return TEXT("almighty");
 	}
 
-	return TEXT("generico");
+	return TEXT("generic");
 }
 
 static void SendCombatLogMessages(
@@ -360,8 +360,8 @@ static void SendCombatLogMessages(
 				FSpellRiseChatMessage DeathMessage;
 				DeathMessage.Name = FName(TEXT("Combat"));
 				DeathMessage.Text = bFallSourceIsSelfOrUnknown
-					? FText::FromString(TEXT("Você morreu por queda."))
-					: FText::FromString(FString::Printf(TEXT("Você morreu. Morto por %s."), *SourceName));
+					? FText::FromString(TEXT("You died from fall damage."))
+					: FText::FromString(FString::Printf(TEXT("You died. Killed by %s."), *SourceName));
 				DeathMessage.TimeText = TimeText;
 				DeathMessage.Channel = SpellRiseChatChannel::Combat;
 				TargetController->ClientReceiveChatMessage(DeathMessage);
@@ -376,7 +376,7 @@ static void SendCombatLogMessages(
 			{
 				FSpellRiseChatMessage KillMessage;
 				KillMessage.Name = FName(TEXT("Combat"));
-				KillMessage.Text = FText::FromString(FString::Printf(TEXT("Você matou %s."), *TargetName));
+				KillMessage.Text = FText::FromString(FString::Printf(TEXT("You killed %s."), *TargetName));
 				KillMessage.TimeText = TimeText;
 				KillMessage.Channel = SpellRiseChatChannel::Combat;
 				SourceController->ClientReceiveChatMessage(KillMessage);
@@ -391,8 +391,8 @@ static void SendCombatLogMessages(
 				FSpellRiseChatMessage DeathMessage;
 				DeathMessage.Name = FName(TEXT("Combat"));
 				DeathMessage.Text = bFallSourceIsSelfOrUnknown
-					? FText::FromString(TEXT("Você morreu por queda."))
-					: FText::FromString(FString::Printf(TEXT("Você morreu. Morto por %s."), *SourceName));
+					? FText::FromString(TEXT("You died from fall damage."))
+					: FText::FromString(FString::Printf(TEXT("You died. Killed by %s."), *SourceName));
 				DeathMessage.TimeText = TimeText;
 				DeathMessage.Channel = SpellRiseChatChannel::Combat;
 				TargetController->ClientReceiveChatMessage(DeathMessage);
@@ -409,14 +409,14 @@ static void SendCombatLogMessages(
 	if (SourceController && SourceController == TargetController)
 	{
 		const FString MessageText = bFallSourceIsSelfOrUnknown
-			? FString::Printf(TEXT("Voce recebeu %d de dano por queda."), FMath::RoundToInt(Damage))
-			: FString::Printf(TEXT("Voce recebeu %d de dano (%s) de %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *SourceName);
+			? FString::Printf(TEXT("You took %d fall damage."), FMath::RoundToInt(Damage))
+			: FString::Printf(TEXT("You took %d %s damage from %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *SourceName);
 		ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(MessageText), TimeText);
 		if (bTargetDied)
 		{
 			const FString DeathText = bFallSourceIsSelfOrUnknown
-				? TEXT("Você morreu por queda.")
-				: FString::Printf(TEXT("Você morreu. Morto por %s."), *SourceName);
+				? TEXT("You died from fall damage.")
+				: FString::Printf(TEXT("You died. Killed by %s."), *SourceName);
 			ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(DeathText), TimeText);
 		}
 		return;
@@ -424,11 +424,11 @@ static void SendCombatLogMessages(
 
 	if (SourceController)
 	{
-		const FString MessageText = FString::Printf(TEXT("Voce causou %d de dano (%s) em %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *TargetName);
+		const FString MessageText = FString::Printf(TEXT("You dealt %d %s damage to %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *TargetName);
 		ChatComponent->SendCombatToPlayer(SourceController, FText::FromString(MessageText), TimeText);
 		if (bTargetDied)
 		{
-			const FString KillText = FString::Printf(TEXT("Você matou %s."), *TargetName);
+			const FString KillText = FString::Printf(TEXT("You killed %s."), *TargetName);
 			ChatComponent->SendCombatToPlayer(SourceController, FText::FromString(KillText), TimeText);
 		}
 	}
@@ -436,14 +436,14 @@ static void SendCombatLogMessages(
 	if (TargetController)
 	{
 		const FString MessageText = bFallSourceIsSelfOrUnknown
-			? FString::Printf(TEXT("Voce recebeu %d de dano por queda."), FMath::RoundToInt(Damage))
-			: FString::Printf(TEXT("Voce recebeu %d de dano (%s) de %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *SourceName);
+			? FString::Printf(TEXT("You took %d fall damage."), FMath::RoundToInt(Damage))
+			: FString::Printf(TEXT("You took %d %s damage from %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *SourceName);
 		ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(MessageText), TimeText);
 		if (bTargetDied)
 		{
 			const FString DeathText = bFallSourceIsSelfOrUnknown
-				? TEXT("Você morreu por queda.")
-				: FString::Printf(TEXT("Você morreu. Morto por %s."), *SourceName);
+				? TEXT("You died from fall damage.")
+				: FString::Printf(TEXT("You died. Killed by %s."), *SourceName);
 			ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(DeathText), TimeText);
 		}
 	}
@@ -451,8 +451,8 @@ static void SendCombatLogMessages(
 	if (bTargetDied && World)
 	{
 		const FString PublicDeathText = bFallSourceIsSelfOrUnknown
-			? FString::Printf(TEXT("%s morreu por queda."), *TargetName)
-			: FString::Printf(TEXT("%s matou %s."), *SourceName, *TargetName);
+			? FString::Printf(TEXT("%s died from fall damage."), *TargetName)
+			: FString::Printf(TEXT("%s killed %s."), *SourceName, *TargetName);
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			ASpellRisePlayerController* OtherController = Cast<ASpellRisePlayerController>(It->Get());
@@ -544,20 +544,20 @@ UResourceAttributeSet::UResourceAttributeSet()
 void UResourceAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, CarryWeight, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, CarryWeight, COND_OwnerOnly, REPNOTIFY_Always);
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Mana, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Mana, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxMana, COND_OwnerOnly, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Stamina, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxStamina, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Stamina, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxStamina, COND_OwnerOnly, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, HealthRegen, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, ManaRegen, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, StaminaRegen, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, HealthRegen, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, ManaRegen, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, StaminaRegen, COND_OwnerOnly, REPNOTIFY_Always);
 }
 
 void UResourceAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)

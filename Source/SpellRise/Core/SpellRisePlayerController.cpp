@@ -93,7 +93,7 @@ namespace
 	FSpellRiseChatMessage SanitizeChatMessageForLocalDelivery(const FSpellRiseChatMessage& Message)
 	{
 		FSpellRiseChatMessage Sanitized = Message;
-		Sanitized.Name = FName(*SanitizeBoundedString(Message.Name.ToString(), MaxChatNameChars, TEXT("Sistema")));
+		Sanitized.Name = FName(*SanitizeBoundedString(Message.Name.ToString(), MaxChatNameChars, TEXT("System")));
 		Sanitized.Text = FText::FromString(SanitizeBoundedString(Message.Text.ToString(), MaxChatTextChars));
 		Sanitized.TimeText = FText::FromString(SanitizeBoundedString(Message.TimeText.ToString(), 16));
 		return Sanitized;
@@ -1145,10 +1145,10 @@ void ASpellRisePlayerController::ClientReceiveCombatLogEntry_Implementation(floa
 	}
 
 	const int32 RoundedDamage = FMath::RoundToInt(Damage);
-	const FString SafeOtherName = SanitizeBoundedString(OtherActorName, MaxCombatActorNameChars, TEXT("alvo desconhecido"));
+	const FString SafeOtherName = SanitizeBoundedString(OtherActorName, MaxCombatActorNameChars, TEXT("unknown target"));
 	const FString MessageText = bIsOutgoing
-		? FString::Printf(TEXT("Voce causou %d de dano em %s."), RoundedDamage, *SafeOtherName)
-		: FString::Printf(TEXT("Voce recebeu %d de dano de %s."), RoundedDamage, *SafeOtherName);
+		? FString::Printf(TEXT("You dealt %d damage to %s."), RoundedDamage, *SafeOtherName)
+		: FString::Printf(TEXT("You took %d damage from %s."), RoundedDamage, *SafeOtherName);
 
 	PushCombatLogMessage(SanitizeBoundedString(MessageText, MaxCombatLogMessageChars));
 }

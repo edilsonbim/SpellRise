@@ -58,3 +58,9 @@
 - dedicated server deve funcionar sem HUD/widget/câmera;
 - lógica obrigatória de gameplay não deve depender de Blueprint de UI;
 - features novas devem preferir data-driven sobre hardcode quando isso não enfraquecer a arquitetura.
+
+## Pipeline de animacao
+- O padrao canonico de locomocao runtime e Game Animation Sample / UE5 Manny-Quinn.
+- MetaHuman entra como visual final via `VisualOverride`, nao como fonte de gameplay.
+- Animacoes UEFN devem ser tratadas como fonte secundaria e retargetadas antes de uso em producao.
+- Detalhes operacionais ficam em `ANIMATION_PIPELINE.md`.

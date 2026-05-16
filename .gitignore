@@ -47,6 +47,9 @@ steam_appid.txt
 *.log
 *.dmp
 *.mdmp
+replay_pid*.log
+hs_err_pid*.log
+java_error*.hprof
 
 # Local tool folders
 .codex/

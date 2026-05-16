@@ -30,13 +30,17 @@ Padronizar execução técnica em fluxo AAA enxuto para build, revisão de autho
 - `input`
 - `smoke`
 
-## Script operacional
-- `Scripts/Run-Agent-Orchestrator.ps1`
-- Relatórios em `Saved/Logs/AgentOrchestrator/<RunId>/`
+## Scripts operacionais
+- `Scripts/Pipeline/Run-SpellRise-ReleaseGate.ps1`
+- `Scripts/Pipeline/Run-SpellRise-PersistenceGate.ps1`
+- `Scripts/Pipeline/Run-SpellRise-CombatLab.ps1`
+- `Scripts/Run-Smoke-Gate.ps1`
+- Relatórios em `Saved/Logs/Automation/<Pipeline>/<RunId>/` ou `Saved/Logs/SmokeAuto/<RunId>/`
 
 ### Modos
-- `checklist`: imprime prompts e tarefas de stage.
-- `run`: executa build/smoke e gera tarefas para revisão manual quando necessário.
+- ReleaseGate: build, package, parity e smoke.
+- PersistenceGate: baseline do ReleaseGate com checklist de persistência.
+- CombatLab: matriz de combate/rede com smoke opcional.
 
 ## Agentes operacionais
 ### BuildGuardian

@@ -9,6 +9,7 @@
 #include "GameplayTagContainer.h"
 #include "GameFramework/Character.h"
 #include "InventoryComponent.h"
+#include "SpellRiseCharacterBase.h"
 #include "SpellRiseEnemyCharacterBase.generated.h"
 
 class UAbilitySystemComponent;
@@ -25,21 +26,6 @@ class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
 class USpellRiseEnemyEquipmentComponent;
 class UNarrativeInventoryComponent;
-
-USTRUCT(BlueprintType)
-struct FSpellRiseEnemyGrantedAbility
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Grant")
-	TSubclassOf<UGameplayAbility> Ability = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Grant", meta=(ClampMin="1"))
-	int32 AbilityLevel = 1;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Grant")
-	bool bAutoActivateIfNoInputTag = false;
-};
 
 UCLASS()
 class SPELLRISE_API ASpellRiseEnemyCharacterBase
@@ -76,6 +62,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|GAS")
 	UDerivedStatsAttributeSet* GetDerivedStatsAttributeSet() const { return DerivedStatsAttributeSet; }
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Enemy|GAS")
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Enemy|GAS")
+	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Enemy|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantEnemyStartupAbilities_Server();
@@ -142,7 +134,7 @@ protected:
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Minimal;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Startup")
-	TArray<FSpellRiseEnemyGrantedAbility> StartingAbilities;
+	TArray<FSpellRiseGrantedAbility> StartingAbilities;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Startup")
 	TArray<TSubclassOf<UGameplayEffect>> StartupEffects;

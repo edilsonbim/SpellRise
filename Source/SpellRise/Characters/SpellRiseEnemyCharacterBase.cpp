@@ -334,7 +334,7 @@ void ASpellRiseEnemyCharacterBase::ApplyGameplayEffectToSelf_Server(TSubclassOf<
 	AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
-TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantEnemyStartupAbilities_Server()
+TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
 {
 	if (!HasAuthority() || !AbilitySystemComponent)
 	{
@@ -342,9 +342,9 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantEnemyStart
 	}
 
 	TArray<FGameplayAbilitySpecHandle> GrantedHandles;
-	GrantedHandles.Reserve(StartingAbilities.Num());
+	GrantedHandles.Reserve(AbilitiesToGrant.Num());
 
-	for (const FSpellRiseEnemyGrantedAbility& Grant : StartingAbilities)
+	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
 	{
 		if (!Grant.Ability)
 		{
@@ -359,20 +359,54 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantEnemyStart
 		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
 		FGameplayAbilitySpec Spec(Grant.Ability, FinalLevel, INDEX_NONE, this);
 
+		if (Grant.InputTag.IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
+		}
+
 		const FGameplayAbilitySpecHandle Handle = AbilitySystemComponent->GiveAbility(Spec);
 		if (Handle.IsValid())
 		{
 			GrantedHandles.Add(Handle);
-			StartupGrantedAbilityHandles.AddUnique(Handle);
 		}
 
-		if (Grant.bAutoActivateIfNoInputTag)
+		if (Handle.IsValid() && Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
 		{
 			AbilitySystemComponent->TryActivateAbility(Handle);
 		}
 	}
 
 	AbilitySystemComponent->RefreshAbilityActorInfo();
+	return GrantedHandles;
+}
+
+void ASpellRiseEnemyCharacterBase::RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove)
+{
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	for (const FGameplayAbilitySpecHandle& AbilityHandle : AbilityHandlesToRemove)
+	{
+		if (!AbilityHandle.IsValid())
+		{
+			continue;
+		}
+
+		AbilitySystemComponent->ClearAbility(AbilityHandle);
+		StartupGrantedAbilityHandles.Remove(AbilityHandle);
+	}
+}
+
+TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantEnemyStartupAbilities_Server()
+{
+	TArray<FGameplayAbilitySpecHandle> GrantedHandles = GrantAbilities(StartingAbilities);
+	for (const FGameplayAbilitySpecHandle& Handle : GrantedHandles)
+	{
+		StartupGrantedAbilityHandles.AddUnique(Handle);
+	}
+
 	return GrantedHandles;
 }
 

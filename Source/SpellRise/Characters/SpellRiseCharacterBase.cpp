@@ -228,8 +228,10 @@ void ASpellRiseCharacterBase::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 
+	ApplyAnimationPresentationPolicy();
 	ForceServerAnimTick();
 	EnsureAnimInstanceInitialized();
+	ValidateAnimationPresentationPolicy();
 }
 
 void ASpellRiseCharacterBase::BeginPlay()
@@ -246,6 +248,8 @@ void ASpellRiseCharacterBase::BeginPlay()
 
 	ForceServerAnimTick();
 	EnsureAnimInstanceInitialized();
+	ApplyAnimationPresentationPolicy();
+	ValidateAnimationPresentationPolicy();
 
 	InitASCActorInfo();
 	BindASCDelegates();
@@ -415,6 +419,90 @@ void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
 			MeshComp->InitAnim(true);
 		}
 	}
+}
+
+void ASpellRiseCharacterBase::ApplyAnimationPresentationPolicy()
+{
+	if (!bTreatVisualOverrideAsPresentationOnly || IsDead())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
+	if (!VisualMesh)
+	{
+		return;
+	}
+
+	if (VisualMesh == GetMesh() && !VisualMesh->GetFName().IsEqual(VisualMeshComponentName))
+	{
+		return;
+	}
+
+	VisualMesh->SetGenerateOverlapEvents(false);
+	VisualMesh->SetNotifyRigidBodyCollision(false);
+
+	if (bEnforceAliveVisualMeshPresentationCollision)
+	{
+		if (!AliveVisualMeshCollisionProfileName.IsNone())
+		{
+			VisualMesh->SetCollisionProfileName(AliveVisualMeshCollisionProfileName, true);
+		}
+		else
+		{
+			VisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+}
+
+void ASpellRiseCharacterBase::ValidateAnimationPresentationPolicy() const
+{
+#if !UE_BUILD_SHIPPING
+	if (!bTreatVisualOverrideAsPresentationOnly)
+	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
+			TEXT("[AnimationPolicy] VisualOverride presentation policy disabled. Character=%s Standard=%d"),
+			*GetNameSafe(this),
+			static_cast<int32>(AnimationRuntimeStandard));
+		return;
+	}
+
+	const USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
+	if (!VisualMesh)
+	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
+			TEXT("[AnimationPolicy] Visual mesh missing. Character=%s VisualMeshComponentName=%s"),
+			*GetNameSafe(this),
+			*VisualMeshComponentName.ToString());
+		return;
+	}
+
+	if (VisualMesh == GetMesh() && !VisualMesh->GetFName().IsEqual(VisualMeshComponentName))
+	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
+			TEXT("[AnimationPolicy] Using root character mesh as visual fallback. Character=%s Standard=%d"),
+			*GetNameSafe(this),
+			static_cast<int32>(AnimationRuntimeStandard));
+	}
+
+	if (!IsDead() && VisualMesh->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Ignore)
+	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
+			TEXT("[AnimationPolicy] Alive visual mesh should not block/overlap Pawn. Character=%s Mesh=%s Profile=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(VisualMesh),
+			*VisualMesh->GetCollisionProfileName().ToString());
+	}
+
+	if (!IsDead() && VisualMesh->GetCollisionResponseToChannel(ECC_Visibility) != ECR_Ignore)
+	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
+			TEXT("[AnimationPolicy] Alive visual mesh should ignore Visibility; use Pawn/object traces for targeting. Character=%s Mesh=%s Profile=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(VisualMesh),
+			*VisualMesh->GetCollisionProfileName().ToString());
+	}
+#endif
 }
 
 USkeletalMeshComponent* ASpellRiseCharacterBase::FindCharacterSkeletalMeshComponentByName(FName ComponentName) const
@@ -1409,11 +1497,6 @@ void ASpellRiseCharacterBase::ApplyStartupEffects()
 		return;
 	}
 
-	if (!GE_RecalculateResources)
-	{
-		return;
-	}
-
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
 }
@@ -1635,6 +1718,9 @@ void ASpellRiseCharacterBase::RemoveAbilities(const TArray<FGameplayAbilitySpecH
 	{
 		return;
 	}
+
+	GetSpellRiseASC()->SR_ClearAbilityInput();
+	GetSpellRiseASC()->SR_ClearSelectedSpellAbility();
 
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : AbilityHandlesToRemove)
 	{
@@ -2339,7 +2425,7 @@ void ASpellRiseCharacterBase::ShowLocalDeathScreenText()
 
 	if (LocalDeathScreenWidget)
 	{
-		LocalDeathScreenWidget->SetMessage(FText::FromString(TEXT("Você morreu.")));
+		LocalDeathScreenWidget->SetMessage(FText::FromString(TEXT("You died.")));
 		if (!LocalDeathScreenWidget->IsInViewport())
 		{
 			LocalDeathScreenWidget->AddToViewport(2000);
@@ -2435,6 +2521,8 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 		return;
 	}
 
+	const FVector PreDeathVelocity = GetCharacterMovement()->Velocity;
+
 	StopAllCharacterAudio(true);
 	SetCharacterInputEnabled(false);
 
@@ -2449,10 +2537,10 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 		DestroyDeathAttachments_Server(VisualMesh);
 	}
 
-	VisualMesh->SetSimulatePhysics(true);
-	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetCharacterMovement()->StopMovementImmediately();
 	GetCharacterMovement()->DisableMovement();
+	ConfigureDeathRagdoll(VisualMesh, PreDeathVelocity);
 
 	if (GetNetMode() != NM_DedicatedServer && bEnableLocalDeathCameraEffect && IsLocallyControlled())
 	{
@@ -2482,10 +2570,67 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 			World->GetTimerManager().SetTimer(LocalDeathScreenHideTimerHandle, this, &ASpellRiseCharacterBase::HideLocalDeathScreenText, HideDelay, false);
 		}
 	}
+}
 
-	FVector Impulse = GetActorForwardVector() * -20000.f;
-	Impulse.Z = 15000.f;
-	VisualMesh->AddImpulseAtLocation(Impulse, GetActorLocation());
+void ASpellRiseCharacterBase::ConfigureDeathRagdoll(USkeletalMeshComponent* VisualMesh, const FVector& PreDeathVelocity)
+{
+	if (!VisualMesh)
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = VisualMesh->GetAnimInstance())
+	{
+		AnimInstance->StopAllMontages(0.08f);
+	}
+
+	VisualMesh->SetVisibility(true, true);
+	VisualMesh->SetEnableGravity(true);
+
+	if (!DeathRagdollCollisionProfileName.IsNone())
+	{
+		VisualMesh->SetCollisionProfileName(DeathRagdollCollisionProfileName, true);
+	}
+	else
+	{
+		VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
+
+	VisualMesh->SetGenerateOverlapEvents(false);
+	VisualMesh->SetNotifyRigidBodyCollision(false);
+	VisualMesh->SetAllBodiesSimulatePhysics(true);
+	VisualMesh->SetSimulatePhysics(true);
+	VisualMesh->SetAllBodiesPhysicsBlendWeight(1.0f);
+	VisualMesh->WakeAllRigidBodies();
+
+	const FVector Impulse = BuildDeathRagdollImpulse(PreDeathVelocity);
+	if (Impulse.IsNearlyZero())
+	{
+		return;
+	}
+
+	FVector ImpulseLocation = VisualMesh->Bounds.Origin;
+	if (!DeathRagdollImpulseBoneName.IsNone() && VisualMesh->GetBoneIndex(DeathRagdollImpulseBoneName) != INDEX_NONE)
+	{
+		ImpulseLocation = VisualMesh->GetBoneLocation(DeathRagdollImpulseBoneName);
+	}
+
+	VisualMesh->AddImpulseAtLocation(Impulse, ImpulseLocation);
+}
+
+FVector ASpellRiseCharacterBase::BuildDeathRagdollImpulse(const FVector& PreDeathVelocity) const
+{
+	FVector Impulse = (-GetActorForwardVector() * FMath::Max(0.f, DeathRagdollBackwardImpulse))
+		+ (FVector::UpVector * FMath::Max(0.f, DeathRagdollUpwardImpulse))
+		+ (PreDeathVelocity * FMath::Max(0.f, DeathRagdollInheritedVelocityScale));
+
+	const float MaxImpulse = FMath::Max(0.f, DeathRagdollMaxImpulse);
+	if (MaxImpulse > KINDA_SMALL_NUMBER)
+	{
+		Impulse = Impulse.GetClampedToMaxSize(MaxImpulse);
+	}
+
+	return Impulse;
 }
 
 void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
@@ -2520,6 +2665,9 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 	{
 		return;
 	}
+
+	GetSpellRiseASC()->SR_ClearAbilityInput();
+	GetSpellRiseASC()->SR_ClearSelectedSpellAbility();
 
 	for (const FGameplayAbilitySpecHandle& AbilityHandle : HandlesToRemove)
 	{

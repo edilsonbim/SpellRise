@@ -43,6 +43,14 @@ enum class ESpellRiseArchetype : uint8
 	Cleric UMETA(DisplayName="Cleric")
 };
 
+UENUM(BlueprintType)
+enum class ESpellRiseAnimationRuntimeStandard : uint8
+{
+	GameAnimationSampleMannyQuinn UMETA(DisplayName="Game Animation Sample / UE5 Manny-Quinn"),
+	MetaHumanVisualOverride UMETA(DisplayName="MetaHuman VisualOverride"),
+	UEFNRetargetedSource UMETA(DisplayName="UEFN Retargeted Source")
+};
+
 USTRUCT(BlueprintType)
 struct FSpellRiseGrantedAbility
 {
@@ -247,6 +255,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Mesh")
 	FName EquipmentAttachMeshComponentName = TEXT("VisualOverride");
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation")
+	ESpellRiseAnimationRuntimeStandard AnimationRuntimeStandard = ESpellRiseAnimationRuntimeStandard::GameAnimationSampleMannyQuinn;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation")
+	bool bTreatVisualOverrideAsPresentationOnly = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation", meta=(EditCondition="bTreatVisualOverrideAsPresentationOnly"))
+	bool bEnforceAliveVisualMeshPresentationCollision = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation", meta=(EditCondition="bTreatVisualOverrideAsPresentationOnly"))
+	FName AliveVisualMeshCollisionProfileName = TEXT("CharacterMesh");
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Camera")
 	FName AimCameraComponentName = TEXT("GameplayCamera");
 
@@ -304,6 +324,24 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Corpse", meta=(ClampMin="0.0"))
 	float CorpseDespawnDelaySeconds = 20.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll")
+	FName DeathRagdollCollisionProfileName = TEXT("Ragdoll");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollBackwardImpulse = 9000.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollUpwardImpulse = 5500.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollInheritedVelocityScale = 45.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollMaxImpulse = 18000.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll")
+	FName DeathRagdollImpulseBoneName = TEXT("pelvis");
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float DeathMessageHideLeadTimeSeconds = 1.0f;
@@ -386,6 +424,10 @@ protected:
 	void HideLocalDeathScreenText();
 	void RemoveRuntimeGrantedAbilitiesOnDeath_Server();
 	void DestroyDeathAttachments_Server(USkeletalMeshComponent* VisualMesh);
+	void ConfigureDeathRagdoll(USkeletalMeshComponent* VisualMesh, const FVector& PreDeathVelocity);
+	FVector BuildDeathRagdollImpulse(const FVector& PreDeathVelocity) const;
+	void ApplyAnimationPresentationPolicy();
+	void ValidateAnimationPresentationPolicy() const;
 	void ForceServerAnimTick();
 	void EnsureAnimInstanceInitialized();
 	USkeletalMeshComponent* FindCharacterSkeletalMeshComponentByName(FName ComponentName) const;

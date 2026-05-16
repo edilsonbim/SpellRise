@@ -45,7 +45,7 @@ namespace
 	static FSpellRiseChatMessage BuildBoundedChatMessage(FName Name, const FText& Text, const FText& TimeText, const uint8 Channel)
 	{
 		FSpellRiseChatMessage Message;
-		Message.Name = FName(*SanitizeBoundedChatString(Name.ToString(), MaxChatNameChars, TEXT("Sistema")));
+		Message.Name = FName(*SanitizeBoundedChatString(Name.ToString(), MaxChatNameChars, TEXT("System")));
 		Message.Text = FText::FromString(SanitizeBoundedChatString(Text.ToString(), MaxChatTextChars));
 		Message.TimeText = FText::FromString(SanitizeBoundedChatString(TimeText.ToString(), MaxChatTimeTextChars));
 		Message.Channel = Channel;
@@ -125,7 +125,7 @@ namespace
 				Ch == TEXT('-');
 			if (!bAllowed)
 			{
-				OutError = TEXT("Use apenas letras, numeros, espaco, '_' e '-'.");
+				OutError = TEXT("Use only letters, numbers, spaces, '_' and '-'.");
 				return false;
 			}
 		}
@@ -141,7 +141,7 @@ namespace
 		}
 
 		const FSpellRiseChatMessage Message = BuildBoundedChatMessage(
-			FName(TEXT("Sistema")),
+			FName(TEXT("System")),
 			FText::FromString(MessageText),
 			BuildChatTimeText(),
 			Channel);
@@ -184,7 +184,7 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 
 		if (Channel != SpellRiseChatChannel::Global)
 		{
-			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, TEXT("Use /name apenas no chat geral."));
+			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, TEXT("Use /name only in global chat."));
 			return;
 		}
 
@@ -198,7 +198,7 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 		const FString OldName = SenderController->PlayerState->GetPlayerName();
 		if (OldName.Equals(RequestedName, ESearchCase::IgnoreCase))
 		{
-			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, TEXT("Seu nome ja esta definido assim."));
+			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, TEXT("Your name is already set to that."));
 			return;
 		}
 
@@ -214,7 +214,7 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 			}
 		}
 
-		const FString SuccessText = FString::Printf(TEXT("Nome alterado para: %s"), *RequestedName);
+		const FString SuccessText = FString::Printf(TEXT("Name changed to: %s"), *RequestedName);
 		SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, SuccessText);
 		return;
 	}

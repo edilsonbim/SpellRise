@@ -328,7 +328,7 @@ void USpellRiseGameplayAbility::NativeOnAbilityInputReleased(
 			return;
 		}
 
-		if (bIsCasting && CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
+		if (bIsCasting && GetEffectiveCastCompletionPolicy() == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
 		{
 			UE_LOG(LogSpellRiseGameplayAbilityRuntime, Verbose, TEXT("[CAST] Release before cast complete marked ability=%s"), *GetNameSafe(this));
 			return;
@@ -580,7 +580,7 @@ void USpellRiseGameplayAbility::StartCastFlow()
 	NativeOnCastStarted();
 
 	const bool bWaitReleaseAfterCast =
-		(CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete);
+		(GetEffectiveCastCompletionPolicy() == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete);
 
 	if (CastTime <= 0.0f)
 	{
@@ -727,6 +727,16 @@ void USpellRiseGameplayAbility::ResetSpellRuntimeState()
 	CastStartTimeSeconds = 0.0;
 }
 
+ESpellRiseCastCompletionPolicy USpellRiseGameplayAbility::GetEffectiveCastCompletionPolicy() const
+{
+	if (!HasPC())
+	{
+		return ESpellRiseCastCompletionPolicy::AutoFireOnCastComplete;
+	}
+
+	return CastCompletionPolicy;
+}
+
 float USpellRiseGameplayAbility::ResolveElapsedCastTime() const
 {
 	if (CastElapsedTime > 0.0f)
@@ -749,7 +759,7 @@ void USpellRiseGameplayAbility::HandleCastFinished()
 	CastRemainingTime = FMath::Max(0.0f, CastTime - CastElapsedTime);
 	bIsCasting = false;
 
-	if (CastCompletionPolicy == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
+	if (GetEffectiveCastCompletionPolicy() == ESpellRiseCastCompletionPolicy::WaitReleaseAfterCastComplete)
 	{
 		if (bHasReceivedInputReleaseSinceCastStart)
 		{

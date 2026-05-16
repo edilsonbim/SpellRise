@@ -191,6 +191,7 @@ protected:
 	void StopChannelFlow(bool bWasCancelled);
 	void ExecuteSpellFromCurrentMode();
 	void ResetSpellRuntimeState();
+	ESpellRiseCastCompletionPolicy GetEffectiveCastCompletionPolicy() const;
 	float ResolveElapsedCastTime() const;
 	bool CommitSpellAbilityForExecution();
 	void ApplyCastingEffect();
