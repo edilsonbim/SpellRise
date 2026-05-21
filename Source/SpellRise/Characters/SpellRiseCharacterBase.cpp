@@ -617,14 +617,14 @@ UCameraComponent* ASpellRiseCharacterBase::FindCharacterCameraComponentByName(FN
 
 USkeletalMeshComponent* ASpellRiseCharacterBase::GetVisualMeshComponent() const
 {
-	if (USkeletalMeshComponent* VisualMesh = FindCharacterSkeletalMeshComponentByName(VisualMeshComponentName))
-	{
-		return VisualMesh;
-	}
-
 	if (USkeletalMeshComponent* VisualOverrideMesh = ResolveSkeletalMeshFromChildActorComponent(VisualMeshComponentName))
 	{
 		return VisualOverrideMesh;
+	}
+
+	if (USkeletalMeshComponent* VisualMesh = FindCharacterSkeletalMeshComponentByName(VisualMeshComponentName))
+	{
+		return VisualMesh;
 	}
 
 	return GetMesh();
@@ -646,14 +646,14 @@ FVector ASpellRiseCharacterBase::GetDamageNumberWorldLocation() const
 
 USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent() const
 {
-	if (USkeletalMeshComponent* AttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
-	{
-		return AttachMesh;
-	}
-
 	if (USkeletalMeshComponent* AttachMeshFromChildActor = ResolveSkeletalMeshFromChildActorComponent(EquipmentAttachMeshComponentName))
 	{
 		return AttachMeshFromChildActor;
+	}
+
+	if (USkeletalMeshComponent* AttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
+	{
+		return AttachMesh;
 	}
 
 	return GetVisualMeshComponent();
@@ -1666,6 +1666,14 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 
 TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
 {
+	return GrantAbilitiesFromSource(AbilitiesToGrant, this, false);
+}
+
+TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilitiesFromSource(
+	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+	UObject* SourceObject,
+	const bool bAllowDuplicateAbilityClassesForDifferentSources)
+{
 	if (!GetSpellRiseASC() || !HasAuthority())
 	{
 		return {};
@@ -1676,18 +1684,37 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const
 
 	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
 	{
-		if (!Grant.Ability)
+		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
 		{
 			continue;
 		}
 
-		if (GetSpellRiseASC()->FindAbilitySpecFromClass(Grant.Ability) != nullptr)
+		if (!bAllowDuplicateAbilityClassesForDifferentSources && GetSpellRiseASC()->FindAbilitySpecFromClass(AbilityClass) != nullptr)
 		{
 			continue;
+		}
+
+		if (bAllowDuplicateAbilityClassesForDifferentSources)
+		{
+			bool bAlreadyGrantedForSource = false;
+			for (const FGameplayAbilitySpec& ExistingSpec : GetSpellRiseASC()->GetActivatableAbilities())
+			{
+				if (ExistingSpec.Ability && ExistingSpec.Ability->GetClass() == AbilityClass && ExistingSpec.SourceObject == SourceObject)
+				{
+					bAlreadyGrantedForSource = true;
+					break;
+				}
+			}
+
+			if (bAlreadyGrantedForSource)
+			{
+				continue;
+			}
 		}
 
 		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
-		FGameplayAbilitySpec Spec(Grant.Ability, FinalLevel, INDEX_NONE, this);
+		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, SourceObject ? SourceObject : this);
 
 		if (Grant.InputTag.IsValid())
 		{

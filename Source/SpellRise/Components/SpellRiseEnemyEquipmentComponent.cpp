@@ -67,7 +67,7 @@ bool USpellRiseEnemyEquipmentComponent::ApplyLoadout_Server()
 
 	bLoadoutApplied = true;
 	OwnerActor->ForceNetUpdate();
-	return bWeaponReady || !GrantedAbilities.IsEmpty() || !GrantedEffects.IsEmpty();
+	return bWeaponReady || !GrantedAbilities.IsEmpty() || !GrantedEffectClasses.IsEmpty();
 }
 
 void USpellRiseEnemyEquipmentComponent::ClearLoadout_Server()
@@ -148,7 +148,8 @@ bool USpellRiseEnemyEquipmentComponent::SpawnWeaponActor_Server()
 		return false;
 	}
 
-	if (!WeaponActorClass)
+	UClass* ResolvedWeaponActorClass = WeaponActorClassRef.LoadSynchronous();
+	if (!ResolvedWeaponActorClass)
 	{
 		return false;
 	}
@@ -169,13 +170,13 @@ bool USpellRiseEnemyEquipmentComponent::SpawnWeaponActor_Server()
 	SpawnParams.Instigator = Cast<APawn>(OwnerActor);
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	EquippedWeaponActor = World->SpawnActor<AActor>(WeaponActorClass, FTransform::Identity, SpawnParams);
+	EquippedWeaponActor = World->SpawnActor<AActor>(ResolvedWeaponActorClass, FTransform::Identity, SpawnParams);
 	if (!EquippedWeaponActor)
 	{
 		UE_LOG(LogSpellRiseEnemyEquipment, Warning,
 			TEXT("Falha ao spawnar arma de enemy. Owner=%s WeaponClass=%s"),
 			*GetNameSafe(OwnerActor),
-			*GetNameSafe(WeaponActorClass.Get()));
+			*GetNameSafe(ResolvedWeaponActorClass));
 		return false;
 	}
 
@@ -246,17 +247,18 @@ void USpellRiseEnemyEquipmentComponent::GrantAbilities_Server()
 
 	for (const FSpellRiseEnemyEquipmentGrantedAbility& Grant : GrantedAbilities)
 	{
-		if (!Grant.Ability)
+		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
 		{
 			continue;
 		}
 
-		if (ASC->FindAbilitySpecFromClass(Grant.Ability) != nullptr)
+		if (ASC->FindAbilitySpecFromClass(AbilityClass) != nullptr)
 		{
 			continue;
 		}
 
-		FGameplayAbilitySpec Spec(Grant.Ability, FMath::Max(1, Grant.AbilityLevel), INDEX_NONE, this);
+		FGameplayAbilitySpec Spec(AbilityClass, FMath::Max(1, Grant.AbilityLevel), INDEX_NONE, this);
 
 		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
 		if (Handle.IsValid())
@@ -281,8 +283,9 @@ void USpellRiseEnemyEquipmentComponent::ApplyEffects_Server()
 		return;
 	}
 
-	for (const TSubclassOf<UGameplayEffect>& EffectClass : GrantedEffects)
+	for (const TSoftClassPtr<UGameplayEffect>& EffectClassRef : GrantedEffectClasses)
 	{
+		UClass* EffectClass = EffectClassRef.LoadSynchronous();
 		if (!EffectClass)
 		{
 			continue;
@@ -297,7 +300,7 @@ void USpellRiseEnemyEquipmentComponent::ApplyEffects_Server()
 			UE_LOG(LogSpellRiseEnemyEquipment, Warning,
 				TEXT("Spec de GE de equipamento enemy invalido. Owner=%s Effect=%s"),
 				*GetNameSafe(GetOwner()),
-				*GetNameSafe(EffectClass.Get()));
+				*GetNameSafe(EffectClass));
 			continue;
 		}
 

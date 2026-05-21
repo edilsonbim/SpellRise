@@ -56,8 +56,8 @@ struct FSpellRiseGrantedAbility
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant")
-	TSubclassOf<UGameplayAbility> Ability = nullptr;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
+	TSoftClassPtr<UGameplayAbility> AbilityClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
 	int32 AbilityLevel = 1;
@@ -115,6 +115,11 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant);
+
+	TArray<FGameplayAbilitySpecHandle> GrantAbilitiesFromSource(
+		const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+		UObject* SourceObject,
+		bool bAllowDuplicateAbilityClassesForDifferentSources = true);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);

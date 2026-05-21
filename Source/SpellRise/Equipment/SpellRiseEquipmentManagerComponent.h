@@ -10,6 +10,7 @@
 #include "HAL/Platform.h"
 #include "Net/Serialization/FastArraySerializer.h"
 #include "EquippableItem.h"
+#include "SpellRise/Equipment/SpellRiseWeaponDefinition.h"
 #include "SpellRiseEquipmentManagerComponent.generated.h"
 
 class UEquippableItem;
@@ -144,6 +145,21 @@ struct FSpellRiseAppliedEquipmentEntry : public FFastArraySerializerItem
 };
 
 USTRUCT()
+struct FSpellRiseEquipmentRpcRateLimitState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Transient)
+	double WindowStartServerTimeSeconds = 0.0;
+
+	UPROPERTY(Transient)
+	int32 RequestsInWindow = 0;
+
+	UPROPERTY(Transient)
+	int32 RejectCount = 0;
+};
+
+USTRUCT()
 struct FSpellRiseEquipmentList : public FFastArraySerializer
 {
 	GENERATED_BODY()
@@ -242,6 +258,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	AActor* GetActiveEquippedWeaponActor() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	TArray<FSpellRiseWeaponLoadoutSlotView> GetWeaponLoadoutSlotViews() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Weapon")
+	USpellRiseWeaponDefinition* GetWeaponDefinitionForItem(UEquippableItem* Item) const;
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment", meta=(DeterminesOutputType="ExpectedClass"))
 	AActor* GetEquippedWeapon(TSubclassOf<AActor> ExpectedClass = nullptr) const;
 
@@ -315,7 +337,7 @@ private:
 	bool ExtractAbilitiesToGrantFromItem(UEquippableItem* Item, TArray<struct FSpellRiseGrantedAbility>& OutAbilities) const;
 	bool ResolveWeaponActorClassFromItem(UEquippableItem* Item, UClass*& OutWeaponActorClass, const void*& OutWeaponConfigPtr, const UStruct*& OutWeaponConfigStruct) const;
 	bool ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const;
-	bool ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutHolsterSocket) const;
+	bool ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const;
 	void RefreshEquippedWeaponReference();
 	void RefreshEquippedOffHandWeaponReference();
 	void BroadcastWeaponChangedIfNeeded();
@@ -331,8 +353,12 @@ private:
 	void ReconcileReplicatedQuickSlotVisuals();
 	void ApplyGrantedAbilitiesForSlot(UEquippableItem* Item, uint8 SlotValue);
 	void RemoveGrantedAbilitiesForSlot(uint8 SlotValue);
+	USpellRiseEquipmentInstance* GetOrCreateEquipmentInstanceForSlot(UEquippableItem* Item, uint8 SlotValue);
+	void RemoveEquipmentInstanceForSlot(uint8 SlotValue);
 	bool ExtractGrantedEffectsFromItem(UEquippableItem* Item, TArray<TSubclassOf<class UGameplayEffect>>& OutEffects) const;
 	bool ExtractSetByCallerMagnitudesFromItem(UEquippableItem* Item, TMap<FGameplayTag, float>& OutMagnitudes) const;
+	bool ExtractWeaponDefinitionFromObject(const UObject* SourceObject, const USpellRiseWeaponDefinition*& OutWeaponDefinition) const;
+	bool ExtractWeaponDefinitionFromItem(UEquippableItem* Item, const USpellRiseWeaponDefinition*& OutWeaponDefinition) const;
 	bool IsWeaponItem(UEquippableItem* Item) const;
 	bool IsOffHandWeaponItem(UEquippableItem* Item) const;
 	bool IsTwoHandedWeaponItem(UEquippableItem* Item) const;
@@ -348,9 +374,17 @@ private:
 	void RemoveQuickWeaponSlot_Server(int32 QuickSlotIndex, bool bDestroyWeaponActor);
 	void RemoveOffHandWeapon_Server(bool bDestroyWeaponActor);
 	bool DropItem_Server(UNarrativeItem* Item, int32 QuantityToDrop);
+	bool CheckServerEquipmentRpcRateLimit(
+		const TCHAR* RpcName,
+		FSpellRiseEquipmentRpcRateLimitState& RateState,
+		float WindowSeconds,
+		int32 MaxRequestsPerWindow,
+		FString& OutRejectReason);
+	void AuditRejectedEquipmentRpc(const TCHAR* RpcName, const FString& RejectReason);
 	bool SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation);
 	AActor* GetOrSpawnWeaponActorForItem(UEquippableItem* Item);
 	void DestroyWeaponActorForItem(UEquippableItem* Item);
+	void RefreshWeaponLoadoutVisuals_Server();
 	void RefreshQuickSlotVisual_Server(int32 QuickSlotIndex, bool bEquipped);
 	void RefreshOffHandVisual_Server(bool bEquipped);
 	void RefreshOffHandVisual_Local(bool bEquipped);
@@ -387,6 +421,9 @@ private:
 	TMap<uint8, TArray<FActiveGameplayEffectHandle>> GrantedEffectHandlesBySlot;
 	TMap<TObjectPtr<UEquippableItem>, TObjectPtr<AActor>> SpawnedWeaponActorsByItem;
 
+	UPROPERTY(Transient)
+	TMap<uint8, TObjectPtr<USpellRiseEquipmentInstance>> EquipmentInstancesBySlot;
+
 	UPROPERTY(ReplicatedUsing=OnRep_QuickWeaponSlots)
 	TArray<TObjectPtr<UEquippableItem>> QuickWeaponSlots;
 
@@ -422,6 +459,33 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Drop", meta=(ClampMin="50.0", UIMin="50.0"))
 	float DropSpawnForwardDistance = 150.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Security", meta=(ClampMin="0.05", UIMin="0.05"))
+	float EquipmentRpcRateLimitWindowSeconds = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Security", meta=(ClampMin="1", UIMin="1"))
+	int32 EquipmentRpcRateLimitMaxRequestsPerWindow = 6;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Security", meta=(ClampMin="0.1", UIMin="0.1"))
+	float DropRpcRateLimitWindowSeconds = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Equipment|Security", meta=(ClampMin="1", UIMin="1"))
+	int32 DropRpcRateLimitMaxRequestsPerWindow = 2;
+
+	UPROPERTY(Transient)
+	FSpellRiseEquipmentRpcRateLimitState EquipItemRpcRateState;
+
+	UPROPERTY(Transient)
+	FSpellRiseEquipmentRpcRateLimitState UnequipItemRpcRateState;
+
+	UPROPERTY(Transient)
+	FSpellRiseEquipmentRpcRateLimitState ActivateQuickWeaponSlotRpcRateState;
+
+	UPROPERTY(Transient)
+	FSpellRiseEquipmentRpcRateLimitState AssignQuickWeaponSlotRpcRateState;
+
+	UPROPERTY(Transient)
+	FSpellRiseEquipmentRpcRateLimitState DropItemRpcRateState;
 
 	int32 VisualSyncDepth = 0;
 };

@@ -17,8 +17,8 @@ struct FSpellRiseEnemyEquipmentGrantedAbility
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment|GAS")
-	TSubclassOf<UGameplayAbility> Ability = nullptr;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment|GAS", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
+	TSoftClassPtr<UGameplayAbility> AbilityClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment|GAS", meta=(ClampMin="1"))
 	int32 AbilityLevel = 1;
@@ -53,7 +53,7 @@ public:
 
 protected:
 	UPROPERTY(Transient)
-	TSubclassOf<AActor> WeaponActorClass = nullptr;
+	TSoftClassPtr<AActor> WeaponActorClassRef;
 
 	UPROPERTY(Transient)
 	FName EquippedSocket = NAME_None;
@@ -68,7 +68,7 @@ protected:
 	TArray<FSpellRiseEnemyEquipmentGrantedAbility> GrantedAbilities;
 
 	UPROPERTY(Transient)
-	TArray<TSubclassOf<UGameplayEffect>> GrantedEffects;
+	TArray<TSoftClassPtr<UGameplayEffect>> GrantedEffectClasses;
 
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeaponActor, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment")
 	TObjectPtr<AActor> EquippedWeaponActor = nullptr;

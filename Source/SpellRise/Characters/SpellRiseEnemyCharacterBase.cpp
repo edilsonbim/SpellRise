@@ -346,18 +346,19 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantAbilities(
 
 	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
 	{
-		if (!Grant.Ability)
+		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
 		{
 			continue;
 		}
 
-		if (AbilitySystemComponent->FindAbilitySpecFromClass(Grant.Ability) != nullptr)
+		if (AbilitySystemComponent->FindAbilitySpecFromClass(AbilityClass) != nullptr)
 		{
 			continue;
 		}
 
 		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
-		FGameplayAbilitySpec Spec(Grant.Ability, FinalLevel, INDEX_NONE, this);
+		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, this);
 
 		if (Grant.InputTag.IsValid())
 		{

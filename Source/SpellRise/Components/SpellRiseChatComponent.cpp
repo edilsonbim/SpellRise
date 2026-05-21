@@ -12,9 +12,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseChatRuntime, Log, All);
 
 namespace
 {
-	constexpr int32 MaxChatNameChars = 32;
-	constexpr int32 MaxChatTextChars = 256;
-	constexpr int32 MaxChatTimeTextChars = 16;
+	constexpr int32 ChatMaxNameChars = 32;
+	constexpr int32 ChatMaxTextChars = 256;
+	constexpr int32 ChatMaxTimeTextChars = 16;
 
 	static FText BuildChatTimeText()
 	{
@@ -45,9 +45,9 @@ namespace
 	static FSpellRiseChatMessage BuildBoundedChatMessage(FName Name, const FText& Text, const FText& TimeText, const uint8 Channel)
 	{
 		FSpellRiseChatMessage Message;
-		Message.Name = FName(*SanitizeBoundedChatString(Name.ToString(), MaxChatNameChars, TEXT("System")));
-		Message.Text = FText::FromString(SanitizeBoundedChatString(Text.ToString(), MaxChatTextChars));
-		Message.TimeText = FText::FromString(SanitizeBoundedChatString(TimeText.ToString(), MaxChatTimeTextChars));
+		Message.Name = FName(*SanitizeBoundedChatString(Name.ToString(), ChatMaxNameChars, TEXT("System")));
+		Message.Text = FText::FromString(SanitizeBoundedChatString(Text.ToString(), ChatMaxTextChars));
+		Message.TimeText = FText::FromString(SanitizeBoundedChatString(TimeText.ToString(), ChatMaxTimeTextChars));
 		Message.Channel = Channel;
 		return Message;
 	}

@@ -25,6 +25,13 @@
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEquipmentReplication, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseWeaponAttach, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEquipmentTrace, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEquipmentSecurity, Log, All);
+
+namespace SpellRiseEquipmentSlots
+{
+	constexpr uint8 MainHandSlotBase = 200;
+	constexpr uint8 OffHandSlot = 241;
+}
 
 namespace SpellRiseEquipmentAttach
 {
@@ -197,6 +204,14 @@ bool USpellRiseEquipmentManagerComponent::ReplicateSubobjects(UActorChannel* Cha
 		}
 	}
 
+	for (const TPair<uint8, TObjectPtr<USpellRiseEquipmentInstance>>& Pair : EquipmentInstancesBySlot)
+	{
+		if (IsValid(Pair.Value))
+		{
+			bWroteSomething |= Channel->ReplicateSubobject(Pair.Value, *Bunch, *RepFlags);
+		}
+	}
+
 	return bWroteSomething;
 }
 
@@ -214,6 +229,14 @@ void USpellRiseEquipmentManagerComponent::ReadyForReplication()
 		if (IsValid(Entry.Instance))
 		{
 			AddReplicatedSubObject(Entry.Instance);
+		}
+	}
+
+	for (const TPair<uint8, TObjectPtr<USpellRiseEquipmentInstance>>& Pair : EquipmentInstancesBySlot)
+	{
+		if (IsValid(Pair.Value))
+		{
+			AddReplicatedSubObject(Pair.Value);
 		}
 	}
 }
@@ -367,6 +390,13 @@ bool USpellRiseEquipmentManagerComponent::RequestUnequipItem(UEquippableItem* It
 
 void USpellRiseEquipmentManagerComponent::ServerRequestEquipItem_Implementation(UEquippableItem* Item)
 {
+	FString RejectReason;
+	if (!CheckServerEquipmentRpcRateLimit(TEXT("ServerRequestEquipItem"), EquipItemRpcRateState, EquipmentRpcRateLimitWindowSeconds, EquipmentRpcRateLimitMaxRequestsPerWindow, RejectReason))
+	{
+		AuditRejectedEquipmentRpc(TEXT("ServerRequestEquipItem"), RejectReason);
+		return;
+	}
+
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("ServerRequestEquipItem. Owner=%s Item=%s IsWeapon=%s"),
 		*GetNameSafe(GetOwner()),
@@ -400,6 +430,13 @@ void USpellRiseEquipmentManagerComponent::ServerRequestEquipItem_Implementation(
 
 void USpellRiseEquipmentManagerComponent::ServerRequestUnequipItem_Implementation(UEquippableItem* Item)
 {
+	FString RejectReason;
+	if (!CheckServerEquipmentRpcRateLimit(TEXT("ServerRequestUnequipItem"), UnequipItemRpcRateState, EquipmentRpcRateLimitWindowSeconds, EquipmentRpcRateLimitMaxRequestsPerWindow, RejectReason))
+	{
+		AuditRejectedEquipmentRpc(TEXT("ServerRequestUnequipItem"), RejectReason);
+		return;
+	}
+
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("ServerRequestUnequipItem. Owner=%s Item=%s IsWeapon=%s"),
 		*GetNameSafe(GetOwner()),
@@ -490,16 +527,37 @@ bool USpellRiseEquipmentManagerComponent::RequestDropItem(UNarrativeItem* Item, 
 
 void USpellRiseEquipmentManagerComponent::ServerRequestActivateQuickWeaponSlot_Implementation(int32 QuickSlotIndex)
 {
+	FString RejectReason;
+	if (!CheckServerEquipmentRpcRateLimit(TEXT("ServerRequestActivateQuickWeaponSlot"), ActivateQuickWeaponSlotRpcRateState, EquipmentRpcRateLimitWindowSeconds, EquipmentRpcRateLimitMaxRequestsPerWindow, RejectReason))
+	{
+		AuditRejectedEquipmentRpc(TEXT("ServerRequestActivateQuickWeaponSlot"), RejectReason);
+		return;
+	}
+
 	ActivateQuickWeaponSlot_Server(QuickSlotIndex);
 }
 
 void USpellRiseEquipmentManagerComponent::ServerRequestAssignQuickWeaponSlot_Implementation(UEquippableItem* Item, int32 QuickSlotIndex)
 {
+	FString RejectReason;
+	if (!CheckServerEquipmentRpcRateLimit(TEXT("ServerRequestAssignQuickWeaponSlot"), AssignQuickWeaponSlotRpcRateState, EquipmentRpcRateLimitWindowSeconds, EquipmentRpcRateLimitMaxRequestsPerWindow, RejectReason))
+	{
+		AuditRejectedEquipmentRpc(TEXT("ServerRequestAssignQuickWeaponSlot"), RejectReason);
+		return;
+	}
+
 	AssignQuickWeaponSlot_Server(Item, QuickSlotIndex);
 }
 
 void USpellRiseEquipmentManagerComponent::ServerRequestDropItem_Implementation(UNarrativeItem* Item, int32 QuantityToDrop)
 {
+	FString RejectReason;
+	if (!CheckServerEquipmentRpcRateLimit(TEXT("ServerRequestDropItem"), DropItemRpcRateState, DropRpcRateLimitWindowSeconds, DropRpcRateLimitMaxRequestsPerWindow, RejectReason))
+	{
+		AuditRejectedEquipmentRpc(TEXT("ServerRequestDropItem"), RejectReason);
+		return;
+	}
+
 	DropItem_Server(Item, QuantityToDrop);
 }
 
@@ -557,7 +615,13 @@ bool USpellRiseEquipmentManagerComponent::UnequipItem(UEquippableItem* Item)
 USpellRiseEquipmentInstance* USpellRiseEquipmentManagerComponent::GetEquippedInstanceBySlot(uint8 SlotValue) const
 {
 	const FSpellRiseAppliedEquipmentEntry* Entry = EquipmentList.FindBySlot(SlotValue);
-	return Entry ? Entry->Instance : nullptr;
+	if (Entry)
+	{
+		return Entry->Instance;
+	}
+
+	const TObjectPtr<USpellRiseEquipmentInstance>* Instance = EquipmentInstancesBySlot.Find(SlotValue);
+	return Instance ? Instance->Get() : nullptr;
 }
 
 AActor* USpellRiseEquipmentManagerComponent::GetActiveEquippedWeaponActor() const
@@ -603,6 +667,68 @@ AActor* USpellRiseEquipmentManagerComponent::GetEquippedWeapon(TSubclassOf<AActo
 	if (!ExpectedWeaponClass || EquippedWeapon->IsA(ExpectedWeaponClass))
 	{
 		return EquippedWeapon;
+	}
+
+	return nullptr;
+}
+
+TArray<FSpellRiseWeaponLoadoutSlotView> USpellRiseEquipmentManagerComponent::GetWeaponLoadoutSlotViews() const
+{
+	TArray<FSpellRiseWeaponLoadoutSlotView> Views;
+	Views.Reserve(3);
+
+	for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
+	{
+		FSpellRiseWeaponLoadoutSlotView& View = Views.AddDefaulted_GetRef();
+		View.Slot = SlotIndex == 0 ? ESpellRiseWeaponLoadoutSlot::WeaponSlot1 : ESpellRiseWeaponLoadoutSlot::WeaponSlot2;
+		View.Item = QuickWeaponSlots.IsValidIndex(SlotIndex) ? QuickWeaponSlots[SlotIndex] : nullptr;
+		View.WeaponActor = QuickWeaponActors.IsValidIndex(SlotIndex) ? QuickWeaponActors[SlotIndex] : nullptr;
+		View.WeaponDefinition = GetWeaponDefinitionForItem(View.Item);
+		if (View.WeaponDefinition)
+		{
+			View.WeaponTag = View.WeaponDefinition->WeaponTag;
+			View.HandPolicy = View.WeaponDefinition->HandPolicy;
+		}
+		View.bIsActive = ActiveQuickWeaponSlotIndex == SlotIndex;
+	}
+
+	FSpellRiseWeaponLoadoutSlotView& OffHandView = Views.AddDefaulted_GetRef();
+	OffHandView.Slot = ESpellRiseWeaponLoadoutSlot::OffHand;
+	OffHandView.Item = ActiveOffHandItem;
+	OffHandView.WeaponActor = EquippedOffHandWeapon;
+	OffHandView.WeaponDefinition = GetWeaponDefinitionForItem(OffHandView.Item);
+	if (OffHandView.WeaponDefinition)
+	{
+		OffHandView.WeaponTag = OffHandView.WeaponDefinition->WeaponTag;
+		OffHandView.HandPolicy = OffHandView.WeaponDefinition->HandPolicy;
+	}
+	OffHandView.bIsActive = IsOffHandGameplayActive();
+	OffHandView.bIsSuppressed = bOffHandSuppressedByTwoHandedWeapon;
+
+	return Views;
+}
+
+USpellRiseWeaponDefinition* USpellRiseEquipmentManagerComponent::GetWeaponDefinitionForItem(UEquippableItem* Item) const
+{
+	if (!Item)
+	{
+		return nullptr;
+	}
+
+	const USpellRiseWeaponDefinition* WeaponDefinition = nullptr;
+	if (ExtractWeaponDefinitionFromItem(Item, WeaponDefinition))
+	{
+		return const_cast<USpellRiseWeaponDefinition*>(WeaponDefinition);
+	}
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	if (ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) &&
+		WeaponActorClass &&
+		ExtractWeaponDefinitionFromObject(WeaponActorClass->GetDefaultObject(), WeaponDefinition))
+	{
+		return const_cast<USpellRiseWeaponDefinition*>(WeaponDefinition);
 	}
 
 	return nullptr;
@@ -801,13 +927,14 @@ TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::G
 	PreviewAbilities.Reserve(AbilitiesToGrant.Num());
 	for (const FSpellRiseGrantedAbility& AbilityToGrant : AbilitiesToGrant)
 	{
-		if (!AbilityToGrant.Ability)
+		UClass* AbilityClass = AbilityToGrant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
 		{
 			continue;
 		}
 
 		FSpellRiseEquipmentAbilityPreview& Preview = PreviewAbilities.AddDefaulted_GetRef();
-		Preview.Ability = AbilityToGrant.Ability;
+		Preview.Ability = AbilityClass;
 		Preview.AbilityLevel = AbilityToGrant.AbilityLevel;
 		Preview.InputTag = AbilityToGrant.InputTag;
 		Preview.bAutoActivateIfNoInputTag = AbilityToGrant.bAutoActivateIfNoInputTag;
@@ -819,7 +946,7 @@ TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::G
 
 		for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 		{
-			if (!Spec.Ability || Spec.Ability->GetClass() != AbilityToGrant.Ability)
+			if (!Spec.Ability || Spec.Ability->GetClass() != AbilityClass)
 			{
 				continue;
 			}
@@ -1112,10 +1239,40 @@ bool USpellRiseEquipmentManagerComponent::ExtractAbilitiesToGrantFromItem(UEquip
 {
 	OutAbilities.Reset();
 
+	const USpellRiseWeaponDefinition* WeaponDefinition = nullptr;
+	if (ExtractWeaponDefinitionFromItem(Item, WeaponDefinition) && WeaponDefinition)
+	{
+		for (const FSpellRiseGrantedAbility& AbilityGrant : WeaponDefinition->AbilitiesToGrant)
+		{
+			if (!AbilityGrant.AbilityClass.IsNull())
+			{
+				OutAbilities.Add(AbilityGrant);
+			}
+		}
+		return OutAbilities.Num() > 0;
+	}
+
 	UClass* WeaponActorClass = nullptr;
 	const void* WeaponConfigPtr = nullptr;
 	const UStruct* WeaponConfigStruct = nullptr;
-	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) || !WeaponConfigPtr || !WeaponConfigStruct)
+	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct))
+	{
+		return false;
+	}
+
+	if (WeaponActorClass && ExtractWeaponDefinitionFromObject(WeaponActorClass->GetDefaultObject(), WeaponDefinition) && WeaponDefinition)
+	{
+		for (const FSpellRiseGrantedAbility& AbilityGrant : WeaponDefinition->AbilitiesToGrant)
+		{
+			if (!AbilityGrant.AbilityClass.IsNull())
+			{
+				OutAbilities.Add(AbilityGrant);
+			}
+		}
+		return OutAbilities.Num() > 0;
+	}
+
+	if (!WeaponConfigPtr || !WeaponConfigStruct)
 	{
 		return false;
 	}
@@ -1154,7 +1311,7 @@ bool USpellRiseEquipmentManagerComponent::ExtractAbilitiesToGrantFromItem(UEquip
 	for (int32 Index = 0; Index < ArrayHelper.Num(); ++Index)
 	{
 		const FSpellRiseGrantedAbility* AbilityEntry = reinterpret_cast<const FSpellRiseGrantedAbility*>(ArrayHelper.GetRawPtr(Index));
-		if (AbilityEntry && AbilityEntry->Ability)
+		if (AbilityEntry && !AbilityEntry->AbilityClass.IsNull())
 		{
 			OutAbilities.Add(*AbilityEntry);
 		}
@@ -1174,6 +1331,25 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponActorClassFromItem(UEquip
 		UE_LOG(LogSpellRiseEquipmentTrace, Warning, TEXT("ResolveWeaponActorClassFromItem abortado: Item nulo."));
 		return false;
 	}
+
+	const USpellRiseWeaponDefinition* WeaponDefinition = nullptr;
+	if (ExtractWeaponDefinitionFromItem(Item, WeaponDefinition) && WeaponDefinition)
+	{
+		OutWeaponActorClass = WeaponDefinition->WeaponActorClassRef.LoadSynchronous();
+		if (!OutWeaponActorClass)
+		{
+			UE_LOG(LogSpellRiseEquipmentTrace, Warning,
+				TEXT("ResolveWeaponActorClassFromItem falhou: WeaponDefinition sem WeaponActorClass carregavel. Item=%s WeaponDefinition=%s"),
+				*GetNameSafe(Item),
+				*GetNameSafe(WeaponDefinition));
+		}
+		return OutWeaponActorClass != nullptr;
+	}
+
+	UE_LOG(LogSpellRiseEquipmentTrace, Verbose,
+		TEXT("ResolveWeaponActorClassFromItem usando fallback legado sem WeaponDefinition. Item=%s ItemClass=%s"),
+		*GetNameSafe(Item),
+		*GetNameSafe(Item->GetClass()));
 
 	auto ResolveWeaponClassFromProperty = [Item](const FProperty* Property) -> UClass*
 	{
@@ -1309,7 +1485,7 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponActorClassFromItem(UEquip
 bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const
 {
 	OutEquippedSocket = TEXT("hand_r");
-	OutStowedSocket = TEXT("holster_r");
+	OutStowedSocket = TEXT("stowed_r");
 
 	if (!WeaponConfigPtr || !WeaponConfigStruct)
 	{
@@ -1336,7 +1512,7 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const v
 		{
 			OutEquippedSocket = NameProperty->GetPropertyValue_InContainer(WeaponConfigPtr);
 		}
-		else if (PropertyName.Contains(TEXT("HolsterSocketName")) || PropertyName.Contains(TEXT("StowedSocketName")))
+		else if (PropertyName.Contains(TEXT("StowedSocketName")) || PropertyName.Contains(TEXT("HolsterSocketName")))
 		{
 			OutStowedSocket = NameProperty->GetPropertyValue_InContainer(WeaponConfigPtr);
 		}
@@ -1351,10 +1527,24 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsFromConfig(const v
 	return OutEquippedSocket != NAME_None || OutStowedSocket != NAME_None;
 }
 
-bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutHolsterSocket) const
+bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const
 {
 	OutEquippedSocket = bOffHand ? TEXT("hand_l") : TEXT("hand_r");
-	OutHolsterSocket = bOffHand ? TEXT("holster_l") : TEXT("holster_r");
+	OutStowedSocket = bOffHand ? TEXT("stowed_l") : TEXT("stowed_r");
+
+	const USpellRiseWeaponDefinition* WeaponDefinition = GetWeaponDefinitionForItem(Item);
+	if (WeaponDefinition)
+	{
+		if (WeaponDefinition->EquippedSocket != NAME_None)
+		{
+			OutEquippedSocket = WeaponDefinition->EquippedSocket;
+		}
+		if (WeaponDefinition->StowedSocket != NAME_None)
+		{
+			OutStowedSocket = WeaponDefinition->StowedSocket;
+		}
+		return true;
+	}
 
 	UClass* WeaponActorClass = nullptr;
 	const void* WeaponConfigPtr = nullptr;
@@ -1396,20 +1586,20 @@ bool USpellRiseEquipmentManagerComponent::ResolveWeaponSocketsForItem(UEquippabl
 	if (bOffHand)
 	{
 		ReadNameProperty({ TEXT("OffHandEquippedSocketName"), TEXT("OffHandEquippedSocket"), TEXT("EquippedSocketName") }, OutEquippedSocket);
-		ReadNameProperty({ TEXT("OffHandHolsterSocketName"), TEXT("OffHandHolsterSocket"), TEXT("HolsterSocketName"), TEXT("StowedSocketName") }, OutHolsterSocket);
+		ReadNameProperty({ TEXT("OffHandStowedSocketName"), TEXT("OffHandStowedSocket"), TEXT("StowedSocketName"), TEXT("OffHandHolsterSocketName"), TEXT("OffHandHolsterSocket"), TEXT("HolsterSocketName") }, OutStowedSocket);
 	}
 	else if (IsTwoHandedWeaponItem(Item))
 	{
 		ReadNameProperty({ TEXT("TwoHandEquippedSocketName"), TEXT("TwoHandEquippedSocket"), TEXT("MainHandEquippedSocketName"), TEXT("EquippedSocketName") }, OutEquippedSocket);
-		ReadNameProperty({ TEXT("TwoHandHolsterSocketName"), TEXT("TwoHandHolsterSocket"), TEXT("MainHandHolsterSocketName"), TEXT("HolsterSocketName"), TEXT("StowedSocketName") }, OutHolsterSocket);
+		ReadNameProperty({ TEXT("TwoHandStowedSocketName"), TEXT("TwoHandStowedSocket"), TEXT("MainHandStowedSocketName"), TEXT("StowedSocketName"), TEXT("TwoHandHolsterSocketName"), TEXT("TwoHandHolsterSocket"), TEXT("MainHandHolsterSocketName"), TEXT("HolsterSocketName") }, OutStowedSocket);
 	}
 	else
 	{
 		ReadNameProperty({ TEXT("MainHandEquippedSocketName"), TEXT("MainHandEquippedSocket"), TEXT("EquippedSocketName") }, OutEquippedSocket);
-		ReadNameProperty({ TEXT("MainHandHolsterSocketName"), TEXT("MainHandHolsterSocket"), TEXT("HolsterSocketName"), TEXT("StowedSocketName") }, OutHolsterSocket);
+		ReadNameProperty({ TEXT("MainHandStowedSocketName"), TEXT("MainHandStowedSocket"), TEXT("StowedSocketName"), TEXT("MainHandHolsterSocketName"), TEXT("MainHandHolsterSocket"), TEXT("HolsterSocketName") }, OutStowedSocket);
 	}
 
-	return OutEquippedSocket != NAME_None || OutHolsterSocket != NAME_None;
+	return OutEquippedSocket != NAME_None || OutStowedSocket != NAME_None;
 }
 
 void USpellRiseEquipmentManagerComponent::RefreshEquippedWeaponReference()
@@ -1606,6 +1796,17 @@ bool USpellRiseEquipmentManagerComponent::AttachWeaponActorToSocket(AActor* Weap
 	const FAttachmentTransformRules AttachRules = FAttachmentTransformRules::SnapToTargetNotIncludingScale;
 
 	const bool bSocketOnMesh = AttachMesh->DoesSocketExist(TargetSocket);
+	if (!bSocketOnMesh)
+	{
+		UE_LOG(LogSpellRiseWeaponAttach, Warning,
+			TEXT("AttachWeaponActorToSocket aborted (socket ausente no mesh de attach). WeaponActor=%s WeaponComp=%s ParentMesh=%s Socket=%s"),
+			*GetNameSafe(WeaponActor),
+			*WeaponComponent->GetName(),
+			*AttachMesh->GetName(),
+			*TargetSocket.ToString());
+		return false;
+	}
+
 	const bool bAttached = WeaponComponent->AttachToComponent(AttachMesh, AttachRules, TargetSocket);
 
 	if (!bAttached)
@@ -1627,7 +1828,7 @@ bool USpellRiseEquipmentManagerComponent::AttachWeaponActorToSocket(AActor* Weap
 			*WeaponComponent->GetName(),
 			*AttachMesh->GetName(),
 			*TargetSocket.ToString(),
-			bSocketOnMesh ? TEXT("yes") : TEXT("no (bone/socket naming — attach still succeeded)"));
+			TEXT("yes"));
 	}
 
 	return bAttached;
@@ -1777,14 +1978,17 @@ void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippab
 
 	TArray<FSpellRiseGrantedAbility> AbilitiesToGrant;
 	const bool bHasAbilitiesToGrant = ExtractAbilitiesToGrantFromItem(Item, AbilitiesToGrant);
+	USpellRiseEquipmentInstance* SourceInstance = GetOrCreateEquipmentInstanceForSlot(Item, SlotValue);
+	UObject* AbilitySourceObject = SourceInstance ? static_cast<UObject*>(SourceInstance) : static_cast<UObject*>(Item);
 	if (bHasAbilitiesToGrant)
 	{
-		const TArray<FGameplayAbilitySpecHandle> Handles = CharacterOwner->GrantAbilities(AbilitiesToGrant);
+		const TArray<FGameplayAbilitySpecHandle> Handles = CharacterOwner->GrantAbilitiesFromSource(AbilitiesToGrant, AbilitySourceObject, true);
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
-			TEXT("ApplyGrantedAbilitiesForSlot abilities aplicadas. Owner=%s Item=%s SlotValue=%d Requested=%d Granted=%d"),
+			TEXT("ApplyGrantedAbilitiesForSlot abilities aplicadas. Owner=%s Item=%s SlotValue=%d Source=%s Requested=%d Granted=%d"),
 			*GetNameSafe(GetOwner()),
 			*GetNameSafe(Item),
 			SlotValue,
+			*GetNameSafe(AbilitySourceObject),
 			AbilitiesToGrant.Num(),
 			Handles.Num());
 		if (Handles.Num() > 0)
@@ -1830,7 +2034,7 @@ void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippab
 		}
 
 		FGameplayEffectContextHandle EffectContext = ASC->MakeEffectContext();
-		EffectContext.AddSourceObject(Item);
+		EffectContext.AddSourceObject(AbilitySourceObject ? AbilitySourceObject : Item);
 		EffectContext.AddInstigator(CharacterOwner, CharacterOwner);
 
 		FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, 1.f, EffectContext);
@@ -1922,6 +2126,62 @@ void USpellRiseEquipmentManagerComponent::RemoveGrantedAbilitiesForSlot(uint8 Sl
 	}
 }
 
+USpellRiseEquipmentInstance* USpellRiseEquipmentManagerComponent::GetOrCreateEquipmentInstanceForSlot(UEquippableItem* Item, uint8 SlotValue)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Item)
+	{
+		return nullptr;
+	}
+
+	if (const FSpellRiseAppliedEquipmentEntry* ExistingEntry = EquipmentList.FindBySlot(SlotValue))
+	{
+		return ExistingEntry->Instance;
+	}
+
+	if (TObjectPtr<USpellRiseEquipmentInstance>* ExistingInstance = EquipmentInstancesBySlot.Find(SlotValue))
+	{
+		if (IsValid(ExistingInstance->Get()))
+		{
+			return ExistingInstance->Get();
+		}
+		EquipmentInstancesBySlot.Remove(SlotValue);
+	}
+
+	USpellRiseEquipmentInstance* NewInstance = NewObject<USpellRiseEquipmentInstance>(GetOwner());
+	if (!NewInstance)
+	{
+		return nullptr;
+	}
+
+	NewInstance->Initialize(this, Item);
+	EquipmentInstancesBySlot.Add(SlotValue, NewInstance);
+	if (IsUsingRegisteredSubObjectList() && IsReadyForReplication())
+	{
+		AddReplicatedSubObject(NewInstance);
+	}
+
+	return NewInstance;
+}
+
+void USpellRiseEquipmentManagerComponent::RemoveEquipmentInstanceForSlot(uint8 SlotValue)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	TObjectPtr<USpellRiseEquipmentInstance> RemovedInstance = nullptr;
+	if (!EquipmentInstancesBySlot.RemoveAndCopyValue(SlotValue, RemovedInstance))
+	{
+		return;
+	}
+
+	if (RemovedInstance && IsUsingRegisteredSubObjectList())
+	{
+		RemoveReplicatedSubObject(RemovedInstance);
+	}
+}
+
 bool USpellRiseEquipmentManagerComponent::ExtractGrantedEffectsFromItem(
 	UEquippableItem* Item,
 	TArray<TSubclassOf<UGameplayEffect>>& OutEffects) const
@@ -1930,6 +2190,39 @@ bool USpellRiseEquipmentManagerComponent::ExtractGrantedEffectsFromItem(
 	if (!Item)
 	{
 		return false;
+	}
+
+	const USpellRiseWeaponDefinition* WeaponDefinition = nullptr;
+	if (ExtractWeaponDefinitionFromItem(Item, WeaponDefinition) && WeaponDefinition)
+	{
+		for (const TSoftClassPtr<UGameplayEffect>& EffectClassRef : WeaponDefinition->GrantedEffectClassesWhileEquipped)
+		{
+			UClass* EffectClass = EffectClassRef.LoadSynchronous();
+			if (EffectClass)
+			{
+				OutEffects.AddUnique(EffectClass);
+			}
+		}
+		return OutEffects.Num() > 0;
+	}
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	if (ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) &&
+		WeaponActorClass &&
+		ExtractWeaponDefinitionFromObject(WeaponActorClass->GetDefaultObject(), WeaponDefinition) &&
+		WeaponDefinition)
+	{
+		for (const TSoftClassPtr<UGameplayEffect>& EffectClassRef : WeaponDefinition->GrantedEffectClassesWhileEquipped)
+		{
+			UClass* EffectClass = EffectClassRef.LoadSynchronous();
+			if (EffectClass)
+			{
+				OutEffects.AddUnique(EffectClass);
+			}
+		}
+		return OutEffects.Num() > 0;
 	}
 
 	static const FName GrantedEffectsPropertyName(TEXT("GrantedEffectsWhileEquipped"));
@@ -1999,6 +2292,37 @@ bool USpellRiseEquipmentManagerComponent::ExtractSetByCallerMagnitudesFromItem(
 		return false;
 	}
 
+	const USpellRiseWeaponDefinition* WeaponDefinition = nullptr;
+	if (ExtractWeaponDefinitionFromItem(Item, WeaponDefinition) && WeaponDefinition)
+	{
+		for (const TPair<FGameplayTag, float>& Magnitude : WeaponDefinition->SetByCallerMagnitudes)
+		{
+			if (Magnitude.Key.IsValid() && FMath::IsFinite(Magnitude.Value))
+			{
+				OutMagnitudes.Add(Magnitude.Key, Magnitude.Value);
+			}
+		}
+		return OutMagnitudes.Num() > 0;
+	}
+
+	UClass* WeaponActorClass = nullptr;
+	const void* WeaponConfigPtr = nullptr;
+	const UStruct* WeaponConfigStruct = nullptr;
+	if (ResolveWeaponActorClassFromItem(Item, WeaponActorClass, WeaponConfigPtr, WeaponConfigStruct) &&
+		WeaponActorClass &&
+		ExtractWeaponDefinitionFromObject(WeaponActorClass->GetDefaultObject(), WeaponDefinition) &&
+		WeaponDefinition)
+	{
+		for (const TPair<FGameplayTag, float>& Magnitude : WeaponDefinition->SetByCallerMagnitudes)
+		{
+			if (Magnitude.Key.IsValid() && FMath::IsFinite(Magnitude.Value))
+			{
+				OutMagnitudes.Add(Magnitude.Key, Magnitude.Value);
+			}
+		}
+		return OutMagnitudes.Num() > 0;
+	}
+
 	static const FName LegacyMagnitudeMapName(TEXT("SetSetByCallerMagnitude"));
 	static const FName MagnitudeMapName(TEXT("SetByCallerMagnitude"));
 	const FMapProperty* MapProperty = CastField<FMapProperty>(Item->GetClass()->FindPropertyByName(LegacyMagnitudeMapName));
@@ -2061,6 +2385,90 @@ bool USpellRiseEquipmentManagerComponent::ExtractSetByCallerMagnitudesFromItem(
 	return OutMagnitudes.Num() > 0;
 }
 
+bool USpellRiseEquipmentManagerComponent::ExtractWeaponDefinitionFromObject(const UObject* SourceObject, const USpellRiseWeaponDefinition*& OutWeaponDefinition) const
+{
+	OutWeaponDefinition = nullptr;
+	if (!SourceObject)
+	{
+		return false;
+	}
+
+	static const TArray<FName> PreferredNames = {
+		TEXT("WeaponDefinition"),
+		TEXT("WeaponData"),
+		TEXT("WeaponDefinitionAsset")
+	};
+
+	auto ResolveDefinitionFromProperty = [SourceObject](const FProperty* Property) -> const USpellRiseWeaponDefinition*
+	{
+		if (!Property)
+		{
+			return nullptr;
+		}
+
+		if (const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
+		{
+			if (!ObjectProperty->PropertyClass || !ObjectProperty->PropertyClass->IsChildOf(USpellRiseWeaponDefinition::StaticClass()))
+			{
+				return nullptr;
+			}
+
+			return Cast<USpellRiseWeaponDefinition>(ObjectProperty->GetObjectPropertyValue_InContainer(SourceObject));
+		}
+
+		if (const FSoftObjectProperty* SoftObjectProperty = CastField<FSoftObjectProperty>(Property))
+		{
+			if (!SoftObjectProperty->PropertyClass || !SoftObjectProperty->PropertyClass->IsChildOf(USpellRiseWeaponDefinition::StaticClass()))
+			{
+				return nullptr;
+			}
+
+			const void* ValuePtr = SoftObjectProperty->ContainerPtrToValuePtr<void>(SourceObject);
+			const FSoftObjectPtr SoftObjectPtr = SoftObjectProperty->GetPropertyValue(ValuePtr);
+			UObject* ResolvedObject = SoftObjectPtr.Get();
+			if (!ResolvedObject)
+			{
+				ResolvedObject = SoftObjectPtr.LoadSynchronous();
+			}
+			return Cast<USpellRiseWeaponDefinition>(ResolvedObject);
+		}
+
+		return nullptr;
+	};
+
+	for (const FName PropertyName : PreferredNames)
+	{
+		if (const USpellRiseWeaponDefinition* Definition = ResolveDefinitionFromProperty(SourceObject->GetClass()->FindPropertyByName(PropertyName)))
+		{
+			OutWeaponDefinition = Definition;
+			return true;
+		}
+	}
+
+	for (TFieldIterator<FProperty> It(SourceObject->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
+	{
+		const FString PropertyName = It->GetName();
+		if (!PropertyName.Contains(TEXT("Weapon"), ESearchCase::IgnoreCase) &&
+			!PropertyName.Contains(TEXT("Definition"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		if (const USpellRiseWeaponDefinition* Definition = ResolveDefinitionFromProperty(*It))
+		{
+			OutWeaponDefinition = Definition;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool USpellRiseEquipmentManagerComponent::ExtractWeaponDefinitionFromItem(UEquippableItem* Item, const USpellRiseWeaponDefinition*& OutWeaponDefinition) const
+{
+	return ExtractWeaponDefinitionFromObject(Item, OutWeaponDefinition);
+}
+
 bool USpellRiseEquipmentManagerComponent::IsWeaponItem(UEquippableItem* Item) const
 {
 	if (!Item)
@@ -2079,6 +2487,12 @@ bool USpellRiseEquipmentManagerComponent::IsOffHandWeaponItem(UEquippableItem* I
 	if (!IsWeaponItem(Item))
 	{
 		return false;
+	}
+
+	const USpellRiseWeaponDefinition* WeaponDefinition = GetWeaponDefinitionForItem(Item);
+	if (WeaponDefinition)
+	{
+		return WeaponDefinition->HandPolicy == ESpellRiseWeaponHandPolicy::OffHand;
 	}
 
 	auto ReadBoolMetadata = [](const void* ContainerPtr, const UStruct* StructType, const TArray<FString>& Names) -> bool
@@ -2192,6 +2606,12 @@ bool USpellRiseEquipmentManagerComponent::IsTwoHandedWeaponItem(UEquippableItem*
 		return false;
 	}
 
+	const USpellRiseWeaponDefinition* WeaponDefinition = GetWeaponDefinitionForItem(Item);
+	if (WeaponDefinition)
+	{
+		return WeaponDefinition->HandPolicy == ESpellRiseWeaponHandPolicy::TwoHanded;
+	}
+
 	auto ReadTwoHandedMetadata = [](const void* ContainerPtr, const UStruct* StructType) -> bool
 	{
 		if (!ContainerPtr || !StructType)
@@ -2302,7 +2722,7 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 
 	if (!ActiveOffHandItem)
 	{
-		RemoveGrantedAbilitiesForSlot(241);
+		RemoveGrantedAbilitiesForSlot(SpellRiseEquipmentSlots::OffHandSlot);
 		bOffHandSuppressedByTwoHandedWeapon = false;
 		EquippedOffHandWeapon = nullptr;
 		BroadcastOffHandWeaponChangedIfNeeded();
@@ -2320,8 +2740,8 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 	GetOrSpawnWeaponActorForItem(ActiveOffHandItem);
 	if (bShouldSuppress)
 	{
-		RemoveGrantedAbilitiesForSlot(241);
-		SetNarrativeItemActiveState(ActiveOffHandItem, false);
+		RemoveGrantedAbilitiesForSlot(SpellRiseEquipmentSlots::OffHandSlot);
+		SetNarrativeItemActiveState(ActiveOffHandItem, true);
 		RefreshOffHandVisual_Server(false);
 		RefreshEquippedOffHandWeaponReference();
 	}
@@ -2329,7 +2749,7 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 	{
 		SetNarrativeItemActiveState(ActiveOffHandItem, true);
 		RefreshOffHandVisual_Server(true);
-		ApplyGrantedAbilitiesForSlot(ActiveOffHandItem, 241);
+		ApplyGrantedAbilitiesForSlot(ActiveOffHandItem, SpellRiseEquipmentSlots::OffHandSlot);
 		RefreshEquippedOffHandWeaponReference();
 	}
 
@@ -2349,6 +2769,34 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
 	OnHUDEquipmentSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::RefreshWeaponLoadoutVisuals_Server()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	for (int32 SlotIndex = 0; SlotIndex < QuickWeaponSlots.Num(); ++SlotIndex)
+	{
+		UEquippableItem* SlotItem = QuickWeaponSlots[SlotIndex];
+		if (!SlotItem)
+		{
+			continue;
+		}
+
+		const bool bSlotEquipped = (SlotIndex == ActiveQuickWeaponSlotIndex);
+		SetNarrativeItemActiveState(SlotItem, true);
+		RefreshQuickSlotVisual_Server(SlotIndex, bSlotEquipped);
+	}
+
+	if (ActiveOffHandItem)
+	{
+		const bool bOffHandEquippedWithMainHand = IsOffHandGameplayActive();
+		SetNarrativeItemActiveState(ActiveOffHandItem, true);
+		RefreshOffHandVisual_Server(bOffHandEquippedWithMainHand);
+	}
 }
 
 int32 USpellRiseEquipmentManagerComponent::FindQuickSlotByItem(UEquippableItem* Item) const
@@ -2499,16 +2947,16 @@ bool USpellRiseEquipmentManagerComponent::HandleOffHandEquipIntent(UEquippableIt
 
 	ActiveOffHandItem = Item;
 	bOffHandSuppressedByTwoHandedWeapon = bSuppressedByTwoHanded;
-	SetNarrativeItemActiveState(Item, !bSuppressedByTwoHanded);
+	SetNarrativeItemActiveState(Item, true);
 	GetOrSpawnWeaponActorForItem(Item);
 	RefreshOffHandVisual_Server(!bSuppressedByTwoHanded);
 	if (bSuppressedByTwoHanded)
 	{
-		RemoveGrantedAbilitiesForSlot(241);
+		RemoveGrantedAbilitiesForSlot(SpellRiseEquipmentSlots::OffHandSlot);
 	}
 	else
 	{
-		ApplyGrantedAbilitiesForSlot(Item, 241);
+		ApplyGrantedAbilitiesForSlot(Item, SpellRiseEquipmentSlots::OffHandSlot);
 	}
 	RefreshEquippedOffHandWeaponReference();
 	BroadcastOffHandWeaponChangedIfNeeded();
@@ -2559,16 +3007,14 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	const bool bShouldKeepAssignedSlotActive = (ActiveQuickWeaponSlotIndex == INDEX_NONE) || bMovedFromActiveSlot || bReplacingActiveSlot;
 	if (ExistingSlot != INDEX_NONE && ExistingSlot != QuickSlotIndex)
 	{
-		if (UEquippableItem* ExistingItem = QuickWeaponSlots[ExistingSlot])
-		{
-			SetNarrativeItemActiveState(ExistingItem, false);
-		}
 		QuickWeaponSlots[ExistingSlot] = nullptr;
 		if (QuickWeaponActors.IsValidIndex(ExistingSlot))
 		{
 			QuickWeaponActors[ExistingSlot] = nullptr;
 		}
-		RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + ExistingSlot));
+		const uint8 ExistingEquipmentSlot = static_cast<uint8>(SpellRiseEquipmentSlots::MainHandSlotBase + ExistingSlot);
+		RemoveGrantedAbilitiesForSlot(ExistingEquipmentSlot);
+		RemoveEquipmentInstanceForSlot(ExistingEquipmentSlot);
 		if (bMovedFromActiveSlot)
 		{
 			ActiveQuickWeaponSlotIndex = INDEX_NONE;
@@ -2584,7 +3030,9 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 			QuickWeaponActors[QuickSlotIndex] = nullptr;
 		}
 		SetNarrativeItemActiveState(ReplacedItem, false);
-		RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + QuickSlotIndex));
+		const uint8 ReplacedEquipmentSlot = static_cast<uint8>(SpellRiseEquipmentSlots::MainHandSlotBase + QuickSlotIndex);
+		RemoveGrantedAbilitiesForSlot(ReplacedEquipmentSlot);
+		RemoveEquipmentInstanceForSlot(ReplacedEquipmentSlot);
 		if (bReplacingActiveSlot)
 		{
 			ActiveQuickWeaponSlotIndex = INDEX_NONE;
@@ -2604,7 +3052,7 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	{
 		ActiveQuickWeaponSlotIndex = QuickSlotIndex;
 		RefreshQuickSlotVisual_Server(QuickSlotIndex, true);
-		ApplyGrantedAbilitiesForSlot(Item, static_cast<uint8>(200 + QuickSlotIndex));
+		ApplyGrantedAbilitiesForSlot(Item, static_cast<uint8>(SpellRiseEquipmentSlots::MainHandSlotBase + QuickSlotIndex));
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("AssignQuickWeaponSlot item ficou ativo. Owner=%s Item=%s Slot=%d"),
 			*GetNameSafe(GetOwner()),
@@ -2629,6 +3077,7 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	RefreshEquippedWeaponReference();
 	BroadcastWeaponChangedIfNeeded();
 	RefreshOffHandSuppression_Server();
+	RefreshWeaponLoadoutVisuals_Server();
 	OnQuickWeaponSlotsChanged.Broadcast();
 	OnHUDEquipmentSlotsChanged.Broadcast();
 
@@ -2670,6 +3119,13 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 
 	if (ActiveQuickWeaponSlotIndex == QuickSlotIndex)
 	{
+		RefreshEquippedWeaponReference();
+		RefreshOffHandSuppression_Server();
+		RefreshWeaponLoadoutVisuals_Server();
+		BroadcastWeaponChangedIfNeeded();
+		BroadcastOffHandWeaponChangedIfNeeded();
+		OnQuickWeaponSlotsChanged.Broadcast();
+		OnHUDEquipmentSlotsChanged.Broadcast();
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("ActivateQuickWeaponSlot ignorado: slot ja ativo. Owner=%s Slot=%d Item=%s"),
 			*GetNameSafe(GetOwner()),
@@ -2682,14 +3138,16 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 	{
 		if (UEquippableItem* PreviouslyActive = QuickWeaponSlots[ActiveQuickWeaponSlotIndex])
 		{
+			SetNarrativeItemActiveState(PreviouslyActive, true);
 			RefreshQuickSlotVisual_Server(ActiveQuickWeaponSlotIndex, false);
-			RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + ActiveQuickWeaponSlotIndex));
+			RemoveGrantedAbilitiesForSlot(static_cast<uint8>(SpellRiseEquipmentSlots::MainHandSlotBase + ActiveQuickWeaponSlotIndex));
 		}
 	}
 
 	ActiveQuickWeaponSlotIndex = QuickSlotIndex;
+	SetNarrativeItemActiveState(ItemToActivate, true);
 	RefreshQuickSlotVisual_Server(QuickSlotIndex, true);
-	ApplyGrantedAbilitiesForSlot(ItemToActivate, static_cast<uint8>(200 + QuickSlotIndex));
+	ApplyGrantedAbilitiesForSlot(ItemToActivate, static_cast<uint8>(SpellRiseEquipmentSlots::MainHandSlotBase + QuickSlotIndex));
 
 	if (AActor* OwnerActor = GetOwner())
 	{
@@ -2698,6 +3156,7 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 	RefreshEquippedWeaponReference();
 	BroadcastWeaponChangedIfNeeded();
 	RefreshOffHandSuppression_Server();
+	RefreshWeaponLoadoutVisuals_Server();
 	OnQuickWeaponSlotsChanged.Broadcast();
 	OnHUDEquipmentSlotsChanged.Broadcast();
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
@@ -2724,7 +3183,9 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 		QuickWeaponActors[QuickSlotIndex] = nullptr;
 	}
 	SetNarrativeItemActiveState(RemovedItem, false);
-	RemoveGrantedAbilitiesForSlot(static_cast<uint8>(200 + QuickSlotIndex));
+	const uint8 RemovedEquipmentSlot = static_cast<uint8>(SpellRiseEquipmentSlots::MainHandSlotBase + QuickSlotIndex);
+	RemoveGrantedAbilitiesForSlot(RemovedEquipmentSlot);
+	RemoveEquipmentInstanceForSlot(RemovedEquipmentSlot);
 
 	if (bDestroyWeaponActor && RemovedItem)
 	{
@@ -2754,6 +3215,7 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 	RefreshEquippedWeaponReference();
 	BroadcastWeaponChangedIfNeeded();
 	RefreshOffHandSuppression_Server();
+	RefreshWeaponLoadoutVisuals_Server();
 	if (AActor* OwnerActor = GetOwner())
 	{
 		OwnerActor->ForceNetUpdate();
@@ -2772,7 +3234,8 @@ void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestr
 	UEquippableItem* RemovedItem = ActiveOffHandItem;
 	RefreshOffHandVisual_Server(false);
 	SetNarrativeItemActiveState(RemovedItem, false);
-	RemoveGrantedAbilitiesForSlot(241);
+	RemoveGrantedAbilitiesForSlot(SpellRiseEquipmentSlots::OffHandSlot);
+	RemoveEquipmentInstanceForSlot(SpellRiseEquipmentSlots::OffHandSlot);
 	ActiveOffHandItem = nullptr;
 	bOffHandSuppressedByTwoHandedWeapon = false;
 
@@ -2901,6 +3364,64 @@ bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, 
 	}
 
 	return true;
+}
+
+bool USpellRiseEquipmentManagerComponent::CheckServerEquipmentRpcRateLimit(
+	const TCHAR* RpcName,
+	FSpellRiseEquipmentRpcRateLimitState& RateState,
+	const float WindowSeconds,
+	const int32 MaxRequestsPerWindow,
+	FString& OutRejectReason)
+{
+	OutRejectReason.Reset();
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		OutRejectReason = TEXT("not_authority");
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		OutRejectReason = TEXT("missing_world_context");
+		return false;
+	}
+
+	const double NowSeconds = World->GetTimeSeconds();
+	const double EffectiveWindowSeconds = static_cast<double>(FMath::Max(0.01f, WindowSeconds));
+	const int32 EffectiveMaxRequests = FMath::Max(1, MaxRequestsPerWindow);
+
+	if ((NowSeconds - RateState.WindowStartServerTimeSeconds) > EffectiveWindowSeconds)
+	{
+		RateState.WindowStartServerTimeSeconds = NowSeconds;
+		RateState.RequestsInWindow = 0;
+	}
+
+	++RateState.RequestsInWindow;
+	if (RateState.RequestsInWindow > EffectiveMaxRequests)
+	{
+		++RateState.RejectCount;
+		OutRejectReason = FString::Printf(
+			TEXT("rate_limited rpc=%s window=%.2f max=%d count=%d reject_count=%d"),
+			RpcName ? RpcName : TEXT("unknown"),
+			EffectiveWindowSeconds,
+			EffectiveMaxRequests,
+			RateState.RequestsInWindow,
+			RateState.RejectCount);
+		return false;
+	}
+
+	OutRejectReason = TEXT("accepted");
+	return true;
+}
+
+void USpellRiseEquipmentManagerComponent::AuditRejectedEquipmentRpc(const TCHAR* RpcName, const FString& RejectReason)
+{
+	UE_LOG(LogSpellRiseEquipmentSecurity, Warning,
+		TEXT("[RPC][Rejected] Rpc=%s Reason=%s Owner=%s"),
+		RpcName ? RpcName : TEXT("unknown"),
+		*RejectReason,
+		*GetNameSafe(GetOwner()));
 }
 
 bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation)
@@ -3229,6 +3750,17 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandVisual_Local(bool bEquip
 			*GetNameSafe(WeaponActor),
 			*GetNameSafe(EquippedOffHandWeapon),
 			*TargetSocket.ToString());
+		if (UWorld* World = GetWorld())
+		{
+			const TWeakObjectPtr<USpellRiseEquipmentManagerComponent> WeakThis(this);
+			World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis]()
+			{
+				if (USpellRiseEquipmentManagerComponent* Component = WeakThis.Get())
+				{
+					Component->RefreshOffHandVisual_Local(Component->IsOffHandGameplayActive());
+				}
+			}));
+		}
 		return;
 	}
 
