@@ -1,11 +1,13 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "GameplayTagContainer.h"
 #include "SpellRiseConstructionModeComponent.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FSpellRiseConstructionModeChangedNative, bool /*bConstructionModeEnabled*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FSpellRiseConstructionModeChangedNative, bool );
 
 UCLASS(ClassGroup=(SpellRise), BlueprintType, Blueprintable, meta=(BlueprintSpawnableComponent))
 class SPELLRISE_API USpellRiseConstructionModeComponent : public UActorComponent
@@ -42,9 +44,11 @@ private:
 	void ApplyConstructionModeInternal(bool bEnableConstructionMode, bool bLog);
 	bool CanAcceptConstructionToggle(bool bEnableConstructionMode, FString& OutRejectReason) const;
 	bool IsBlockedForConstructionEntry(FString& OutRejectReason) const;
+	void AuditRejectedConstructionModeRpc(const FString& RejectReason, bool bRequestedEnable);
 
 	FSpellRiseConstructionModeChangedNative ConstructionModeChangedNative;
 	double LastConstructionToggleServerTimeSeconds = -1000.0;
+	int32 RejectedConstructionModeRpcCount = 0;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Construction|Validation")
 	FGameplayTagContainer BlockedEntryStateTags;

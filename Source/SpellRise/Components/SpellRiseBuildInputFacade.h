@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include <initializer_list>
@@ -75,18 +77,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction")
 	bool bEnableDisplayedFloorCommands = false;
 
-	// Legacy EBS menu calls still depend on old widget/component wiring in some assets.
-	// Keep disabled by default during migration to avoid runtime crashes.
+
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction")
 	bool bEnableLegacyEBSMenuCalls = false;
 
-	// Legacy wheel axis handlers in EBS are unstable in current migration state.
-	// Disabled by default to avoid crashes on ChangeBuildingRotationZ/OffsetZ calls.
+
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction")
 	bool bEnableLegacyEBSAxisCalls = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction|Validation")
 	bool bRequireBuildMaterialValidation = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Construction|Validation", meta=(ClampMin="0.05"))
+	float MinBuildConfirmCommandIntervalSeconds = 0.12f;
 
 private:
 	UActorComponent* ResolveEBSBuildingComponent();
@@ -102,6 +107,8 @@ private:
 	bool CallDisplayedFloorFunction(bool bIncrease);
 	bool HandleMalletInteraction(bool bPressed);
 	bool CanConfirmBuild(UObject* BuildingComponent, FString& OutRejectReason) const;
+	bool CanSubmitBuildConfirmCommand(FString& OutRejectReason);
+	bool CallBuildConfirmFunction(UObject* BuildingComponent, bool bAuthorityFallbackAllowed) const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UActorComponent> CachedEBSBuildingComponent = nullptr;
@@ -129,4 +136,6 @@ private:
 
 	UPROPERTY(Transient)
 	bool bStartupMenuSyncDone = false;
+
+	double LastBuildConfirmCommandTimeSeconds = -1000.0;
 };

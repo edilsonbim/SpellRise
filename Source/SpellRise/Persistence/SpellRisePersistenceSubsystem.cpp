@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 
 #include "EngineUtils.h"
@@ -23,6 +24,7 @@
 #include "NarrativeItem.h"
 
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
@@ -30,6 +32,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/Persistence/SpellRiseBuildPersistenceAdapter.h"
 #include "SpellRise/Persistence/SpellRiseFilePersistenceProvider.h"
+#include "SpellRise/Persistence/SpellRisePostgresPersistenceProvider.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
@@ -44,6 +47,38 @@ namespace
 	constexpr double RespawnBedLocationToleranceSq = 300.0 * 300.0;
 	constexpr double SpawnActorLocationMatchToleranceSq = 25.0 * 25.0;
 	constexpr double WorldEquipConflictRadius = 350.0;
+
+	FString GetRequestedPersistenceProvider(bool& bOutWasExplicit)
+	{
+		bOutWasExplicit = false;
+		FString CmdProvider;
+		if (FParse::Value(FCommandLine::Get(), TEXT("SRPersistenceProvider="), CmdProvider))
+		{
+			CmdProvider.TrimStartAndEndInline();
+			CmdProvider.ToLowerInline();
+			if (!CmdProvider.IsEmpty())
+			{
+				bOutWasExplicit = true;
+				return CmdProvider;
+			}
+		}
+		return TEXT("postgres");
+	}
+
+	bool IsPostgresRequiredWithoutFallback()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("SRPersistenceRequirePostgres"));
+	}
+
+	bool IsNoSteamPersistenceModeActive()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
+	}
+
+	bool IsFilePersistenceFallbackAllowed()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("SRPersistenceAllowFileFallback"));
+	}
 
 	struct FPersistenceInventoryStats
 	{
@@ -613,7 +648,103 @@ void USpellRisePersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collec
 {
 	Super::Initialize(Collection);
 
-	Provider = MakeUnique<FSpellRiseFilePersistenceProvider>();
+	bool bProviderWasExplicit = false;
+	const FString RequestedProvider = GetRequestedPersistenceProvider(bProviderWasExplicit);
+	const bool bRequirePostgresNoFallback = IsPostgresRequiredWithoutFallback();
+	const bool bAllowFileFallback = IsFilePersistenceFallbackAllowed();
+	const bool bNoSteamMode = IsNoSteamPersistenceModeActive();
+	TUniquePtr<ISpellRisePersistenceProvider> SelectedProvider;
+	ActiveProviderName.Reset();
+	PersistenceOperationalMode.Reset();
+	PersistenceBlockReason.Reset();
+
+	if (bNoSteamMode)
+	{
+		PersistenceOperationalMode = TEXT("nosteam_disabled");
+		PersistenceBlockReason = TEXT("nosteam_mode");
+		UE_LOG(LogSpellRisePersistence, Warning,
+			TEXT("[Persistence][ProviderDisabled] Mode=%s Reason=%s"),
+			*PersistenceOperationalMode,
+			*PersistenceBlockReason);
+	}
+	else if (RequestedProvider.Equals(TEXT("postgres"), ESearchCase::IgnoreCase))
+	{
+		SelectedProvider = MakeUnique<FSpellRisePostgresPersistenceProvider>();
+		if (!SelectedProvider->IsReady())
+		{
+			if (bRequirePostgresNoFallback || !bAllowFileFallback)
+			{
+				SelectedProvider.Reset();
+				PersistenceOperationalMode = TEXT("blocked");
+				PersistenceBlockReason = TEXT("postgres_unavailable");
+				UE_LOG(LogSpellRisePersistence, Error,
+					TEXT("[Persistence][ProviderBlocked] Requested=postgres Reason=%s FallbackAllowed=%d RequirePostgres=%d"),
+					*PersistenceBlockReason,
+					bAllowFileFallback ? 1 : 0,
+					bRequirePostgresNoFallback ? 1 : 0);
+			}
+			else
+			{
+				SelectedProvider.Reset();
+				UE_LOG(LogSpellRisePersistence, Warning,
+					TEXT("[Persistence][ProviderFallback] Requested=postgres Fallback=file Reason=postgres_unavailable"));
+			}
+		}
+		else
+		{
+			PersistenceOperationalMode = TEXT("normal");
+		}
+	}
+	else if (!RequestedProvider.Equals(TEXT("file"), ESearchCase::IgnoreCase))
+	{
+		PersistenceOperationalMode = TEXT("blocked");
+		PersistenceBlockReason = FString::Printf(TEXT("unknown_provider_%s"), *RequestedProvider);
+		UE_LOG(LogSpellRisePersistence, Error,
+			TEXT("[Persistence][ProviderBlocked] Requested=%s Reason=%s"),
+			*RequestedProvider,
+			*PersistenceBlockReason);
+	}
+
+	if (!SelectedProvider.IsValid() &&
+		!bNoSteamMode &&
+		!PersistenceOperationalMode.Equals(TEXT("blocked"), ESearchCase::IgnoreCase))
+	{
+		SelectedProvider = MakeUnique<FSpellRiseFilePersistenceProvider>();
+		PersistenceOperationalMode = bProviderWasExplicit ? TEXT("explicit_file") : TEXT("degraded_file_fallback");
+		if (bProviderWasExplicit)
+		{
+			UE_LOG(LogSpellRisePersistence, Warning,
+				TEXT("[Persistence][ProviderSelected] Provider=file Mode=%s Reason=explicit_request"),
+				*PersistenceOperationalMode);
+		}
+	}
+
+	Provider = MoveTemp(SelectedProvider);
+	if (Provider)
+	{
+		ActiveProviderName = Provider->GetProviderName();
+		if (PersistenceOperationalMode.IsEmpty())
+		{
+			PersistenceOperationalMode = TEXT("normal");
+		}
+
+		UE_LOG(LogSpellRisePersistence, Log,
+			TEXT("[Persistence][ProviderReady] Provider=%s Mode=%s Requested=%s Explicit=%d"),
+			*ActiveProviderName,
+			*PersistenceOperationalMode,
+			*RequestedProvider,
+			bProviderWasExplicit ? 1 : 0);
+	}
+	else if (PersistenceOperationalMode.IsEmpty())
+	{
+		PersistenceOperationalMode = TEXT("blocked");
+		PersistenceBlockReason = TEXT("provider_unavailable");
+		UE_LOG(LogSpellRisePersistence, Error,
+			TEXT("[Persistence][ProviderBlocked] Requested=%s Reason=%s"),
+			*RequestedProvider,
+			*PersistenceBlockReason);
+	}
+
 	CachedCharacterDataBySteamId.Reset();
 	CachedInventoryDataBySteamId.Reset();
 	CharacterRevisionBySteamId.Reset();
@@ -634,18 +765,50 @@ void USpellRisePersistenceSubsystem::Deinitialize()
 	PersistentIdByController.Reset();
 	DirtyCharacterIds.Reset();
 	SaveInProgressPersistentIds.Reset();
+	ActiveProviderName.Reset();
+	PersistenceOperationalMode.Reset();
+	PersistenceBlockReason.Reset();
 	bWorldDirty = false;
 
 	Super::Deinitialize();
 }
 
+void USpellRisePersistenceSubsystem::RecordPersistenceTelemetry(const TCHAR* Operation, bool bSuccess, double LatencyMs, const TCHAR* Reason)
+{
+	const FString OperationName = Operation ? Operation : TEXT("Unknown");
+	const FString ReasonText = Reason ? Reason : TEXT("unspecified");
+	const FString ModeText = PersistenceOperationalMode.IsEmpty() ? TEXT("unknown") : PersistenceOperationalMode;
+	const FString ProviderText = ActiveProviderName.IsEmpty() ? TEXT("none") : ActiveProviderName;
+
+	LatencyByOperationMs.FindOrAdd(OperationName).Add(FMath::Max(0.0, LatencyMs));
+	if (!bSuccess)
+	{
+		++FailureCountByOperation.FindOrAdd(OperationName);
+	}
+
+	UE_LOG(LogSpellRisePersistence, Log,
+		TEXT("[Persistence][%s] Result=%s Reason=%s Provider=%s Mode=%s LatencyMs=%.2f FailureCount=%d"),
+		*OperationName,
+		bSuccess ? TEXT("Succeeded") : TEXT("Rejected"),
+		*ReasonText,
+		*ProviderText,
+		*ModeText,
+		FMath::Max(0.0, LatencyMs),
+		FailureCountByOperation.FindRef(OperationName));
+}
+
 bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* Controller)
 {
+	const double StartSeconds = FPlatformTime::Seconds();
+	if (IsNoSteamPersistenceModeActive())
+	{
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, 0.0, TEXT("nosteam_mode"));
+		return false;
+	}
+
 	if (!Provider || !Controller)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][PreloadRejected] Controller=%s Reason=%s"),
-			*GetNameSafe(Controller),
-			!Provider ? TEXT("missing_provider") : TEXT("missing_controller"));
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, !Provider ? TEXT("provider_unavailable") : TEXT("missing_controller"));
 		return false;
 	}
 
@@ -657,7 +820,7 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
 	if (SteamId64.IsEmpty())
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][PreloadRejected] Controller=%s Reason=missing_persistent_id"), *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("missing_persistent_id"));
 		return false;
 	}
 
@@ -665,7 +828,7 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 	int64 LoadedCharacterRevision = 0;
 	if (!Provider->LoadCharacterState(SteamId64, LoadedData, LoadedCharacterRevision))
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][PreloadMiss] PersistentId=%s Controller=%s"), *SteamId64, *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("character_load_miss_or_failed"));
 		return false;
 	}
 
@@ -676,11 +839,7 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 		CachedInventoryDataBySteamId.Remove(SteamId64);
 		CharacterRevisionBySteamId.Remove(SteamId64);
 		InventoryRevisionBySteamId.Remove(SteamId64);
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][PreloadRejected] PersistentId=%s Controller=%s CharacterRevision=%lld Reason=%s"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			LoadedCharacterRevision,
-			*CharacterValidationReason);
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, *CharacterValidationReason);
 		return false;
 	}
 
@@ -702,11 +861,6 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 			LoadedInventoryRevision = 0;
 			CachedInventoryDataBySteamId.Remove(SteamId64);
 			InventoryRevisionBySteamId.Remove(SteamId64);
-			UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][InventoryLoadRejected] PersistentId=%s Controller=%s InventoryRevision=%lld Reason=%s"),
-				*SteamId64,
-				*GetNameSafe(Controller),
-				LoadedInventoryRevision,
-				*InventoryValidationReason);
 		}
 	}
 	else
@@ -717,55 +871,56 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 
 	CachedCharacterDataBySteamId.Add(SteamId64, MoveTemp(LoadedData));
 	CharacterRevisionBySteamId.Add(SteamId64, LoadedCharacterRevision);
-	const FPersistenceInventoryStats CharacterStats = ComputeInventoryStats(CachedCharacterDataBySteamId.FindChecked(SteamId64).InventoryComponents);
-	const FPersistenceInventoryStats InventoryStats = bHasInventoryData ? ComputeInventoryStats(CachedInventoryDataBySteamId.FindChecked(SteamId64).InventoryComponents) : FPersistenceInventoryStats{};
-	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][PreloadOk] PersistentId=%s Controller=%s CharacterRevision=%lld InventoryRevision=%lld CharacterComponents=%d CharacterStacks=%d CharacterQuantity=%d InventoryLoaded=%d InventoryComponents=%d InventoryStacks=%d InventoryQuantity=%d"),
-		*SteamId64,
-		*GetNameSafe(Controller),
-		LoadedCharacterRevision,
-		LoadedInventoryRevision,
-		CharacterStats.ComponentCount,
-		CharacterStats.ItemStackCount,
-		CharacterStats.ItemQuantity,
-		bHasInventoryData ? 1 : 0,
-		InventoryStats.ComponentCount,
-		InventoryStats.ItemStackCount,
-		InventoryStats.ItemQuantity);
+	RecordPersistenceTelemetry(TEXT("PreloadCharacter"), true, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, bHasInventoryData ? TEXT("loaded_character_and_inventory") : TEXT("loaded_character_only"));
 	return true;
 }
 
 bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AController* Controller)
 {
+	const double StartSeconds = FPlatformTime::Seconds();
+	if (IsNoSteamPersistenceModeActive())
+	{
+		if (Controller)
+		{
+			EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("nosteam_mode"));
+			if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
+			{
+				SRPlayerState->SetPersistenceProfileApplied(true);
+			}
+		}
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, 0.0, TEXT("nosteam_mode"));
+		return false;
+	}
+
 	if (!Controller)
 	{
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, 0.0, TEXT("missing_controller"));
 		return false;
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
 	if (SteamId64.IsEmpty())
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] Controller=%s Reason=missing_persistent_id"), *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("missing_persistent_id"));
 		return false;
 	}
 
 	const FSpellRiseCharacterSaveData* CachedData = CachedCharacterDataBySteamId.Find(SteamId64);
 	if (!CachedData)
 	{
+		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("no_cached_data"));
 		if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 		{
 			SRPlayerState->SetPersistenceProfileApplied(true);
 		}
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][ApplySkipped] PersistentId=%s Controller=%s Reason=no_cached_data"), *SteamId64, *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("no_cached_data"));
 		return false;
 	}
 
 	FString ValidationReason;
 	if (!ValidateCharacterSaveData(*CachedData, SteamId64, ValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] PersistentId=%s Controller=%s Reason=%s"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			*ValidationReason);
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, *ValidationReason);
 		return false;
 	}
 
@@ -774,37 +929,35 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	{
 		SRPlayerState->SetPersistenceProfileApplied(true);
 	}
-	const FPersistenceInventoryStats CachedStats = ComputeInventoryStats(CachedData->InventoryComponents);
-	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ApplyResult] PersistentId=%s Controller=%s Applied=%d CharacterComponents=%d CharacterStacks=%d CharacterQuantity=%d"),
-		*SteamId64,
-		*GetNameSafe(Controller),
-		bApplied ? 1 : 0,
-		CachedStats.ComponentCount,
-		CachedStats.ItemStackCount,
-		CachedStats.ItemQuantity);
+	RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), bApplied, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, bApplied ? TEXT("applied") : TEXT("apply_failed"));
 	return bApplied;
 }
 
 bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Controller)
 {
+	const double SaveStartSeconds = FPlatformTime::Seconds();
+	if (IsNoSteamPersistenceModeActive())
+	{
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, 0.0, TEXT("nosteam_mode"));
+		return false;
+	}
+
 	if (!Provider || !Controller)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] Controller=%s Reason=%s"),
-			*GetNameSafe(Controller),
-			!Provider ? TEXT("missing_provider") : TEXT("missing_controller"));
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, !Provider ? TEXT("provider_unavailable") : TEXT("missing_controller"));
 		return false;
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
 	if (SteamId64.IsEmpty())
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] Controller=%s Reason=missing_persistent_id"), *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("missing_persistent_id"));
 		return false;
 	}
 
 	if (SaveInProgressPersistentIds.Contains(SteamId64))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] PersistentId=%s Controller=%s Reason=save_already_in_progress"), *SteamId64, *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("save_in_progress"));
 		return false;
 	}
 
@@ -814,11 +967,10 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 		SaveInProgressPersistentIds.Remove(SteamId64);
 	};
 
-	const double SaveStartSeconds = FPlatformTime::Seconds();
 	FSpellRiseCharacterSaveData SaveData;
 	if (!CollectCharacterData(Controller, SteamId64, SaveData))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] PersistentId=%s Controller=%s Reason=collect_failed"), *SteamId64, *GetNameSafe(Controller));
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("collect_failed"));
 		return false;
 	}
 
@@ -828,14 +980,14 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 	FString CharacterValidationReason;
 	if (!ValidateCharacterSaveData(SaveData, SteamId64, CharacterValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] PersistentId=%s Controller=%s Reason=%s"), *SteamId64, *GetNameSafe(Controller), *CharacterValidationReason);
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, *CharacterValidationReason);
 		return false;
 	}
 
 	FString InventoryValidationReason;
 	if (!ValidateInventorySaveData(InventoryData, SteamId64, InventoryValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveRejected] PersistentId=%s Controller=%s Reason=%s"), *SteamId64, *GetNameSafe(Controller), *InventoryValidationReason);
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, *InventoryValidationReason);
 		return false;
 	}
 
@@ -851,16 +1003,7 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 	if (!bCharacterSaved)
 	{
 		const double SaveLatencyMs = (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0;
-		const FPersistenceInventoryStats SaveStats = ComputeInventoryStats(SaveData.InventoryComponents);
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCharacterFailed] PersistentId=%s Controller=%s RevisionExpected=%lld RevisionTarget=%lld LatencyMs=%.2f CharacterComponents=%d CharacterStacks=%d CharacterQuantity=%d Reason=character_write_rejected"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			ExpectedCharacterRevision,
-			TargetRevision,
-			SaveLatencyMs,
-			SaveStats.ComponentCount,
-			SaveStats.ItemStackCount,
-			SaveStats.ItemQuantity);
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, SaveLatencyMs, TEXT("character_save_failed"));
 		return false;
 	}
 
@@ -874,19 +1017,7 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 		}
 
 		const double SaveLatencyMs = (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0;
-		const FPersistenceInventoryStats SaveStats = ComputeInventoryStats(SaveData.InventoryComponents);
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCharacterFailed] PersistentId=%s Controller=%s RevisionExpectedCharacter=%lld RevisionExpectedInventory=%lld RevisionTarget=%lld LatencyMs=%.2f CharacterComponents=%d CharacterStacks=%d CharacterQuantity=%d Reason=inventory_write_rejected RollbackCharacterAttempted=%d RollbackCharacterSucceeded=%d"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			ExpectedCharacterRevision,
-			ExpectedInventoryRevision,
-			TargetRevision,
-			SaveLatencyMs,
-			SaveStats.ComponentCount,
-			SaveStats.ItemStackCount,
-			SaveStats.ItemQuantity,
-			bHadPreviousCharacter ? 1 : 0,
-			bRollbackCharacterSaved ? 1 : 0);
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, SaveLatencyMs, bRollbackCharacterSaved ? TEXT("inventory_save_failed_rollback_ok") : TEXT("inventory_save_failed_rollback_failed"));
 		return false;
 	}
 
@@ -898,47 +1029,41 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 
 	if (!bHadPreviousInventory)
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][InventoryBootstrap] PersistentId=%s Revision=%lld"), *SteamId64, TargetRevision);
 	}
 
 	const double SaveLatencyMs = (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0;
-	const FPersistenceInventoryStats SaveStats = ComputeInventoryStats(SaveData.InventoryComponents);
-	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][SaveCharacterOk] PersistentId=%s Controller=%s Revision=%lld LatencyMs=%.2f CharacterComponents=%d CharacterStacks=%d CharacterQuantity=%d"),
-		*SteamId64,
-		*GetNameSafe(Controller),
-		TargetRevision,
-		SaveLatencyMs,
-		SaveStats.ComponentCount,
-		SaveStats.ItemStackCount,
-		SaveStats.ItemQuantity);
-
 	if (!bHadPreviousCharacter)
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][CharacterBootstrap] PersistentId=%s Revision=%lld"), *SteamId64, TargetRevision);
 	}
 
+	RecordPersistenceTelemetry(TEXT("SaveCharacter"), true, SaveLatencyMs, TEXT("saved"));
 	return true;
 }
 
 bool USpellRisePersistenceSubsystem::SaveWorld(UWorld* World)
 {
+	const double SaveStartSeconds = FPlatformTime::Seconds();
+	if (IsNoSteamPersistenceModeActive())
+	{
+		RecordPersistenceTelemetry(TEXT("SaveWorld"), false, 0.0, TEXT("nosteam_mode"));
+		return false;
+	}
+
 	if (!Provider || !World)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveWorldRejected] World=%s Reason=%s"),
-			*GetNameSafe(World),
-			!Provider ? TEXT("missing_provider") : TEXT("missing_world"));
+		RecordPersistenceTelemetry(TEXT("SaveWorld"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, !Provider ? TEXT("provider_unavailable") : TEXT("missing_world"));
 		return false;
 	}
 
 	if (!IsServerWorld(World))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveWorldRejected] World=%s Reason=non_server_world"), *GetNameSafe(World));
+		RecordPersistenceTelemetry(TEXT("SaveWorld"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("not_server_world"));
 		return false;
 	}
 
 	if (!bWorldDirty)
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][SaveWorldSkipped] World=%s Reason=not_dirty"), *GetNameSafe(World));
+		RecordPersistenceTelemetry(TEXT("SaveWorld"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("not_dirty"));
 		return false;
 	}
 
@@ -950,101 +1075,98 @@ bool USpellRisePersistenceSubsystem::SaveWorld(UWorld* World)
 	FString ValidationReason;
 	if (!ValidateWorldSaveData(WorldSaveData, WorldSaveData.WorldId, ValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveWorldRejected] WorldId=%s Reason=%s"), *WorldSaveData.WorldId, *ValidationReason);
+		RecordPersistenceTelemetry(TEXT("SaveWorld"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, *ValidationReason);
 		return false;
 	}
 
-	const double SaveStartSeconds = FPlatformTime::Seconds();
 	const bool bSaved = Provider->SaveWorld(WorldSaveData.WorldId, WorldSaveData);
 	const double SaveLatencyMs = (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0;
 	if (bSaved)
 	{
 		bWorldDirty = false;
-		UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][SaveWorldOk] WorldId=%s Actors=%d LatencyMs=%.2f"), *WorldSaveData.WorldId, WorldSaveData.BuildingActors.Num(), SaveLatencyMs);
 	}
 	else
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveWorldFailed] WorldId=%s Actors=%d LatencyMs=%.2f"), *WorldSaveData.WorldId, WorldSaveData.BuildingActors.Num(), SaveLatencyMs);
 	}
 
+	RecordPersistenceTelemetry(TEXT("SaveWorld"), bSaved, SaveLatencyMs, bSaved ? TEXT("saved") : TEXT("provider_save_failed"));
 	return bSaved;
 }
 
 bool USpellRisePersistenceSubsystem::LoadWorld(UWorld* World)
 {
+	const double LoadStartSeconds = FPlatformTime::Seconds();
+	if (IsNoSteamPersistenceModeActive())
+	{
+		RecordPersistenceTelemetry(TEXT("LoadWorld"), false, 0.0, TEXT("nosteam_mode"));
+		return false;
+	}
+
 	if (!Provider || !World)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][LoadWorldRejected] World=%s Reason=%s"),
-			*GetNameSafe(World),
-			!Provider ? TEXT("missing_provider") : TEXT("missing_world"));
+		RecordPersistenceTelemetry(TEXT("LoadWorld"), false, (FPlatformTime::Seconds() - LoadStartSeconds) * 1000.0, !Provider ? TEXT("provider_unavailable") : TEXT("missing_world"));
 		return false;
 	}
 
 	if (!IsServerWorld(World))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][LoadWorldRejected] World=%s Reason=non_server_world"), *GetNameSafe(World));
+		RecordPersistenceTelemetry(TEXT("LoadWorld"), false, (FPlatformTime::Seconds() - LoadStartSeconds) * 1000.0, TEXT("not_server_world"));
 		return false;
 	}
 
 	const FString WorldId = ResolveWorldId(World);
 	FSpellRiseWorldSaveData LoadedWorldData;
-	const double LoadStartSeconds = FPlatformTime::Seconds();
 	if (!Provider->LoadWorld(WorldId, LoadedWorldData))
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][LoadWorldMiss] WorldId=%s"), *WorldId);
+		RecordPersistenceTelemetry(TEXT("LoadWorld"), false, (FPlatformTime::Seconds() - LoadStartSeconds) * 1000.0, TEXT("provider_load_failed_or_missing"));
 		return false;
 	}
 
 	FString ValidationReason;
 	if (!ValidateWorldSaveData(LoadedWorldData, WorldId, ValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][LoadWorldRejected] WorldId=%s Reason=%s"), *WorldId, *ValidationReason);
+		RecordPersistenceTelemetry(TEXT("LoadWorld"), false, (FPlatformTime::Seconds() - LoadStartSeconds) * 1000.0, *ValidationReason);
 		return false;
 	}
 
 	if (LoadedWorldData.SchemaVersion == LegacyPersistenceWorldSchemaVersion)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][LoadWorldLegacySchema] WorldId=%s Schema=%d TargetSchema=%d"),
-			*WorldId,
-			LoadedWorldData.SchemaVersion,
-			PersistenceWorldSchemaVersion);
 	}
 
 	FSpellRiseBuildPersistenceAdapter::SpawnMissingBuildingActors(World, LoadedWorldData.BuildingActors, SpawnActorLocationMatchToleranceSq);
 
 	bWorldDirty = false;
-	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][LoadWorldOk] WorldId=%s Actors=%d LatencyMs=%.2f"), *WorldId, LoadedWorldData.BuildingActors.Num(), (FPlatformTime::Seconds() - LoadStartSeconds) * 1000.0);
+	RecordPersistenceTelemetry(TEXT("LoadWorld"), true, (FPlatformTime::Seconds() - LoadStartSeconds) * 1000.0, TEXT("loaded"));
 	return true;
 }
 
 bool USpellRisePersistenceSubsystem::BuildRespawnTransformForController(AController* Controller, FTransform& OutSpawnTransform) const
 {
+	if (IsNoSteamPersistenceModeActive())
+	{
+		return false;
+	}
+
 	if (!Controller || !Controller->PlayerState)
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformMiss] Controller=%s Reason=%s"),
-			*GetNameSafe(Controller),
-			!Controller ? TEXT("missing_controller") : TEXT("missing_playerstate"));
 		return false;
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
 	if (!IsValidPersistentId(SteamId64))
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformMiss] Controller=%s Reason=missing_persistent_id"), *GetNameSafe(Controller));
 		return false;
 	}
 
 	const FSpellRiseCharacterSaveData* Data = CachedCharacterDataBySteamId.Find(SteamId64);
 	if (!Data)
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformMiss] PersistentId=%s Controller=%s Reason=no_cached_data"), *SteamId64, *GetNameSafe(Controller));
 		return false;
 	}
 
 	FString ValidationReason;
 	if (!ValidateCharacterSaveData(*Data, SteamId64, ValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][RespawnTransformRejected] PersistentId=%s Controller=%s Reason=%s"), *SteamId64, *GetNameSafe(Controller), *ValidationReason);
 		return false;
 	}
 
@@ -1055,24 +1177,12 @@ bool USpellRisePersistenceSubsystem::BuildRespawnTransformForController(AControl
 		FString TransformValidationReason;
 		if (!ValidateWorldSpawnTransform(Controller->GetWorld(), OutSpawnTransform, TransformValidationReason))
 		{
-			UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][RespawnTransformRejected] PersistentId=%s Controller=%s BedActor=%s Reason=%s Location=%s"),
-				*SteamId64,
-				*GetNameSafe(Controller),
-				*GetNameSafe(BedActor),
-				*TransformValidationReason,
-				*OutSpawnTransform.GetLocation().ToCompactString());
 			return false;
 		}
 
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformOk] PersistentId=%s Controller=%s BedActor=%s Location=%s"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			*GetNameSafe(BedActor),
-			*OutSpawnTransform.GetLocation().ToCompactString());
 		return true;
 	}
 
-	UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][RespawnTransformMiss] PersistentId=%s Controller=%s Reason=no_bed_actor"), *SteamId64, *GetNameSafe(Controller));
 	return false;
 }
 
@@ -1089,20 +1199,22 @@ void USpellRisePersistenceSubsystem::MarkPlayerDirtyBySteamId(const FString& Ste
 		return;
 	}
 
-	UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][MarkDirtyRejected] PersistentId=%s Reason=invalid_persistent_id"), *SteamId64);
 }
 
 void USpellRisePersistenceSubsystem::SetControllerPersistentId(const AController* Controller, const FString& PersistentId)
 {
 	if (!Controller || !IsValidPersistentId(PersistentId))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Controller=%s Reason=%s"),
+		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_input Controller=%s PersistentId=%s"),
 			*GetNameSafe(Controller),
-			!Controller ? TEXT("missing_controller") : TEXT("invalid_persistent_id"));
+			*PersistentId);
 		return;
 	}
 
 	PersistentIdByController.Add(Controller, PersistentId);
+	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ControllerPersistentIdSet] Controller=%s PersistentId=%s"),
+		*GetNameSafe(Controller),
+		*PersistentId);
 }
 
 void USpellRisePersistenceSubsystem::ClearControllerPersistentId(const AController* Controller)
@@ -1113,6 +1225,8 @@ void USpellRisePersistenceSubsystem::ClearControllerPersistentId(const AControll
 	}
 
 	PersistentIdByController.Remove(Controller);
+	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ControllerPersistentIdCleared] Controller=%s"),
+		*GetNameSafe(Controller));
 }
 
 bool USpellRisePersistenceSubsystem::GetSteamIdFromPlayerState(const APlayerState* PlayerState, FString& OutSteamId64) const
@@ -1408,25 +1522,26 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 {
 	if (!Controller || !Controller->PlayerState)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCollectRejected] PersistentId=%s Controller=%s Reason=%s"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			!Controller ? TEXT("missing_controller_or_playerstate") : TEXT("missing_playerstate"));
 		return false;
 	}
 
 	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Controller->GetPawn());
+	if (!Character)
+	{
+		if (const ASpellRisePlayerController* SpellRisePC = Cast<ASpellRisePlayerController>(Controller))
+		{
+			Character = Cast<ASpellRiseCharacterBase>(SpellRisePC->GetLastSpellRiseControlledPawn());
+		}
+	}
 	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
 	if (!Character || !SRPlayerState)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCollectRejected] PersistentId=%s Controller=%s Reason=missing_character_or_playerstate"), *SteamId64, *GetNameSafe(Controller));
 		return false;
 	}
 
 	USpellRiseAbilitySystemComponent* ASC = SRPlayerState->GetSpellRiseASC();
 	if (!ASC)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCollectRejected] PersistentId=%s Controller=%s Reason=missing_asc"), *SteamId64, *GetNameSafe(Controller));
 		return false;
 	}
 
@@ -1439,13 +1554,11 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 
 	if (!IsFiniteTransform(OutData.CharacterTransform))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCollectRejected] PersistentId=%s Controller=%s Reason=invalid_character_transform"), *SteamId64, *GetNameSafe(Controller));
 		return false;
 	}
 
 	if (!OutData.PlayerDisplayName.IsEmpty())
 	{
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][SaveName] PersistentId=%s Name=%s"), *SteamId64, *OutData.PlayerDisplayName);
 	}
 
 	OutData.Strength = ASC->GetNumericAttribute(UCombatAttributeSet::GetStrengthAttribute());
@@ -1511,7 +1624,6 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 
 		if (SavedComponent.ComponentName.IsEmpty() || SavedComponent.ComponentClassPath.IsEmpty())
 		{
-			UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][SaveCollectRejected] PersistentId=%s Controller=%s Reason=invalid_inventory_component"), *SteamId64, *GetNameSafe(Controller));
 			continue;
 		}
 
@@ -1525,9 +1637,6 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 {
 	if (!Controller || !Controller->PlayerState)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] Controller=%s Reason=%s"),
-			*GetNameSafe(Controller),
-			!Controller ? TEXT("missing_controller") : TEXT("missing_playerstate"));
 		return false;
 	}
 
@@ -1535,10 +1644,6 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	FString ValidationReason;
 	if (!ValidateCharacterSaveData(Data, SteamId64, ValidationReason))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] PersistentId=%s Controller=%s Reason=%s"),
-			*SteamId64,
-			*GetNameSafe(Controller),
-			*ValidationReason);
 		return false;
 	}
 
@@ -1546,21 +1651,18 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
 	if (!Character || !SRPlayerState)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] PersistentId=%s Controller=%s Reason=missing_character_or_playerstate"), *SteamId64, *GetNameSafe(Controller));
 		return false;
 	}
 
 	USpellRiseAbilitySystemComponent* ASC = SRPlayerState->GetSpellRiseASC();
 	if (!ASC)
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyRejected] PersistentId=%s Controller=%s Reason=missing_asc"), *SteamId64, *GetNameSafe(Controller));
 		return false;
 	}
 
 	if (!Data.PlayerDisplayName.IsEmpty())
 	{
 		Controller->PlayerState->SetPlayerName(Data.PlayerDisplayName);
-		UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][LoadName] PersistentId=%s Name=%s"), *SteamId64, *Data.PlayerDisplayName);
 	}
 
 	Character->Archetype = static_cast<ESpellRiseArchetype>(Data.ArchetypeValue);
@@ -1589,18 +1691,9 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		if (ValidateWorldSpawnTransform(Controller->GetWorld(), Data.CharacterTransform, TransformValidationReason))
 		{
 			Character->SetActorTransform(Data.CharacterTransform, false, nullptr, ETeleportType::TeleportPhysics);
-			UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][ApplyCharacterTransform] PersistentId=%s Controller=%s Location=%s"),
-				*SteamId64,
-				*GetNameSafe(Controller),
-				*Data.CharacterTransform.GetLocation().ToCompactString());
 		}
 		else
 		{
-			UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ApplyCharacterTransformSkipped] PersistentId=%s Controller=%s Reason=%s Location=%s"),
-				*SteamId64,
-				*GetNameSafe(Controller),
-				*TransformValidationReason,
-				*Data.CharacterTransform.GetLocation().ToCompactString());
 		}
 	}
 
@@ -1636,10 +1729,6 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	if (Data.SchemaVersion < PersistenceCharacterSchemaVersion)
 	{
 		SkippedLegacyComponents = Data.InventoryComponents.Num();
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][InventoryResetLegacy] Controller=%s SchemaVersion=%d Components=%d"),
-			*GetNameSafe(Controller),
-			Data.SchemaVersion,
-			Data.InventoryComponents.Num());
 	}
 	else
 	{
@@ -1716,19 +1805,71 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		}
 	}
 
-	UE_LOG(LogSpellRisePersistence, Log, TEXT("[Persistence][InventoryApplySummary] Controller=%s AppliedComponents=%d AppliedStacks=%d AppliedQuantity=%d SkippedLegacy=%d SkippedInvalidComponents=%d SkippedInvalidStacks=%d SkippedUnmatchedComponents=%d"),
-		*GetNameSafe(Controller),
-		AppliedComponents,
-		AppliedItemStacks,
-		AppliedItemQuantity,
-		SkippedLegacyComponents,
-		SkippedInvalidComponents,
-		SkippedInvalidStacks,
-		SkippedUnmatchedComponents);
+	const bool bShouldEnsureDefaults =
+		(Data.InventoryComponents.Num() == 0) ||
+		(AppliedItemQuantity <= 0 && (SkippedLegacyComponents > 0 || SkippedInvalidStacks > 0 || SkippedUnmatchedComponents > 0));
+	if (bShouldEnsureDefaults)
+	{
+		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("apply_profile_fallback"));
+	}
 
 	ReconcileCharacterVisualEquipment(Character, SRPlayerState);
 
 	return true;
+}
+
+void USpellRisePersistenceSubsystem::EnsureDefaultItemsForControllerIfNeeded(AController* Controller, const TCHAR* ContextTag)
+{
+	if (!Controller || !Controller->HasAuthority())
+	{
+		return;
+	}
+
+	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Controller->GetPawn());
+	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
+	if (!Character || !SRPlayerState)
+	{
+		return;
+	}
+
+	TArray<FNarrativeInventoryBinding> Bindings;
+	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, Bindings);
+	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, Bindings);
+
+	for (const FNarrativeInventoryBinding& Binding : Bindings)
+	{
+		UNarrativeInventoryComponent* Inventory = Binding.Inventory.Get();
+		if (!Inventory)
+		{
+			continue;
+		}
+
+		int32 ExistingStackCount = 0;
+		for (UNarrativeItem* ExistingItem : Inventory->GetItems())
+		{
+			if (ExistingItem && ExistingItem->GetQuantity() > 0)
+			{
+				++ExistingStackCount;
+			}
+		}
+
+		if (ExistingStackCount > 0)
+		{
+			continue;
+		}
+
+		Inventory->GiveDefaultItems();
+
+		int32 ResultingStackCount = 0;
+		for (UNarrativeItem* Item : Inventory->GetItems())
+		{
+			if (Item && Item->GetQuantity() > 0)
+			{
+				++ResultingStackCount;
+			}
+		}
+
+	}
 }
 
 void USpellRisePersistenceSubsystem::BuildInventorySnapshotFromCharacterData(const FSpellRiseCharacterSaveData& CharacterData, const FString& SteamId64, FSpellRiseInventorySaveData& OutInventoryData) const
@@ -1808,6 +1949,8 @@ void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRis
 	{
 		PlayerState->ForceNetUpdate();
 	}
+
+
 }
 
 AActor* USpellRisePersistenceSubsystem::ResolveSavedBedActor(UWorld* World, const FSpellRiseCharacterSaveData& Data) const

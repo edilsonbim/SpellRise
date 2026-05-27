@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
@@ -10,17 +10,14 @@
 class APlayerController;
 class USpellRisePersistenceSubsystem;
 
-/**
- *  Simple GameMode for a third person game
- */
 UCLASS(abstract, Config=Game)
 class ASpellRiseGameModeBase : public AGameModeBase
 {
 	GENERATED_BODY()
 
 public:
-	
-	/** Constructor */
+
+
 	ASpellRiseGameModeBase();
 
 	virtual void BeginPlay() override;
@@ -36,10 +33,13 @@ protected:
 	bool bRequireSteamAuthOnDedicatedServer = true;
 
 	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
-	bool bAllowDevOfflineIdFallback = true;
+	bool bAllowDevOfflineIdFallback = false;
 
 	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
 	FString DevOfflineIdPrefix = TEXT("DEV");
+
+	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
+	bool bEnableNoSteamTestingMode = false;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Persistence", meta=(ClampMin="5.0"))
 	float PersistenceSnapshotIntervalSeconds = 30.0f;
@@ -63,6 +63,11 @@ private:
 	bool ShouldSkipSaveDuringHandover(const AController* ExitingController) const;
 	FString BuildDevOfflinePersistentId(const FString& Seed) const;
 	FString NormalizeAddressKey(const FString& Address) const;
+
+	bool IsNoSteamCommandLineParamPresent() const;
+	bool IsNoSteamTestingModeActive() const;
+	bool IsEditorPIETestingModeActive() const;
+	bool ShouldRequireSteamAuthentication() const;
 
 	FTimerHandle PersistenceSnapshotTimerHandle;
 	TMap<FString, TWeakObjectPtr<APlayerController>> ActiveSessionByPersistentId;

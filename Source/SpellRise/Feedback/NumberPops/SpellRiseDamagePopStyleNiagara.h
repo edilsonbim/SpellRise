@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
@@ -12,11 +14,23 @@ class SPELLRISE_API USpellRiseDamagePopStyleNiagara : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	// Nome do array Vector4 dentro do Niagara que receberá os hits
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="DamagePop")
 	FName NiagaraArrayName = NAME_None;
 
-	// Niagara System usado para renderizar os números
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="DamagePop")
 	TObjectPtr<UNiagaraSystem> TextNiagara = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="DamagePop", meta=(ClampMin="0.01"))
+	float WorldScale = 0.65f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="DamagePop|Color")
+	FName NumberColorParameterName = TEXT("User.NumberColor");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="DamagePop|Color")
+	FLinearColor NormalColor = FLinearColor::White;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="DamagePop|Color")
+	FLinearColor CriticalColor = FLinearColor(1.f, 0.08f, 0.02f, 1.f);
 };

@@ -1,55 +1,85 @@
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [ValidateSet('prod','test')]
     [string]$Profile,
 
-    [string]$ConfigPath = 'Config/DefaultGame.ini'
+    [string]$ConfigPath = ""
 )
 
 $ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path -LiteralPath $ConfigPath)) {
-    throw "Config file not found: $ConfigPath"
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path $PSScriptRoot '..\Config\DefaultGame.ini'
 }
 
-$content = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8
+$resolvedConfigPath = (Resolve-Path $ConfigPath).Path
+$lines = Get-Content -Path $resolvedConfigPath
+
 $sectionHeader = '[/Script/SpellRise.SpellRiseGameModeBase]'
-
-$sectionPattern = '(?ms)^\[/Script/SpellRise\.SpellRiseGameModeBase\]\r?\n(?<body>.*?)(?=^\[|\z)'
-$match = [regex]::Match($content, $sectionPattern)
-if (-not $match.Success) {
-    throw "Section not found: $sectionHeader"
-}
-
-$body = $match.Groups['body'].Value
-
-switch ($Profile) {
-    'prod' {
-        $requireSteam = 'true'
-        $allowFallback = 'false'
-    }
-    'test' {
-        $requireSteam = 'false'
-        $allowFallback = 'true'
+$sectionStart = -1
+for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i].Trim() -eq $sectionHeader) {
+        $sectionStart = $i
+        break
     }
 }
 
-if ($body -match '(?m)^bRequireSteamAuthOnDedicatedServer=') {
-    $body = [regex]::Replace($body, '(?m)^bRequireSteamAuthOnDedicatedServer=.*$', "bRequireSteamAuthOnDedicatedServer=$requireSteam")
-} else {
-    $body = "bRequireSteamAuthOnDedicatedServer=$requireSteam`r`n" + $body
+if ($sectionStart -lt 0) {
+    throw "Secao nao encontrada: $sectionHeader"
 }
 
-if ($body -match '(?m)^bAllowDevOfflineIdFallback=') {
-    $body = [regex]::Replace($body, '(?m)^bAllowDevOfflineIdFallback=.*$', "bAllowDevOfflineIdFallback=$allowFallback")
-} else {
-    $body = "bAllowDevOfflineIdFallback=$allowFallback`r`n" + $body
+$sectionEnd = $lines.Count - 1
+for ($i = $sectionStart + 1; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match '^\s*\[') {
+        $sectionEnd = $i - 1
+        break
+    }
 }
 
-$newSection = "$sectionHeader`r`n$body"
-$newContent = $content.Substring(0, $match.Index) + $newSection + $content.Substring($match.Index + $match.Length)
-Set-Content -LiteralPath $ConfigPath -Value $newContent -Encoding UTF8
+$requireSteam = if ($Profile -eq 'prod') { 'true' } else { 'false' }
+$allowFallback = if ($Profile -eq 'prod') { 'false' } else { 'true' }
 
-Write-Host "Applied Steam auth profile: $Profile"
-Write-Host "bRequireSteamAuthOnDedicatedServer=$requireSteam"
-Write-Host "bAllowDevOfflineIdFallback=$allowFallback"
+$updated = @()
+$updated += $lines[0..$sectionStart]
+
+$body = @()
+if ($sectionEnd -ge ($sectionStart + 1)) {
+    $body = $lines[($sectionStart + 1)..$sectionEnd]
+}
+
+$foundRequire = $false
+$foundFallback = $false
+
+for ($i = 0; $i -lt $body.Count; $i++) {
+    $entry = $body[$i]
+    if ($entry -match '^\s*bRequireSteamAuthOnDedicatedServer\s*=') {
+        $body[$i] = "bRequireSteamAuthOnDedicatedServer=$requireSteam"
+        $foundRequire = $true
+        continue
+    }
+
+    if ($entry -match '^\s*bAllowDevOfflineIdFallback\s*=') {
+        $body[$i] = "bAllowDevOfflineIdFallback=$allowFallback"
+        $foundFallback = $true
+        continue
+    }
+}
+
+if (-not $foundRequire) {
+    $body += "bRequireSteamAuthOnDedicatedServer=$requireSteam"
+}
+
+if (-not $foundFallback) {
+    $body += "bAllowDevOfflineIdFallback=$allowFallback"
+}
+
+$updated += $body
+
+if ($sectionEnd -lt ($lines.Count - 1)) {
+    $updated += $lines[($sectionEnd + 1)..($lines.Count - 1)]
+}
+
+Set-Content -Path $resolvedConfigPath -Value $updated -Encoding UTF8
+Write-Host "[SteamAuthProfile] Profile=$Profile"
+Write-Host "[SteamAuthProfile] bRequireSteamAuthOnDedicatedServer=$requireSteam"
+Write-Host "[SteamAuthProfile] bAllowDevOfflineIdFallback=$allowFallback"

@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "SpellRise/Persistence/SpellRisePersistenceProvider.h"
@@ -42,6 +44,7 @@ private:
 
 	bool CollectCharacterData(AController* Controller, const FString& SteamId64, FSpellRiseCharacterSaveData& OutData) const;
 	bool ApplyCharacterDataToController(AController* Controller, const FSpellRiseCharacterSaveData& Data);
+	void EnsureDefaultItemsForControllerIfNeeded(AController* Controller, const TCHAR* ContextTag);
 	void BuildInventorySnapshotFromCharacterData(const FSpellRiseCharacterSaveData& CharacterData, const FString& SteamId64, FSpellRiseInventorySaveData& OutInventoryData) const;
 	void MergeInventorySnapshotIntoCharacterData(const FSpellRiseInventorySaveData& InventoryData, FSpellRiseCharacterSaveData& InOutCharacterData) const;
 	void RecordPersistenceTelemetry(const TCHAR* Operation, bool bSuccess, double LatencyMs, const TCHAR* Reason);
@@ -58,5 +61,8 @@ private:
 	TSet<FString> SaveInProgressPersistentIds;
 	TMap<FString, TArray<double>> LatencyByOperationMs;
 	TMap<FString, int32> FailureCountByOperation;
+	FString ActiveProviderName;
+	FString PersistenceOperationalMode;
+	FString PersistenceBlockReason;
 	bool bWorldDirty = true;
 };

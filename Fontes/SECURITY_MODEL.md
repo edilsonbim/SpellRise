@@ -1,30 +1,33 @@
 # Security Model
 
-## Threat Model (Current Scope)
-- Malicious client input (cooldown/resource bypass attempts).
-- Forged or spammed RPC calls.
-- Client-side manipulation of aim/target payloads.
-- Illegitimate state mutation attempts (damage/stats/death flow).
+## Principio central
+O servidor e a unica autoridade para dano, custos, cooldowns, recursos, atributos primarios, morte, loot, persistencia e resultado final de gameplay.
 
-## Current Controls
-- Server authoritative damage and resource mutation.
-- Server-side ability commit checks (cost/cooldown via GAS).
-- Server-side death state and combat effect application.
-- Server-only fall damage and catalyst charge mutation paths.
-- No client trust for direct stat writes.
-- Generic server gameplay-event forwarding now has explicit allowlist + payload validation.
-- Generic server gameplay-event forwarding now enforces per-tag rate limiting.
-- Replicated projectile target data is validated on server by range/cone/context before use.
-- Security-relevant rejections are emitted through dedicated telemetry categories.
-- Respawn-bed and projectile target-data paths are validated on server with context and sanity checks.
-- Chat `Combat` channel is server-controlled; manual client posting is blocked in authoritative path.
+## Cliente
+- Coleta input.
+- Pode prever UX local.
+- Pode fazer aim trace local como entrada.
+- Exibe UI, VFX, SFX e feedback.
+- Nunca decide hit final, dano final, loot, morte, custo, cooldown ou mutacao de estado persistente.
 
-## Required Hardening (Next)
-- Expand validation/rate-limit policy to future high-frequency server gameplay entrypoints (including building-mode RPCs when introduced).
-- Introduce replicated combat log/audit trail for suspicious sequences.
-- Split debug-only instrumentation out of shipping runtime paths.
+## Servidor
+- Valida ownership, payload, contexto, rate/anti-spam e estado de gameplay.
+- Consome target data apos validacao.
+- Commita abilities autoritativas.
+- Spawna projeteis replicados.
+- Aplica GameplayEffects autoritativos.
+- Resolve morte, loot, respawn, fall damage, catalyst e persistencia.
 
-## Operational Notes
-- Keep gameplay tags canonical and consistent with code.
-- Enforce one source of truth for maps and runtime boot config.
-- Prefer explicit categories over LogTemp for security-relevant logs.
+## RPC
+- Todo RPC novo deve validar origem, ownership, payload e abuso.
+- Payload deve ser minimo e deterministico.
+- Multicast e permitido apenas para apresentacao, nunca para decisao autoritativa.
+
+## Dedicated Server
+- Nao pode depender de HUD, widget, camera, input local ou logica de UI.
+- Fluxos de bootstrap/auth devem funcionar em ambiente headless.
+
+## Persistencia
+- Persistencia de producao deve ser server-side.
+- Cliente nao pode enviar snapshot final confiavel nem substituir validacao do servidor.
+- Eventos sensiveis devem ser auditaveis quando afetarem economia, inventario, loot ou progressao.

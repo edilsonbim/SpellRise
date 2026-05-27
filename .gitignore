@@ -26,15 +26,22 @@ Server/
 *.rar
 
 # Large project assets kept outside GitHub
-Content/
 Images/
-Plugins/*/Content/
+Content/Hivemind/Medieval_Docks/SkySphere/Textures/HDRI/
+Content/Maps/SoulCave/Maps/LV_Soul_Cave_BuiltData.uasset
+Content/MetaHumans/
+Content/Characters/CharacterCreation/Visuals/Hair/
+Content/Characters/CharacterCreation/Visuals/Heads/
+Content/FX/
+Content/__ExternalActors__/FX/
+Content/__ExternalObjects__/FX/
 
 # Local/runtime data
 Database/
 steam_appid.txt
 
 # Visual Studio project noise
+*.sln
 *.suo
 *.user
 *.userprefs
@@ -46,10 +53,17 @@ steam_appid.txt
 *.opensdf
 *.sdf
 *.tmp
+*.pdb
+*.obj
+*.dll
 *.log
 *.dmp
 *.mdmp
+replay_pid*.log
+hs_err_pid*.log
+java_error*.hprof
 
 # Local tool folders
 .codex/
 .cursor/
+Plugins/Developer/RiderLink/

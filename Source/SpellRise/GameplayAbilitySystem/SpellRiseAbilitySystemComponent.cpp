@@ -1,6 +1,8 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRiseAbilitySystemComponent.h"
 
 #include "GameplayEffect.h"
+#include "Abilities/GameplayAbility.h"
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayTagContainer.h"
 #include "GameFramework/Pawn.h"
@@ -10,12 +12,56 @@
 #include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGA_MeleeCombo.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityTagRelationshipMapping.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCombo, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCues, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCObservability, Log, All);
+
+namespace
+{
+	FGameplayTag GetPrimaryAbilityInputTag()
+	{
+		static const FGameplayTag PrimaryTag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Primary"), false);
+		return PrimaryTag;
+	}
+
+	bool HasCooldownTag(const FGameplayTagContainer& Tags)
+	{
+		static const FGameplayTag CooldownRootTag = FGameplayTag::RequestGameplayTag(TEXT("Cooldown"), false);
+		return CooldownRootTag.IsValid() && Tags.HasTag(CooldownRootTag);
+	}
+
+	bool GameplayEffectSpecHasCooldownTag(const FGameplayEffectSpec& Spec)
+	{
+		FGameplayTagContainer Tags;
+		Spec.GetAllAssetTags(Tags);
+		if (Spec.Def)
+		{
+			Tags.AppendTags(Spec.Def->GetGrantedTags());
+		}
+		return HasCooldownTag(Tags);
+	}
+
+	FString BuildGameplayTagContainerSummary(const FGameplayTagContainer& Tags)
+	{
+		if (Tags.Num() <= 0)
+		{
+			return TEXT("none");
+		}
+
+		TArray<FString> TagStrings;
+		Tags.ToStringSimple().ParseIntoArray(TagStrings, TEXT(","), true);
+		for (FString& TagString : TagStrings)
+		{
+			TagString.TrimStartAndEndInline();
+		}
+		return FString::Join(TagStrings, TEXT("|"));
+	}
+}
 
 USpellRiseAbilitySystemComponent::USpellRiseAbilitySystemComponent()
 {
@@ -24,15 +70,54 @@ USpellRiseAbilitySystemComponent::USpellRiseAbilitySystemComponent()
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
 	InputHeldSpecHandles.Reset();
+	SelectedSpellSpecHandle = FGameplayAbilitySpecHandle();
 }
 
 void USpellRiseAbilitySystemComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Catalyst logic is handled externally by UCatalystComponent.
+
 	OnGameplayEffectAppliedDelegateToSelf.AddUObject(this, &USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf);
+	OnActiveGameplayEffectAddedDelegateToSelf.AddUObject(this, &USpellRiseAbilitySystemComponent::OnActiveGameplayEffectAddedToSelf);
 	OnAnyGameplayEffectRemovedDelegate().AddUObject(this, &USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf);
+}
+
+void USpellRiseAbilitySystemComponent::NotifyAbilityCommit(UGameplayAbility* Ability)
+{
+	Super::NotifyAbilityCommit(Ability);
+	BroadcastEquipmentAbilityStateChanged();
+}
+
+void USpellRiseAbilitySystemComponent::NotifyAbilityActivated(
+	const FGameplayAbilitySpecHandle Handle,
+	UGameplayAbility* Ability)
+{
+	Super::NotifyAbilityActivated(Handle, Ability);
+	BroadcastEquipmentAbilityStateChanged();
+}
+
+void USpellRiseAbilitySystemComponent::NotifyAbilityEnded(
+	const FGameplayAbilitySpecHandle Handle,
+	UGameplayAbility* Ability,
+	const bool bWasCancelled)
+{
+	Super::NotifyAbilityEnded(Handle, Ability, bWasCancelled);
+	BroadcastEquipmentAbilityStateChanged();
+}
+
+void USpellRiseAbilitySystemComponent::BroadcastEquipmentAbilityStateChanged() const
+{
+	AActor* CurrentAvatarActor = GetAvatarActor();
+	if (!CurrentAvatarActor)
+	{
+		return;
+	}
+
+	if (USpellRiseEquipmentManagerComponent* EquipmentManager = CurrentAvatarActor->FindComponentByClass<USpellRiseEquipmentManagerComponent>())
+	{
+		EquipmentManager->OnHUDEquipmentSlotsChanged.Broadcast();
+	}
 }
 
 int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload)
@@ -63,14 +148,6 @@ int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTa
 
 		if (bIsComboEvent)
 		{
-			UE_LOG(
-				LogSpellRiseASCCombo,
-				Verbose,
-				TEXT("[GAS][Event] ASC=%s Event=%s Instigator=%s Target=%s"),
-				*GetNameSafe(this),
-				*EventTag.ToString(),
-				Payload ? *GetNameSafe(Payload->Instigator.Get()) : TEXT("None"),
-				Payload ? *GetNameSafe(Payload->Target.Get()) : TEXT("None"));
 		}
 
 		if (!bNativeComboActive && EventTag.MatchesTagExact(ComboInputEvent))
@@ -83,7 +160,6 @@ int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTa
 			if (bComboAdvanceRequested)
 			{
 				const bool bAdvanced = TryAdvanceActiveComboMontage();
-				UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Requested=1 Advanced=%d"), bAdvanced ? 1 : 0);
 				if (bAdvanced)
 				{
 					bComboAdvanceRequested = false;
@@ -106,7 +182,6 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 	ACharacter* Character = Cast<ACharacter>(LocalAvatarActor);
 	if (!Character)
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: Avatar is not Character. Avatar=%s"), *GetNameSafe(LocalAvatarActor));
 		return false;
 	}
 
@@ -164,7 +239,6 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 
 	if (!SelectedAnimInstance || !ActiveMontage)
 	{
-		UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboAdvance] Fail: No active montage found in candidate meshes. Character=%s"), *GetNameSafe(Character));
 		return false;
 	}
 
@@ -173,38 +247,16 @@ bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
 	const int32 SectionCount = ActiveMontage->CompositeSections.Num();
 	if (CurrentSectionIndex == INDEX_NONE || CurrentSectionIndex + 1 >= SectionCount)
 	{
-		UE_LOG(
-			LogSpellRiseASCCombo,
-			Verbose,
-			TEXT("[GAS][ComboAdvance] Fail: Montage has no next section. Montage=%s CurrentSection=%s CurrentIdx=%d SectionCount=%d"),
-			*GetNameSafe(ActiveMontage),
-			*CurrentSection.ToString(),
-			CurrentSectionIndex,
-			SectionCount);
 		return false;
 	}
 
 	const FName NextSection = ActiveMontage->CompositeSections[CurrentSectionIndex + 1].SectionName;
 	if (NextSection.IsNone() || NextSection == CurrentSection)
 	{
-		UE_LOG(
-			LogSpellRiseASCCombo,
-			Verbose,
-			TEXT("[GAS][ComboAdvance] Fail: Next section invalid. Montage=%s Current=%s Next=%s"),
-			*GetNameSafe(ActiveMontage),
-			*CurrentSection.ToString(),
-			*NextSection.ToString());
 		return false;
 	}
 
 	SelectedAnimInstance->Montage_JumpToSection(NextSection, ActiveMontage);
-	UE_LOG(
-		LogSpellRiseASCCombo,
-		Verbose,
-		TEXT("[GAS][ComboMontage] Forced section jump Montage=%s Current=%s Next=%s"),
-		*GetNameSafe(ActiveMontage),
-		*CurrentSection.ToString(),
-		*NextSection.ToString());
 	return true;
 }
 
@@ -230,17 +282,6 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		}
 	}
 
-	UE_LOG(
-		LogSpellRiseASCCues,
-		Warning,
-		TEXT("[GAS][GE Applied] ASC=%s GE=%s Handle=%s DurationPolicy=%d Cues=%s SourceASC=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(Spec.Def),
-		*ActiveHandle.ToString(),
-		Spec.Def ? static_cast<int32>(Spec.Def->DurationPolicy) : -1,
-		CueSummary.IsEmpty() ? TEXT("<none>") : *CueSummary,
-		*GetNameSafe(SourceASC));
-
 	if (ShieldStatusTag.IsValid() && ShieldCueTag.IsValid() && Spec.Def && Spec.Def->GetGrantedTags().HasTagExact(ShieldStatusTag))
 	{
 		FGameplayCueParameters CueParams;
@@ -248,10 +289,9 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		CueParams.EffectCauser = GetAvatarActor();
 		CueParams.SourceObject = Spec.Def;
 		AddGameplayCue(ShieldCueTag, CueParams);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][ShieldCue] Added from GE lifecycle. ASC=%s"), *GetNameSafe(this));
 	}
 
-	// FillShield visual should follow GE lifecycle to avoid blink from ability-level execute/remove races.
+
 	if (FillShieldCueTag.IsValid() && Spec.Def && GetNameSafe(Spec.Def).Contains(TEXT("GE_FillShield"), ESearchCase::IgnoreCase))
 	{
 		FGameplayCueParameters CueParams;
@@ -259,7 +299,22 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 		CueParams.EffectCauser = GetAvatarActor();
 		CueParams.SourceObject = Spec.Def;
 		AddGameplayCue(FillShieldCueTag, CueParams);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][FillShieldCue] Added from GE lifecycle. ASC=%s GE=%s"), *GetNameSafe(this), *GetNameSafe(Spec.Def));
+	}
+
+	if (GameplayEffectSpecHasCooldownTag(Spec))
+	{
+		BroadcastEquipmentAbilityStateChanged();
+	}
+}
+
+void USpellRiseAbilitySystemComponent::OnActiveGameplayEffectAddedToSelf(
+	UAbilitySystemComponent* SourceASC,
+	const FGameplayEffectSpec& Spec,
+	FActiveGameplayEffectHandle ActiveHandle)
+{
+	if (GameplayEffectSpecHasCooldownTag(Spec))
+	{
+		BroadcastEquipmentAbilityStateChanged();
 	}
 }
 
@@ -272,6 +327,7 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FAc
 	FGameplayTagContainer AssetTags;
 	if (Def)
 	{
+		ActiveEffect.Spec.GetAllAssetTags(AssetTags);
 		AssetTags.AppendTags(Def->GetGrantedTags());
 	}
 
@@ -285,24 +341,19 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FAc
 		}
 	}
 
-	UE_LOG(
-		LogSpellRiseASCCues,
-		Warning,
-		TEXT("[GAS][GE Removed] ASC=%s GE=%s Cues=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(Def),
-		CueSummary.IsEmpty() ? TEXT("<none>") : *CueSummary);
-
 	if (ShieldStatusTag.IsValid() && ShieldCueTag.IsValid() && AssetTags.HasTagExact(ShieldStatusTag))
 	{
 		RemoveGameplayCue(ShieldCueTag);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][ShieldCue] Removed from GE lifecycle. ASC=%s"), *GetNameSafe(this));
 	}
 
 	if (FillShieldCueTag.IsValid() && Def && GetNameSafe(Def).Contains(TEXT("GE_FillShield"), ESearchCase::IgnoreCase))
 	{
 		RemoveGameplayCue(FillShieldCueTag);
-		UE_LOG(LogSpellRiseASCCues, Warning, TEXT("[GAS][FillShieldCue] Removed from GE lifecycle. ASC=%s GE=%s"), *GetNameSafe(this), *GetNameSafe(Def));
+	}
+
+	if (HasCooldownTag(AssetTags))
+	{
+		BroadcastEquipmentAbilityStateChanged();
 	}
 }
 
@@ -313,11 +364,29 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagPressed(FGameplayTag In
 		return;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
+		{
+			InputPressedSpecHandles.AddUnique(SelectedSpec->Handle);
+			InputHeldSpecHandles.AddUnique(SelectedSpec->Handle);
+			return;
+		}
+	}
+
 	TArray<FGameplayAbilitySpecHandle> MatchingHandles;
 	GetAbilitySpecsFromInputTag(InputTag, MatchingHandles);
 
 	for (const FGameplayAbilitySpecHandle& Handle : MatchingHandles)
 	{
+		const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+		const USpellRiseGameplayAbility* SpellAbility = Spec ? Cast<USpellRiseGameplayAbility>(Spec->Ability) : nullptr;
+		if (SpellAbility && !SpellAbility->FiresFromOwnInputTag())
+		{
+			SelectedSpellSpecHandle = Handle;
+			continue;
+		}
+
 		InputPressedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.AddUnique(Handle);
 	}
@@ -330,30 +399,45 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 		return;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
+		{
+			if (!InputHeldSpecHandles.Contains(SelectedSpec->Handle))
+			{
+				return;
+			}
+
+			InputReleasedSpecHandles.AddUnique(SelectedSpec->Handle);
+			InputHeldSpecHandles.Remove(SelectedSpec->Handle);
+			return;
+		}
+	}
+
 	TArray<FGameplayAbilitySpecHandle> MatchingHandles;
 	GetAbilitySpecsFromInputTag(InputTag, MatchingHandles);
 
 	for (const FGameplayAbilitySpecHandle& Handle : MatchingHandles)
 	{
+		const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
+		if (!InputHeldSpecHandles.Contains(Handle))
+		{
+			continue;
+		}
+
+		// Spells com bFireOnAbilityInput=false sao armadas pelo slot mas disparadas pelo Primary;
+		// soltar a tecla do slot nao deve sintetizar InputReleased (evita cancelar cast/channel ao soltar SkillN).
+		if (const USpellRiseGameplayAbility* SpellAbility = Spec ? Cast<USpellRiseGameplayAbility>(Spec->Ability) : nullptr)
+		{
+			if (SpellAbility && !SpellAbility->FiresFromOwnInputTag())
+			{
+				continue;
+			}
+		}
+
 		InputReleasedSpecHandles.AddUnique(Handle);
 		InputHeldSpecHandles.Remove(Handle);
 	}
-}
-
-void USpellRiseAbilitySystemComponent::AbilitySpecInputPressed(FGameplayAbilitySpec& Spec)
-{
-	Super::AbilitySpecInputPressed(Spec);
-
-	InputPressedSpecHandles.AddUnique(Spec.Handle);
-	InputHeldSpecHandles.AddUnique(Spec.Handle);
-}
-
-void USpellRiseAbilitySystemComponent::AbilitySpecInputReleased(FGameplayAbilitySpec& Spec)
-{
-	Super::AbilitySpecInputReleased(Spec);
-
-	InputReleasedSpecHandles.AddUnique(Spec.Handle);
-	InputHeldSpecHandles.Remove(Spec.Handle);
 }
 
 void USpellRiseAbilitySystemComponent::SR_ClearAbilityInput()
@@ -370,13 +454,13 @@ bool USpellRiseAbilitySystemComponent::AbilitySpecMatchesInputTag(const FGamepla
 		return false;
 	}
 
-	// Fonte principal: tags dinâmicas da spec
+
 	if (Spec.GetDynamicSpecSourceTags().HasTagExact(InputTag))
 	{
 		return true;
 	}
 
-	// Fallback para assets antigos
+
 	if (const USpellRiseGameplayAbility* SpellRiseAbility = Cast<USpellRiseGameplayAbility>(Spec.Ability))
 	{
 		return SpellRiseAbility->AbilityInputTag.IsValid()
@@ -410,6 +494,15 @@ void USpellRiseAbilitySystemComponent::MarkSpecInputPressed(FGameplayAbilitySpec
 {
 	Spec.InputPressed = true;
 
+
+	if (!IsOwnerActorAuthoritative() && Spec.Ability)
+	{
+		if (Spec.Ability->GetNetExecutionPolicy() != EGameplayAbilityNetExecutionPolicy::LocalOnly)
+		{
+			ServerSetInputPressed(Spec.Handle);
+		}
+	}
+
 	if (Spec.IsActive())
 	{
 		Super::AbilitySpecInputPressed(Spec);
@@ -419,6 +512,15 @@ void USpellRiseAbilitySystemComponent::MarkSpecInputPressed(FGameplayAbilitySpec
 void USpellRiseAbilitySystemComponent::MarkSpecInputReleased(FGameplayAbilitySpec& Spec)
 {
 	Spec.InputPressed = false;
+
+
+	if (!IsOwnerActorAuthoritative() && Spec.Ability)
+	{
+		if (Spec.Ability->GetNetExecutionPolicy() != EGameplayAbilityNetExecutionPolicy::LocalOnly)
+		{
+			ServerSetInputReleased(Spec.Handle);
+		}
+	}
 
 	if (Spec.IsActive())
 	{
@@ -433,14 +535,42 @@ bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputTag(FGameplay
 		return false;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle))
+		{
+			SelectedSpec->InputPressed = true;
+			return TryActivateAbility(SelectedSpec->Handle, true);
+		}
+	}
+
 	for (FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
 		if (AbilitySpecMatchesInputTag(Spec, InputTag))
 		{
+			if (const USpellRiseGameplayAbility* SpellAbility = Cast<USpellRiseGameplayAbility>(Spec.Ability))
+			{
+				if (!SpellAbility->FiresFromOwnInputTag())
+				{
+					SelectedSpellSpecHandle = Spec.Handle;
+					return true;
+				}
+			}
+
 			Spec.InputPressed = true;
 
 			const bool bAllowRemoteActivation = true;
-			return TryActivateAbility(Spec.Handle, bAllowRemoteActivation);
+			const bool bActivated = TryActivateAbility(Spec.Handle, bAllowRemoteActivation);
+			if (!bActivated)
+			{
+				FGameplayTagContainer FailureTags;
+				const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
+				if (!Spec.Ability->CanActivateAbility(Spec.Handle, ActorInfo, nullptr, nullptr, &FailureTags))
+				{
+					RecordAbilityActivationFailure(Spec, FailureTags, TEXT("SR_TryActivateAbilityByInputTag"));
+				}
+			}
+			return bActivated;
 		}
 	}
 
@@ -454,6 +584,14 @@ USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSpellRiseAbil
 		return nullptr;
 	}
 
+	if (InputTag.MatchesTagExact(GetPrimaryAbilityInputTag()))
+	{
+		if (USpellRiseGameplayAbility* SelectedAbility = SR_GetSelectedSpellAbility())
+		{
+			return SelectedAbility;
+		}
+	}
+
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
 		if (AbilitySpecMatchesInputTag(Spec, InputTag))
@@ -465,9 +603,58 @@ USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSpellRiseAbil
 	return nullptr;
 }
 
+USpellRiseGameplayAbility* USpellRiseAbilitySystemComponent::SR_GetSelectedSpellAbility() const
+{
+	const FGameplayAbilitySpec* SelectedSpec = FindAbilitySpecFromHandle(SelectedSpellSpecHandle);
+	return SelectedSpec ? Cast<USpellRiseGameplayAbility>(SelectedSpec->Ability) : nullptr;
+}
+
+void USpellRiseAbilitySystemComponent::SR_ClearSelectedSpellAbility()
+{
+	SelectedSpellSpecHandle = FGameplayAbilitySpecHandle();
+}
+
+void USpellRiseAbilitySystemComponent::SR_SetSelectedSpellAbilityByInputTag(FGameplayTag InputTag)
+{
+	if (!InputTag.IsValid())
+	{
+		SR_ClearSelectedSpellAbility();
+		return;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (!AbilitySpecMatchesInputTag(Spec, InputTag))
+		{
+			continue;
+		}
+
+		if (const USpellRiseGameplayAbility* SpellAbility = Cast<USpellRiseGameplayAbility>(Spec.Ability))
+		{
+			if (!SpellAbility->FiresFromOwnInputTag())
+			{
+				SelectedSpellSpecHandle = Spec.Handle;
+				return;
+			}
+		}
+	}
+
+	SR_ClearSelectedSpellAbility();
+}
+
+bool USpellRiseAbilitySystemComponent::SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const
+{
+	return AbilityHandle.IsValid()
+		&& SelectedSpellSpecHandle.IsValid()
+		&& AbilityHandle == SelectedSpellSpecHandle;
+}
+
 void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused)
 {
-	const FGameplayTag ComboAbilityTag = FGameplayTag::RequestGameplayTag(TEXT("GameplayAbility.MeleeAttack.Combo"), false);
+
+	(void)DeltaTime;
+	(void)bGamePaused;
+
 	const auto GetSpecPredictionKey = [](const FGameplayAbilitySpec* Spec) -> FPredictionKey
 	{
 		if (!Spec)
@@ -486,18 +673,27 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		return FPredictionKey();
 	};
 
-	const auto IsComboSpec = [&](const FGameplayAbilitySpec* Spec) -> bool
+	const auto LogActivationFailure = [&](const FGameplayAbilitySpec* Spec)
 	{
-		if (!Spec || !Spec->Ability || !ComboAbilityTag.IsValid())
+		if (!Spec || !Spec->Ability)
 		{
-			return false;
+			return;
 		}
 
-		return Spec->Ability->AbilityTags.HasTagExact(ComboAbilityTag);
-	};
-	const auto IsNativeComboSpec = [&](const FGameplayAbilitySpec* Spec) -> bool
-	{
-		return Spec && Cast<USpellRiseGA_MeleeCombo>(Spec->Ability) != nullptr;
+		FGameplayTagContainer FailureTags;
+		const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
+		const bool bCanActivate = Spec->Ability->CanActivateAbility(
+			Spec->Handle,
+			ActorInfo,
+			nullptr,
+			nullptr,
+			&FailureTags);
+		if (bCanActivate)
+		{
+			return;
+		}
+
+		RecordAbilityActivationFailure(*Spec, FailureTags, TEXT("SR_ProcessAbilityInput"));
 	};
 
 	AActor* Avatar = GetAvatarActor();
@@ -509,19 +705,13 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		return;
 	}
 
-	if (bGamePaused)
-	{
-		SR_ClearAbilityInput();
-		return;
-	}
-
 	TArray<FGameplayAbilitySpecHandle> AbilitiesToActivate;
 	AbilitiesToActivate.Reserve(InputPressedSpecHandles.Num());
 
 	TSet<FGameplayAbilitySpecHandle> PressedThisFrame;
 	PressedThisFrame.Reserve(InputPressedSpecHandles.Num());
 
-	// 1) Pressed
+
 	{
 		const TArray<FGameplayAbilitySpecHandle> PressedSnapshot = InputPressedSpecHandles;
 
@@ -536,42 +726,14 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			}
 
 			MarkSpecInputPressed(*Spec);
-
 			if (Spec->IsActive())
 			{
-				if (!IsOwnerActorAuthoritative() && (Spec->Ability->bReplicateInputDirectly || IsComboSpec(Spec)))
-				{
-					ServerSetInputPressed(Spec->Handle);
-				}
 
-				// Ensure active abilities that rely on WaitInputPress receive replicated generic input events.
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
 					EAbilityGenericReplicatedEvent::InputPressed,
 					Spec->Handle,
 					PredictionKey);
-
-				if (IsComboSpec(Spec) && !IsNativeComboSpec(Spec))
-				{
-					static const FGameplayTag ComboStartTag = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Start"), false);
-					static const FGameplayTag ComboInputTag = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Input"), false);
-					if (AActor* LocalAvatarActor = GetAvatarActor())
-					{
-						FGameplayEventData StartData;
-						StartData.EventTag = ComboStartTag;
-						StartData.Instigator = LocalAvatarActor;
-						StartData.Target = LocalAvatarActor;
-						UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(LocalAvatarActor, ComboStartTag, StartData);
-
-						FGameplayEventData InputData;
-						InputData.EventTag = ComboInputTag;
-						InputData.Instigator = LocalAvatarActor;
-						InputData.Target = LocalAvatarActor;
-						UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(LocalAvatarActor, ComboInputTag, InputData);
-
-						UE_LOG(LogSpellRiseASCCombo, Verbose, TEXT("[GAS][ComboInput] Active combo press forwarded. Ability=%s Handle=%s"), *GetNameSafe(Spec->Ability), *Spec->Handle.ToString());
-					}
-				}
 			}
 			else
 			{
@@ -580,7 +742,7 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		}
 	}
 
-	// 2) Held
+
 	{
 		const TArray<FGameplayAbilitySpecHandle> HeldSnapshot = InputHeldSpecHandles;
 
@@ -601,18 +763,13 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 			if (Spec->IsActive())
 			{
-				// Native combo handles buffered presses explicitly; do not spam InputPressed every held tick.
-				if (IsNativeComboSpec(Spec))
-				{
-					continue;
-				}
 
-				Super::AbilitySpecInputPressed(*Spec);
+				continue;
 			}
 		}
 	}
 
-	// 3) Activate
+
 	for (const FGameplayAbilitySpecHandle& Handle : AbilitiesToActivate)
 	{
 		FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(Handle);
@@ -624,10 +781,14 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 		Spec->InputPressed = true;
 
 		const bool bAllowRemoteActivation = true;
-		TryActivateAbility(Handle, bAllowRemoteActivation);
+		const bool bActivated = TryActivateAbility(Handle, bAllowRemoteActivation);
+		if (!bActivated)
+		{
+			LogActivationFailure(Spec);
+		}
 	}
 
-	// 4) Released
+
 	{
 		const TArray<FGameplayAbilitySpecHandle> ReleasedSnapshot = InputReleasedSpecHandles;
 
@@ -640,15 +801,9 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 			}
 
 			MarkSpecInputReleased(*Spec);
-
 			if (Spec->IsActive())
 			{
-				if (!IsOwnerActorAuthoritative() && (Spec->Ability->bReplicateInputDirectly || IsComboSpec(Spec)))
-				{
-					ServerSetInputReleased(Spec->Handle);
-				}
 
-				// Mirror pressed behavior for abilities waiting on input release tasks.
 				const FPredictionKey PredictionKey = GetSpecPredictionKey(Spec);
 				InvokeReplicatedEvent(
 					EAbilityGenericReplicatedEvent::InputReleased,
@@ -660,6 +815,27 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 	InputPressedSpecHandles.Reset();
 	InputReleasedSpecHandles.Reset();
+}
+
+void USpellRiseAbilitySystemComponent::RecordAbilityActivationFailure(
+	const FGameplayAbilitySpec& Spec,
+	const FGameplayTagContainer& FailureTags,
+	const TCHAR* Context)
+{
+	const FString FailureReason = BuildGameplayTagContainerSummary(FailureTags);
+	const FString AbilityName = GetNameSafe(Spec.Ability);
+	const FString CounterKey = FString::Printf(TEXT("%s|%s"), *AbilityName, *FailureReason);
+	const int32 FailureCount = ++AbilityActivationFailureCountByReason.FindOrAdd(CounterKey);
+
+	UE_LOG(LogSpellRiseASCObservability, Warning,
+		TEXT("[GAS][AbilityActivationFailed] Context=%s Ability=%s HandleValid=%d FailureTags=%s Count=%d Owner=%s Avatar=%s"),
+		Context ? Context : TEXT("unknown"),
+		*AbilityName,
+		Spec.Handle.IsValid() ? 1 : 0,
+		*FailureReason,
+		FailureCount,
+		*GetNameSafe(GetOwnerActor()),
+		*GetNameSafe(GetAvatarActor()));
 }
 
 void USpellRiseAbilitySystemComponent::SetTagRelationshipMapping(USpellRiseAbilityTagRelationshipMapping* NewMapping)
@@ -741,4 +917,3 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 		LastActivatableAbilities = ActivatableAbilities.Items;
 	}
 }
-

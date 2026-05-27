@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "SpellRiseDamageEdgeWidget.generated.h"
@@ -53,4 +55,3 @@ private:
 	UPROPERTY(Transient)
 	bool bFlashActive = false;
 };
-

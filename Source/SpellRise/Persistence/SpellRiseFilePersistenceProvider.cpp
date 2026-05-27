@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Persistence/SpellRiseFilePersistenceProvider.h"
 
 #include "JsonObjectConverter.h"
@@ -122,25 +123,23 @@ namespace
 		const FSpellRisePersistenceSnapshotCounters Counters = RecordSnapshotWriteResult(SnapshotType, bSuccess);
 		if (bSuccess)
 		{
-			UE_LOG(LogSpellRisePersistenceFile, Log, TEXT("[Persistence][%s] DatabaseActive=0 Backend=FileFallback Snapshot=%s Path=%s Result=%s SuccessCount=%lld FailureCount=%lld Reason=%s"),
-				TEXT("FileFallbackWriteOk"),
+			UE_LOG(LogSpellRisePersistenceFile, Log,
+				TEXT("[Persistence][FileSnapshotSucceeded] Type=%s Reason=%s SuccessCount=%lld FailureCount=%lld Path=%s"),
 				GetSnapshotTypeLabel(SnapshotType),
-				*Path,
-				TEXT("success"),
+				Reason ? Reason : TEXT("unspecified"),
 				Counters.SuccessCount,
 				Counters.FailureCount,
-				Reason ? Reason : TEXT("unspecified"));
+				*Path);
 		}
 		else
 		{
-			UE_LOG(LogSpellRisePersistenceFile, Warning, TEXT("[Persistence][%s] DatabaseActive=0 Backend=FileFallback Snapshot=%s Path=%s Result=%s SuccessCount=%lld FailureCount=%lld Reason=%s"),
-				TEXT("FileFallbackWriteFailed"),
+			UE_LOG(LogSpellRisePersistenceFile, Warning,
+				TEXT("[Persistence][FileSnapshotRejected] Type=%s Reason=%s SuccessCount=%lld FailureCount=%lld Path=%s"),
 				GetSnapshotTypeLabel(SnapshotType),
-				*Path,
-				TEXT("failure"),
+				Reason ? Reason : TEXT("unspecified"),
 				Counters.SuccessCount,
 				Counters.FailureCount,
-				Reason ? Reason : TEXT("unspecified"));
+				*Path);
 		}
 	}
 
@@ -191,7 +190,6 @@ namespace
 FSpellRiseFilePersistenceProvider::FSpellRiseFilePersistenceProvider()
 	: RootDir(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SpellRise"), TEXT("Persistence")))
 {
-	UE_LOG(LogSpellRisePersistenceFile, Warning, TEXT("[Persistence][DatabaseInactive] DatabaseActive=0 Backend=FileFallback RootDir=%s"), *RootDir);
 }
 
 bool FSpellRiseFilePersistenceProvider::LoadCharacterState(const FString& SteamId64, FSpellRiseCharacterSaveData& OutData, int64& OutRevision)

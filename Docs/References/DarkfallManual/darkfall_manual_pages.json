@@ -1,0 +1,6419 @@
+[
+  {
+    "url": "http://www.darkfallonline.com/manual",
+    "title": "Manual - Index",
+    "text": "Races\nCharacter\nProwess\nSkills\nThe Role System\nStarting Out\nBasic Controls\nCharacter Creation\nThe GUI\nTutorial Area\nGearing Up\nWorld of Agon\nVendors\nBasic Geography\nSafe Zones\nThe Map\nWorld Interaction\nCombat\nSocial\nPlayer Interaction\nSocial Menu\nThe Chat Window\nClans\nEssentials\nChallenge Specifics\nHolding Construction\nHoldings\nMercenaries\nRelations\nDominion\nActivities\nFeats\nCrafting\nTeleportation\nTreasure Maps\nPlayer Housing\nDarkfall: Unholy Wars is an MMORPG that combines a unique blend of real-time, fast paced combat and tactics, a flexible Role system and a beautiful, rich, fantasy setting. Darkfall provides furious battles with actual consequence like full player looting while helping you arrive at your level of prowess in your own space and time.\nThis manual will help you become acquainted with all the various aspects of the game so that you may venture into Agon a true master of your own destiny.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/races",
+    "title": "Races",
+    "text": "In Darkfall Unholy Wars, there are 6 available Races.\nRaces:\nClick to see details\nMercians \nHailing from a continent long sunk beneath the seas, the Humans of Mercia are the only race not originally native to Agon. Since arriving on these shores many centuries ago, the Mercians have established one of the richest and most prolific empires on Agon.\nTheir inherent adaptability to any situation and passionate approach to life has amassed them a powerful and prosperous nation-empire on the banks of the river Eanna among the ruins of the ancient civilization of Chal' Dea.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/manual/races?qt-races=0#qt-races",
+        "Empty Tab"
+      ],
+      [
+        "/manual/races?qt-races=1#qt-races",
+        "Mercians"
+      ],
+      [
+        "/manual/races?qt-races=2#qt-races",
+        "Ork"
+      ],
+      [
+        "/manual/races?qt-races=3#qt-races",
+        "Tovarr"
+      ],
+      [
+        "/manual/races?qt-races=4#qt-races",
+        "Mahirim"
+      ],
+      [
+        "/manual/races?qt-races=5#qt-races",
+        "Mirdain"
+      ],
+      [
+        "/manual/races?qt-races=6#qt-races",
+        "Alfari"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/prowess",
+    "title": "Prowess",
+    "text": "Your Prowess is a representation of your accumulated experiences, victories and achievements throughout the world of Agon. As fame and fortune will often acquire power and prestige so too can points of Prowess be used as a form of currency to acquire a multitude of skills and boosters within the game.\nProwess Icon\nMost interactions with the world will reward you with some Prowess. Harvesting, crafting, killing monsters, completing feats, participating in village capturing and stealing and a multitude of other activities will reward you.\nAn indication of your Prowess, both total and current is shown at the top right corner of your screen. \nSpending Prowess is the only way to improve your attributes, combat, and harvesting skills. \nCrafting can only be improved by using the skill to successfully craft items.\nThis is done in the following window: \nTo increase any of your skills,press \nand then click the Level Up button that is located under the skill that you want to improve.\nNot enough prowess to level up\nEnough prowess to level up\nTo increase any of your attributes, press \nand then click the Level Up button that is located on the left of the attribute that you want to improve.\nIn the window that appears, click the \nicon as many times as the points you want your skill to be increased by.\nClick the \nicon to remove the points you added. Note that this works only if you haven’t confirmed the session.\nOn the left of the window you can see how much Prowess is required to increase the selected skill or attribute by one point.\nYou also can see what is being improved when you level up a skill in the “Level Up Improves” field.\nOn the right, you have the Total Cost of Prowess you used in this session, and below the remaining total after your confirmation.\nOnce you confirm the operation the Prowess will be permanently spent.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/skills",
+    "title": "Skills",
+    "text": "Darkfall Unholy Wars utilizes a unique skill system combined with archetype character roles so that you can enjoy a fluid and smooth play-style that allows you the freedom to both experiment and enjoy different styles of battle.\nVarious Skills\nThere are a number of skills in the game split into various categories. To view them you can open the Skill window at any time by pressing \nor simply clicking on the skills button \nat the right hand side of the screen while in GUI mode.\nSkill Categories\nThe general skills category contains the harvesting and crafting skills. Combat skills contains all the basic attacks that can be executed by equipping the appropriate weapon and clicking either mouse button. Common skills contains eleven utility skills that are available to all roles. The Warrior, Skirmisher, Elementalist and Primalist categories contain all the schools and abilities that are available within these roles.\nAt the beginning of a character’s life, not all skills will be available to him and hence will not be shown in this window. Once you have gathered enough Prowess (see the Prowess section for more on this) you can purchase additional skills from the appropriate Vendors in NPC cities or Player Holdings.\nIn the subsections of Skills, you can find a description of the Common Skills as well all the Roles, Schools and ability descriptions. For more information on the Harvesting and Crafting skills proceed to the appropriate sections.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/role-system",
+    "title": "The Role System",
+    "text": "The role system in Darkfall Unholy Wars is very flexible and designed in such a way to allow you to switch your style of play to suit the situation at hand quite easily!\nManaging your character's role is done through the Roles Management window. You can access this by either pressing the \nkey at any point or by clicking the Role Management button \non the right hand side of your screen while in GUI mode.\nIn this window you can select your role by clicking the arrows next to it’s name at the top. Then drag the two schools you wish to focus on into the boxes below.\nThe school that is dragged in the left slot will determine your primary speciality. Your character will have access to 5 abilities from his primary school and 4 from his secondary school, provided you have purchased all available abilities.\nIf no abilities have been purchased, your character will only have access to three abilities per school. The fourth and fifth ability which is the ulti of each school need to be purchased from the appropriate NPC vendor by using Prowess points.\nElementalist’s Starting Abilities\nAttributes\nThere are 4 attributes in Darkfall Unholy Wars:\nStrength \nDexterity\nIntelligence\nWisdom\nEach of these attributes comes with several levels of Booster that can be purchased to further augment your specialities. Click on the boxes with the Prowess point prices at the bottom of the window and select the one you want. Once you have purchased at least one booster you will be able to activate it by clicking on it’s name below your Role and School selection.\nUnlocked Booster\nActive Booster\nProwess Cost to Unlock a Booster\nSkill \n&\nAttribute Level Up \nIncreasing your skills and base attributes is achieved by spending Prowess \nThe higher the skill level, the more effective you will be at using it. Higher level skills may offer decreased casting times, shorter cooldowns and other perks.\nAttributes also affect skills. Having high strength, for example, allows your melee attacks to deal more damage. Your attributes also affect your vital stat pools. Higher strength means more health, while Dexterity affects stamina, and Intelligence and Wisdom affect mana.\nAn overview of your three vital stat pools is available below the booster selection section. The bars that represent each vital stat are split into 3 parts.\nThe first part indicates the penalty that the role you have chosen inflicts to the stat. The second part denotes the raw level of the related attribute which you can also see at the top of the paperdoll window. The third part indicates the bonus that is applied to the stat from the selected booster.\nDepending on the role you choose you will also have some armor limitations. Warriors can only wear heavy armor, Skirmishers medium armor, while Elementalists and Primalists can only wear the light armors. The skills of each school also require you to have specific weapons equipped and unsheathed in order to execute them.\nFor an overview of your attributes and protections you will need to open your Paperdoll by pressing \nor by clicking on the Paperdoll button \nat the right hand side of your screen while in GUI mode.\nHere you will be presented with your base attribute scores as well as the protections your character has against various types of damage. Protections are primarily affected by the type and quality of the armor you are wearing as well as various effects you may have active through skills and buffs.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/basic-controls",
+    "title": "Basic Controls",
+    "text": "Darkfall: Unholy Wars uses the basic MMO movement scheme for your keyboard streamlined with innovative functionality to help make your combat and adventures as smooth as possible.\nCONTROLS\nGUI/ACTION MODE\nToggle between Action and GUI modes by pressing\nyour ESCAPE key at any point.\nRUN\nYou can move about using the W, A, S and D keys.\nSPRINT\n+\nHolding down SHIFT and W will give you a prolonged burst of speed. How long this lasts depends on your stamina.\nWALK\n+\nFor those times when one needs to go for a stroll, or walk menacingly towards a hated enemy, showing no fear, hold down CTRL as you move.\nWalking will also be your maximum speed while being encumbered.\nCROUCH\n+\nCrouch down using C to reduce your visibility and muffle \nyour footsteps to players and monsters alike. Sneaking up \non your enemies this way will increase your chances of pulling \noff that surprising and often deadly ambush.\nThe crouch key is also used to dive while swimming.\nREST\nThe H button is your resting key and will put you into a relaxation state where your health, stamina, and mana will recover at an increased rate. Be wary where you rest however, as you can be vulnerable to attack!\nYou will also suffer a -50% to all your protections while resting.\nJUMP\nLeap through the air to catch an enemy unawares \nor cross obstacles using the SPACEBAR. As with sprinting,\njumping will also consume stamina, so be careful how \noften you jump around.\nSPACEBAR is also used to swim towards the surface.\nSHEATHE/UNSHEATHE\nSheathe or unsheathe whatever weapon or tool you have currently\nequipped by pressing R.\nINTERACTION\nThe F button is your Interaction Key and is used to access \nmany secondary functions in the game world such as mounting\na horse, trading with a player, or opening a chaos chest!\nQUICK SLOTS\nYou can scroll through the items in your\nquickslots by using the mouse wheel. You can use or equip the currently selected item by clicking the mouse wheel.\nRADIAL MENUS\n+\nOR\nYour skills are activated using your left and right mouse buttons and your Radial menu is used for picking these skills. You can bring it up by holding down the ALT key.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/character-creation",
+    "title": "Character Creation",
+    "text": "Before starting on your way to glory, you will need to create a character and there are several steps involved in the process.\nFirst, you will need to select your Race and Gender.\nNext you will be able to customize your characters visual appearance.\nOnce you are happy with your characters looks you will be able to assign his starting role and schools. The school that you drag in the left slot is your primary school, while the one dragged in the right slot is your secondary. \nRoles and schools can be changed in game at any point so your initial choice is not restricting in any way.\nOnce all this is done you will need to name your character. \nIf you cannot come up with a name you like you can also use the random name buttons at the left of each text field.\nRandomize Your Name\nInvalid Name! See the message on the left for the reason\nOnce you supply a valid name you can click the Create Character button to begin your adventures in Agon. \nIt will light-up after the validation of the name.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/gui",
+    "title": "The GUI",
+    "text": "Darkfall: Unholy Wars has innovated the usual gamer user interface. The streamlined and intuitive design allows you to make changes on the fly and use your skills as quickly as possible in order to fully partake in the mayhem and slaughter of battle!\nThere are two modes to the Darkfall GUI: the Action Mode and the GUI Mode. You can interchange between these modes by using the Escape key on your keyboard.\nSwap Between Gui/Action Mode\nAction Mode is where you will spend most of your time. In Action Mode you will interact with the world around you, explore, battle and generally adventure through Agon.\nButtons to Activate the Equipped Skills\nQuick Slot Button\nYour left and right mouse buttons are keyed into specific skills, depending on what you have equipped and chosen, and your mouse wheel allows you to scroll through quick-slots for different weapons, consumables or spawnable items.\nIn GUI mode you can interact with your menus, access your inventory and assign weapons to the Quick Slots found on your character window.\nRoles\nSkills\nSocial\nClan\nOptions\nRadial \nWheels\nPaperdoll\nBackpack\nFeats\nMap\nChat\nGUI mode is where you will ready your skills, change settings and apply changes such as armor and weapons to your character.\nIt is also where you will be able to customize your Radial menu to quickly access spells and abilities in Action Mode by holding down the ALT key.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/vale-custodian",
+    "title": "The Vale of the Custodian",
+    "text": "Tutorial Area\nBefore you take your first tentative steps into the bloodthirsty and bloodsoaked lands of Agon, the Custodian will gently lead you through his vale and make sure you understand the basic concepts of Darkfall.\nAs a mewling babe first entering the world, you will learn how to walk, and then how to run, and the how to swing a sword without severing any of your own limbs off. \nThis tutorial chapter of the game should take no more than 20 minutes but will leave you confident to begin carving your legend through the swathes of enemies you will encounter in the world beyond.\nThe Vale of the Custodian is a designated sanctuary and safe place within the world. You and your fellow players will be magically warded and unable to harm each other.\nHopefully no enemies from beyond the Vale itself can enter and threaten your humble beginnings...hopefully.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/gearing",
+    "title": "Gearing Up",
+    "text": "The backpack \nTo access your backpack at any time press \nThis will open your backpack window and display any items you have inside.\nTo move items in and out of your backpack, click, drag and release the item into the desired location.\nTo scroll through your items either move your mouse to either edge of the backpack window or use A and D or use your mouse scroll-wheel.\nSome items, like harvested resources and consumables may be stackable while others, like weapons and armor pieces, are not.\nTo combine stackable items simply drag one stack on top of another. To break a stack, right click on it, select split, and enter the number of items you want to split from the stack.\nYou can also delete items from your backpack by right clicking on them and selecting Delete.\nYou can better organize your backpack with the use of sacks and bags. \nTo open a bag simply double click on it. To return to your backpack again click on the word backpack at the left of the window.\nYou can drop items in a bag by dragging the item over it and then releasing.\nBags and sacks can also be given an appropriate name so that you can tell them apart more easily. To do so, right click on a bag or sack and select Rename. Use the arrow keys and backspace to move the cursor around and enter the desired name, then hit Enter to finalize it.\nTo more easily organize your items you can also use the organization bar. \nTo enable this bar, simply click on the organization bar button at the left side of your backpack window. This bar acts as a temporary shelf for items so that you can drag them around your backpack, bags or bank with more ease.\nOrganization Bar Icon\nAt the top right of the backpack window you can also see it’s weight capacity as well as the gold you are carrying.\nTake extra care not to be carrying around any items or gold you cannot afford to lose, as your grave will be lootable by other players in the unfortunate case of your death.\nThe only items that will forever remain in your backpack are the three starting weapons, the Dawnblade, the Dawnstaff, and the Dawnbow.\nThe paperdoll \nTo access your paperdoll at any time press \nEmpty Paperdoll\nFull Paperdoll\nHere you can drag items from your backpack to your various character slots to equip them and vice versa.\nYou can also drag items to the Weapon/Item quick assignment slots at the bottom.\nItems placed here can be scrolled through with the \nClicking down the mouse wheel will use or equip the selected item.\nOne handed weapons and shields can be assigned to a single slot so that they can be equipped with a single mouse wheel click.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/vendors",
+    "title": "Vendors",
+    "text": "Throughout the cities and townships of Agon, you will meet various denizens skilled and knowledgeable in the crafts that you will find most useful as an adventurer.\nInteract with a vendor by pressing your \nkey while targeting them and navigate the various tabs to view what is available.\nTo locate the vendors you can open your map by pressing\nand the turn on the Points of Interest filter.\nAll Vendors will be displayed on the map as a yellow dot.\nVendor Professions\nThe Sage\nThe sages of Agon are a role filled by those most aged and experienced among the races.\nThose Agonians who know most about the lands and laws. Sages can train you in all the \nCommon skills and spells as well as sell siege stones which are essential for initiating\nchallenges against holdings owned by other clans.\nMerchant \nThis vendor carries many of the more mundane items and tools of the land.\nBattle Supplier\nArms, Armors and crafting skills associated with battle are found with this vendor.\nMagic Supplier \nMagical resources, tools and supplies as well as crafting skills pertaining to the mystical and arcane can be found on this vendor.\nBattlemaster\nA grizzled veteran who can teach you all there is to know about the art of combat.\nSpellmaster \nAll things magical and mystical fall under this vendor’s domain.\nThose wishing to increase their spell-casting aptitude should seek him out.\nYou can sell items to any merchant vendor by opening the sell tab, dragging your items into the Vendors inventory and confirming the sell by clicking the ticked button at the bottom right of the window.\nBuy Items\nSell Items\nConfirm Transaction\nYou can also buy items from vendors by double clicking on the item. Make sure you have enough gold in your backpack to complete the transaction.\nSome vendors will also offer to train new skills to you so that you can expand your characters abilities. To buy skills you need to have accumulated the required Prowess.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/basic-geography",
+    "title": "Basic Geography",
+    "text": "The land of Agon is split into five continents. Four unique lands on each corner of the map and one central land mass in the middle. The six most civilized races of the land each have carved out their nations across the central continent. \nEach racial area has one capital city that acts as the hub of commerce and racial distinctiveness and three satellite townships that house one of three factions representing a key aspect of that nation.\nRace and Faction Insignia \nMERCIANS\nRacial Banner\nSons of Riada Faction\nOrder of Auros Faction\nKnights of Malregard Faction\nORKS\nRacial Banner\nBurning Path Faction\nSlaughter House Faction\nIron Orks Faction\nTOVARR\nRacial Banner\nCrafter's Assembly Faction\nFirst Shield Battalion Faction\nFive Beards Trading Company Faction\nMAHIRIM\nRacial Banner\nTribeland Elders Faction\nLongclaw Faction\nCircle of Neith Faction\nMIRDAIN\nRacial Banner\nSerene Spire Faction\nEmerald Throne Faction\nArrowhead Faction\nALFARI\nRacial Banner\nHouse of Alfari Rising Faction\nHarn Mandean Faction\nShadow Salient Faction\nEach capital city and it’s surrounding area also acts as a ‘safe-zone’, protecting all within from hostile attacks or actions and allowing you a haven from where to take a momentary breath from the dangers of the lawless lands outside of these boundaries.\nWithin each city and township you will also find vendors to cater to your various adventuring needs. Both trainers and suppliers of every type can be found in these areas and can also be purchased for clan cities (though it is up to the clan itself who they may be made available to).\nFinally, each capital city also comes with it’s own, fully-staffed dungeon crawling with various unsavory beasts and enemies. The perfect place to test your mettle before venturing into the dangers of the wilds. \nYou can locate this entrance by opening your map and turning on the Teleports and Portals filter and, once you have arrived, you can enter by aiming at the entrance and pressing your Interact Key (F).\nTo interact with Portals",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/safe-zones",
+    "title": "Safe Zones",
+    "text": "Once you have completed your training through the Vale of the Custodian and you have successfully achieved the final task you will be transported to a starting NPC city where you will begin your journeys.\nWhile you take some time to acquaint yourself with your surroundings, also note the icon at the bottom right of your minimap. This icon will indicate the status of the area you are currently in.\nA green icon displaying a white shield indicates a Safe Zone. In such areas you cannot harm or be harmed by other players under any circumstances. Also, if you spawn or dismount a steed in such an area you will be retain ownership rights on it for 2 minutes so that you can safely re-mount or despawn it. After these two minutes, however, the mount is free to be stolen so be wary!\nAll such courtesies are nonexistent once you leave the safe areas though. When exiting a safe area you will be notified by an onscreen message and the icon below your minimap will change into red with a white sword. In unprotected areas you can damage and be damaged by other players and their is no limit to the slaughter and mayhem that can occur here! There is also no law protecting your mount once you are off the saddle.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/map",
+    "title": "The Map",
+    "text": "Your map, accessed by pressing \nor clicking on the map icon \non the left of your screen, is fully interactive and designed to make your explorations (and subsequent battles) all that more rewarding!\nThere are various filters available that can display useful information on your map.\nThese Filters are:\nPersonal\nParty\nClans\nFeats\nPoints of Interest\nMonster Spawn Points\nUnbound Bindstones\nBanks\nTeleports and Portals\nFilters for Personal locations, Points of interest, Monster Spawns are among the many you will find. You can toggle these filters on and off by clicking on the appropriate buttons on the left hand side of the screen while you have the map interface open.\nYou can also add personal markers as well as waypoints onto the map by right clicking on any location and selecting the appropriate type from the menu.\nUnexplored areas are hidden by a Fog of War that is uncovered by simply moving through and exploring an area.\nThe map will also help you locate your tombstone when you inevitably die. You can go back to the location that will be marked by the tombstone icon if you want to try and loot some or all of your items from it.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/world-interaction",
+    "title": "World Interaction",
+    "text": "Pressing the Interact Key \n, you can interact with objects in the game when you are close to them.\nDepending on the object, the action will yield different results.\nUsing the bank will open your personal vault. You can move items to and from your bank by holding and dragging. If you are in a clan and, depending on your clan permissions, you may be able to access the clans vault as well.\nIn such a case you will need to hold down the Interact Key and select between personal and clan vault in the radial menu that will appear. \nItems placed in any bank vault are completely\nsafe and can be accessed from any other bank\nvault in the world.\nUsing a bindstone will bind you to its location. That means that in the inevitable case of your death, you will respawn next to your bindstone. \nYou can bind at any NPC or Chaos bindstone at any point.\nBinding at a Player Clan Holding bindstone means that you must either be a member of the clan that owns it, in an allied clan, or have special permissions granted to you by the clan leaders. \nIn the case of allied clans, special permissions are also needed.\nYou can only be bound at one bindstone at any given point and you can teleport to it by using the Bindstone Recall button located on your minimap.\nBindstone Recall Button\nUsing a Portal will initiate a countdown at the end of which you will be teleported to the other end of the portal.\nWhile the countdown is active, moving or performing any action will cancel it.\nTeleportation chambers also require the user to have one or more portal shards in their inventories depending on the distance they want to travel.\nMonster and Player Tombstones\nWhen any denizen of Agon dies, it leaves behind a tombstone marking it’s last resting place, but more importantly, containing all it’s earthly possessions. This is true both for monsters and players.\nTo loot a gravestone, approach it and use it like any other object. This will open the grave and display the contents, if any. To move the items to your backpack you can either click and drag or double click on them.\nGraves can also be skinned for additional loot by using a skinning knife on them.\nEmpty and skinned graves will disappear from the world instantly. Graves that still contain items will disappear from the world after a few minutes.\nThere are also static and dynamic loot containers in the world that can be looted. \nDynamic containers, like chaos chests or mouldy crates, will appear at totally random places all over the world and will disappear once looted.\nStatic containers, such as armor or weapon racks, are placed in specific locations around the world. \nThese can also be looted by using them and will remain in place, waiting for their owners to re-stock them.\nInteracting with items on your person or backpack such as food, potions, treasure maps or deployable items like mounts and boats simply requires a double-click. Depending on the item and its position, the outcome will be different.\nDouble clicking an armor piece or weapon in your backpack will equip it and vice versa. Double clicking on food or a potion will consume it and apply the effects on your character. Double clicking on a mount or boat figurine will spawn it in at the location you are aiming, provided it is a valid location.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/combat",
+    "title": "Combat",
+    "text": "Agon is an unforgiving land where one needs to be able to defend himself as well as assault enemies successfully in order to survive and prevail.\nCombat in Darkfall Unholy Wars is real time, fast paced, manually aimed and largely dependent on player skill. As a general rule, where you aim is where you hit but there are some exceptions to this.\nPrimary Buttons \nTo be successful in combat there are a few basic principles you need to be familiar with. Attacking or executing any combat related skill or ability is done by clicking either the left or right mouse button.\nSome abilities will be instantly executed, others will have a short or long casting time that has to count down before they are activated. There are also abilities that you can pre-cast by holding down the mouse button for as long as you need, only to release it at the appropriate time for maximum effect.\nSkill/Ability Activation Buttons\nSimilarly, there are abilities that once cast will instantly perform their action while others will do so over time. There are even abilities that will continue functioning for as long as you hold the mouse button down.\nVital Stats \nA very important factor in any type of combat is managing your vital stat pools. Health is obviously very important as if it reaches zero you will fall hopelessly to the ground awaiting whatever fate your opponent has planned for you. Stamina is also extremely important as if it runs out you will be unable to execute many of your abilities or even sprint. Mana is very essential to spellcasters as without it they cannot cast any of their spells.\nGank \nWhen you finally defeat your enemy and you have him lying helpless at your feet you will need to deliver the final blow, otherwise he will recover after a short while. To do this you need to approach your fallen enemy, aim at him and hold down the use button \nFrom the radial menu select Gank and watch your character finish of the enemy in a spectacular coup de grâce.\nRevive \nSimilarly, if you are feeling chivalrous or it is an ally lying down helpless, you can select Revive from the radial menu to help the fallen player to their feet. An issued revive needs to be accepted by the receiving player in order to take effect. Revived players will get back to their feet with nearly empty vital stat pools.\nThere are five ways of fighting in Darkfall Unholy Wars, each with it’s own advantages and disadvantages.\nCombat Styles:\nClick to see details\nAll these ways of fighting are not meant to be used exclusively. Having a few different items in your backpack and using the one that is appropriate for each situation is essential to succeed in combat.\nNow that you are acquainted with the basics of combat you also need to know how to manage, select and execute all your combat skills and spells. There are three ways that we offer you to do this and you can choose whichever suits your playstyle best.\nThe Radial Wheel \nThis interface element provided an easy way to visualize and select your abilities. First you will need to fill it up with your available abilities though.\nRadial Wheel Configuration\nTo do so, you can press TAB to open the radial wheel configuration screen. In this screen your two radial wheels will be presented to you as well as your skills window. The two radial wheels that you see correspond to your left and right mouse buttons.\nAt the middle of the screen you can also see the four roles. For each of those roles you can have a different radial wheel configuration so that when you switch between roles you do not have to rearrange them. Clicking on the role buttons will present you with a new set of radial wheels and the skills tab will change to show the skills of that role. At the bottom of the screen you will always be able to see all the common skills you have available.\nThe process of arranging your radial wheels is very simple. First select the role you want to configure by clicking on the appropriate button. Then drag the skills of your choice to any of the 8 slots that each wheel offers. Remember that skills placed in the left radial wheel will be activatable with the left mouse button and so on. Once you have finished your radial wheel setup you can press TAB or ESC to exit it.\nAction Mode \nNow you are ready to do some proper combat. To select your abilities all you have to do is hold down ALT and the Mouse button of the wheel you want to bring up. When you do this the Radial Wheel will pop up on your screen and you can choose any of it’s slots by placing the mouse cursor on it.\n+ \nor \nActivate Radial Wheels in Action Mode\nReleasing the ALT key and mouse button will select the skill. Now your skill is placed at either the left or right activation slot depending on which mouse button you used. To execute the skill now all you need to do is click the mouse button. Remember that for skills that have a casting time you can hold the mouse button down and release it whenever you want to execute them.\nSwap between the two Activation Slots\nIf the selecting and executing skills through the radial wheel does not suit your playstyle you can also use the numbered keys on your keyboard to do so. If you take a closer look at the two round activation slots at the middle bottom of your screen, you will notice that one has numbers from 1 to 8 around it while the other has small circles.\nThe one with the numbers is the active slot. Pressing the corresponding number on your keyboard will load the skill in that position to the slot.\nYou can switch between the 2 activation slots by pressing \nQ\nand \nE\n. So for example if when you set up your radial wheels you placed the Heal Self ability at the number 1 slot of the right radial wheel, you can activate it by pressing \nE\n, then 1 and then clicking the right mouse button to execute it.\nThe third option is to press \nand the number of the slot on your keyboard for the right activation slot and \nplus the number for the left.\nYou also need to remember that most skills and spells will have a cooldown applied to them once you execute them. An ability in cooldown will be displayed as a red circle or red number at the activation slots. Bringing up the radial wheel by pressing ALT and mouse button will display the countdown of the cooldown as a circle around the icon of the ability.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/manual/combat?qt-combat_styles=0#qt-combat_styles",
+        "Empty Tab"
+      ],
+      [
+        "/manual/combat?qt-combat_styles=1#qt-combat_styles",
+        "Melee"
+      ],
+      [
+        "/manual/combat?qt-combat_styles=2#qt-combat_styles",
+        "Bows"
+      ],
+      [
+        "/manual/combat?qt-combat_styles=3#qt-combat_styles",
+        "Staves"
+      ],
+      [
+        "/manual/combat?qt-combat_styles=4#qt-combat_styles",
+        "Cannons"
+      ],
+      [
+        "/manual/combat?qt-combat_styles=5#qt-combat_styles",
+        "Mounted"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/player-interaction",
+    "title": "Player Interaction",
+    "text": "There are various ways you can interact with other players in Darkfall Unholy Wars.\nThis can be accomplished directly, by approaching a player in the world, or indirectly, through the chat window or social window.\nInteraction\nApproaching a player in the world and holding down the Interact Key \nwhile aiming at them will present various options that can be selected through a radial wheel. \nThe options available are Trade, Invite to Party, Send friend request and Whisper. If you are in a clan and have sufficient permissions, an Invite to clan option will also be available.\nStart Trade\nInvite to Party\nSend Friend Request\nWhisper\nInvite to Clan\nParty\nYou can create a party by inviting any other player to it. You can invite players to a party by approaching them, holding down the use button and selecting the appropriate option from the radial menu. \nYou can also right click on player names in any chat window and select the Invite to party option.\nParty Floating Markers\nWhen you find yourself in a party, either one you created or were invited to, you will be able to see yours and the other party members names, health and primary school on the right side of the screen.\nHere you can also see various effects that your party members have active. You will also be able to see the other party member locations on the map at all times.\nYou can leave a party at any point by right clicking on your name in the party list and selecting the leave party option.\nIf you were the one to create the party by inviting another player, you will be able to remove or promote players by right clicking on their name and selecting the appropriate option.\nKeep in mind that when in a party, Prowess rewards for various accomplishments are split between party members. The player that performed the action gets half of the Prowess reward and the rest is split evenly among all party members.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/social-menu",
+    "title": "Social Menu",
+    "text": "To access the social menu, click on its icon \non the right side of your screen while in GUI mode. \nThe first window in this menu is the friends list. Here you can search for players and then send them a friend request. \nYou can also browse the list of your existing friends.\nTo send a friend request through this window you first need to toggle the search function by clicking on the toggle at the bottom.\nThen you must type in the name of the player you want to send the friend request to. Typing a minimum of three letters will initiate the search and return any valid results.\nTo send the request, click the plus sign next to the players name and then click the Send Friend Request button at the bottom.\nThrough the friends list you can also summon any friends to your location.\nSummon friend is a special form of summoning that any player can perform to teleport any player from his friends list to his location.\nTo initiate summon friend the player needs to have a portal shard in his backpack. Once the summoning is initiated, the player will need to stand still for 2 minutes while the process is in progress.\nAt the end of the summoning timer, the player that is being summoned will receive a prompt which will need to be accepted for the teleport to be completed.\nOnce accepted, the summoned player will need to stand still for 20 seconds to finalize the process.\nSummon Friend\nPortal Shard\nThe second window, titled Friend Requests, will list all incoming and outgoing friend requests you have pending.\nThe blocked list will list all the players you have ever blocked. You can remove players from the blocked list by clicking on the icon next to their name.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/chat-window",
+    "title": "The Chat Window",
+    "text": "Chatting is the direct form of communication that is offered in Darkfall Unholy Wars. The chat window consists of various chat channels that each serves a different purpose.\nYou can close any of the available channels by clicking the left pointing arrow \nnext to their name.\nTo bring them up again simply click the appropriate button on the left hand side of the Chat window while in GUI mode.\nBelow the chat channel buttons, you can see the chat font size buttons. There are 3 sizes of text you can choose by clicking on any of these buttons.\nLarge Font Size\nMedium Font Size\nSmall Font Size\nAt any point you can right click on another player’s name in the chat window to reveal the whisper, invite to party, send friend request and block player options.\nAvailable Channels\nCombat Log \nThe Combat Log is where all system messages are displayed. Incoming and outgoing damage, unlocked feats, leaving and entering protected areas and many other messages the game feels you need to know are displayed here.\nArea Channel \nThe Area channel is where you can converse with all players in your vicinity. Moving around the game world will change who can and cannot see any messages you type here.\nClan Channel\nThe Clan Channel becomes available once you become a member of a clan. In this channel all members of the clan can chat, no matter where they are located in the game world.\nClan Alliance Channel \nIn the Clan Alliance Channel, all allied clan members can communicate regardless of location and distance.\nParty Channel \nThe Party Channel will be available for as long as you are a member of a party. You can converse with other party members even if they are at the other end of the game world.\nPrivate Channel \nPrivate Chat will display all the private messages, or whispers, you have received from other players.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/clan-essentials",
+    "title": "Clan Essentials",
+    "text": "Clan Interface \nTo access the Clan interface click on the “Clans” button \non the right side of your screen while in GUI mode.\nThrough this interface you can browse clans and apply for membership as well as create and manage a clan of your own.\nIf you are a clan member you will be offered different clan management options depending on your permissions.\nLooking for a Clan \nThe first time you open the Clan management window and provided you are not already a member of a clan, you will be taken to the Clan Browser. Here you can browse all clans that exist on the server you are playing on. \nTo accomplish this you can either scroll through the list or use the search function located at the very bottom of the window. \nThe filters will help you find a clan depending on it’s play style.\nClicking on a clan’s name will reveal an information button that will provide more details about the clan such as the dominion points it has accumulated, it’s leader and founder, and the accepted races. \nAt the very bottom of this window you can click the “Apply to join” button to send in an application.\nMake sure the clan is accepting new members beforehand.\nCreating a Clan \nIf you are not a member of a clan, at the very top of the clan interface you will see the “Create a clan” button.\nCreate Clan Button\nClicking on this will present you with a window that requires various information about the clan you want to create. These options include the clan’s name, motto and charter, race restrictions, membership application status and the tags you want to associate with it. \nOnce all this information has been entered you can click the “Create Clan” button at the bottom of the window to create your clan.\nMake sure you have the required 2000 gold in your backpack before clicking the button.\nGold to Create a Clan\nManaging your clan\nIf you are already a member of a clan, opening the clan interface will take you to the Clan Overview window. Information about your clan like Dominion points, Leader and Founder names, number of members, number of members per clan and tags are available here.\nClan Overview Button\nThe “My clan member overview” button will take you to a window where you can review your place in the clan.\nClan Member Overview Button\nProwess, Dominion and kills performed in sieges along with your PvP rank are displayed here.\nMore importantly, here you can view your permissions within the clan. These affect what you can and can’t do as a clan member and are assigned by the clan leaders. \nAt the bottom of the window you can also find the “Leave Clan” Button. You will be removed from the clan 45 minutes after clicking the button.\nClan Configuration Button\nThe Clan Configuration button will provide the means to alter all of the Clan details that was entered in clan creation with the exception of the name. Additionally you can change the clan leader. Depending on your permissions some or all of these options may not be editable by you. Any changes made need to be confirmed by clicking the “Update Clan” at the bottom of the page.\nThe Clan Member Roster window offers an overview of all the clan members, their siege kills, PvP rank and Dominion offered to the clan.\nThe information button next to each members name offers details about the members prowess, dominion offered to the clan, siege kills, pvp rank and permissions assigned. Depending on your permissions you may be able to alter some or all of these options. To commit any changes click the Save Changes button at the bottom of the window.\nClan members will display a tab marked C above their heads\nThe Clan to player politics window allows clan members with sufficient permissions to set special rules that define the relationship between the clan and any player.\nThe available options are adding the player to the Kill on Sight list, banning the player from the clan and allowing the player to bind to any holdings the clan owns.\nKeep in mind that clan to player politics supersede clan relations. For example a member of an enemy clan that is added to the allow to bind list will not show up as an enemy and will still be allowed to bind at your clans holding bindstone.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/challenge-specifics",
+    "title": "Challenge Specifics",
+    "text": "Issuing a challenge against another clan’s holding is the epitome of combat in Darkfall Unholy Wars. It requires planning, understanding the risks and at least a basic knowledge of the mechanics involved.\nIn any issued challenge there is one defending clan, which is the clan that owns the holding, any number of attacking clans that have declared a challenge against the holding and any number of mercenary clans that have been hired by the defender to aid in protecting the holding.\nChallenge Phases \nChallenges consist of a number of phases:\nCountdown Phase\nThe 1st phase is the countdown. The countdown lasts 21 hours from the time the first challenge was issued. In this phase all the involved parties can prepare for the challenge and the clan stone is invulnerable. City walls can be destroyed though. \nNote that 20 hours after the initial challenge, no additional attackers can join the siege.\nAtacker Vulnerability Phase\nThe 2nd phase is the attacker vulnerability phase. This starts 21 hours after the initial challenge was issued. During this phase all the attacker siege stones become vulnerable giving a chance to the defenders and any mercenaries they have hired to break the siege and win the challenge.\nClan Stone Vulnerability Phase\nThe 3rd phase is the holding clan stone vulnerability phase. \nThis starts 22 hours after the initial challenge was issued. During this phase all the attacker siege stones remain vulnerable but the defenders clan holding stone becomes vulnerable as well. There is a number of city walls that must have been destroyed however so that the clan stone becomes vulnerable.\nChallenge Cost \nTo issue a challenge against a holding, your clan will need to pay a wager in gold as well as dominion points.\nThe dominion point cost is a set number which decreases the more holdings your clan owns.\nThe gold wager is affected by 2 factors. The base wager that will go into the pot and will be paid out to the winners of the challenge, and the penalties that are lost and will not be paid out to anyone.\nThe penalties are determined by:\nThe number of attackers that are already in the challenge.\nThe number of active attack challenged your clan has against other holdings.\nThe time that has passed since the initial challenge was issued.\nFor example, a clan that enters the challenge after 4 other clans, has 2 more active challenges against other holdings and issues the challenge 10 hours after the initial challenge was declared will pay more than a clan that issued the challenge first and has no other active challenges.\nSIEGE STONES \nOnce the wager and dominion point cost is paid and your clan enters the challenge within an hour you will need to place your siege stones in order to secure your position in the challenge.\nSiege stones can be purchased from the Sage Vendor in NPC cities.\nSiege Stones\nTo place a Siege Stone, you need to approach the holding you have issued a challenge against and double click the stone while it sits in your backpack. The radius around the holding that you can place siege stones in is several hundred meters so you do not need to go extremely close and placing them in less than obvious positions is always a good idea.\nIf you fail to place the required siege stones within an hour from when you declared the challenge or if all your siege stones are destroyed when they become vulnerable, your clan will lose the challenge and will be ejected from it.\nSiege stones are not targeted by the defenders only however. Other attackers that want to increase their chance of capturing the city will want to destroy them and eject your clan from the challenge. By doing so they are also entitled to up to 50% of the wager pot amount your clan paid to enter the siege.\nWinning Conditions \nThe conditions of winning the siege are different for each side that is taking part.\nDefenders Conditions\nThe defenders can win by:\nRemoving all the attackers from the challenge by destroying their siege stones\nTheir bindstone is still standing at the end of the challenge, 24 hours after the initial challenge was issued.\nIf the defenders win they keep their holding and they receive the full wager pot minus any amount that has been paid to other attacking clans for destroying siege stones and minus any percentage of the wager that was contracted to mercenary clans.\nAttackers Conditions\nAn attacking clan wins the holding when:\nDelivering the largest percent of damage to the bindstone.\nAt the moment the bindstone is destroyed, any attackers that remain in the challenge are considered winners but the holding goes to the one that did the most damage. The wager pot is divided amongst the remaining attackers based on the damage they did to the bindstone.\nGRACE PERIOD \nThe system offers some grace periods during which there can be no challenge issued against a particular holding. These grace periods are determined at the end of an active challenge and differ depending on the challenge outcome.\nIf the defender won the challenge before his clan stone became vulnerable, either because all the attacker siege stones were destroyed or all the attackers dropped the challenge, there is no grace period. If the defender wins the challenge after his siege stone became vulnerable there is a short grace period. If one of the attackers wins and captures the holdings there is a long grace period.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/clan-holding-construction",
+    "title": "Clan Holding Construction",
+    "text": "Once your clan captures a holding, you will need to erect various buildings to improve defences, provide crafting stations and NPC’s for your clan members as well as enable perks that benefit your clan.\nBuilding Modules\nTo build a structure you will need to have some building modules and the appropriate clan rights to have access to the Structures window. Building modules are crafted by constructors and if you are not a clan leader you will need to be given the clan rights by one.\nYou can access the Structures window by clicking on the Clans button at the right side of your screen while in GUI mode, then select the “My Clan Overview” window from the buttons that appear on the left side of your screen. Under Holdings, click the information button located next to the name of the holding you want to build something in, and then click the pencil icon on the right side of the Structures section.\nEdit Holding Button\nYou can now view a top down blueprint of the holding through which you can erect various buildings.\nYou can click on a building silhouette on the blueprint to select it. If you have enough building modules and all prerequisites are met, the Build button will become available. Clicking on it will consume the modules and after a few seconds the building will be created. A small flash of your screen will notify you when the building is ready. Selecting an already constructed buildings through the blueprint map will display its hit points as well as status.\nVarious buildings may have other buildings as prerequisites which you will be able to see after you select any building through the blueprint map.\nYou can exit the Build Blueprint window by clicking on another button or by pressing \nto return to action mode.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/clan-holdings",
+    "title": "Clan Holdings",
+    "text": "A holding can provide a clan with various benefits provided it can be defended properly. \nA holding is a clan’s home base and it provides a hub for clan activities.\nClan members have a bindstone to bind on away from the busy NPC cities, crafting stations and special resource nodes to take advantage of and last but not least it offers the opportunity to capture surrounding villages for extra profit.\nClan holdings when first captured will have nothing more than a bindstone and rubble.\nWith patience and determination they can be built up to offer all sorts of conveniences to clan members. Bank access, crafting stations and Vendors as well as increased security can all be offered by a holding with the appropriate buildings erected.\nAt the center of the clan holding lies the Bindstone. Bindstones are the most important structures in clan holdings because they allow clan members to bind to them but more importantly they are what needs to be defended during a challenge against your city.\nClan Hamlet Bindstone\nClan City Bindstone\nThey become vulnerable only during the 3rd phase of a challenge and provided that a number of the holding walls has been destroyed first, but if destroyed you will lose your clan holding to the attackers.\nSince only Clan Cities have walls, in the case of Clan Hamlets, bindstones become vulnerable without the need to destroy any walls.\nPlayer Villages \nVillages are located all over Agon. They offer a place for players to build their own houses but also a unique opportunity for additional income to clans that own holdings around them.\nTo capture a village with your clan you first need to capture one of the holdings in the village’s territorial region. Once this is done, you will need to travel to the village and attack the village control point in order to destroy it. \nOther clans with holdings in the region may covet the same village though so be sure your clan does the most damage to the control point to capture it.\nDamaged village control points that are not destroyed will revert to full health 20 minutes after the last time they were damaged. Once your clan captures the village, no other clan will be able to capture it again for 6 hours. Once the hours pass you will need to either recapture the village or run the risk of it being captured by another clan.\nIf 24 hours pass since your village became available for capturing again and your clan has not recaptured it, the village will return to its free state.\nHaving one or more villages owned by your clan offers various rewards. First of all at the moment of capture your clan and the clan member that delivered the most damage to the control point will receive a one off reward of gold and items split between them. \nOnce the village is captured it will give out rewards every 5 minutes for as long as your clan owns it. The gold will be split equally between the clan and the clan member that captured the village provided he is still a member of the clan. Also there is a possibility for items to be rewarded to the clan’s bank vault.\nApart from hostile neighbouring clans, villages can also fall prey to pillaging from any player. If you want to steal from a village you need to go there, aim at the village control point, hold down the use button while aiming at it and select the appropriate action from the radial menu.\nSteal Control Point Resources\nMax 50 Meters Radious from \nControl Point to Steal\nThe player that performs this action must stay within 50 meters of the control point otherwise the stealing will be stopped. To stop someone stealing from your village you can either kill them, drive them off the 50 meter range limit or use the control point and select the appropriate action from the radial wheel.\nPlayers that own a house in a village cannot steal from it but can stop other players that are stealing from it by choosing the appropriate action from the village control point after using it.\nThere can only be one player stealing from a village at any one point. If you want to steal from a village that is already being stolen from you will need to kill or drive off the player that is stealing from it.\nWhile stealing from a village, the clan that owns it gets none of the gold or the items on the 5 minute intervals. The stealer has a chance of getting some of these resources. In the beginning this chance is low and increases with every 5 minute tick until it reaches 100%. Stolen items will be placed in the stealers backpack so be sure you have some backup to protect you and the items if you want your operation to be successful.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/mercenaries",
+    "title": "Mercenaries",
+    "text": "When a challenge is issued against a holding, any clan can issue a mercenary contract for the defending clan’s consideration.\nSuch contracts are issued through the sieged holdings overview window, the same window that is used to declare a challenge against a holding.\nIssued contracts are listed in the Clan Overview window and can be withdrawn.\nA defender can examine contracts issued towards them in the Challenge Details window. Defenders can also issue and withdraw contracts from their Challenge Details window which will be visible by the mercenary clan in their Clan Overview window.\nOnly 1 contract, be it pending or accepted can exist between 2 clans at any one time. A pending contract must be rejected before another can be issued towards the same clan. Issuing a contract costs dominion points and any contract can be counter offered.\nContracts have 2 possible terms. They can be a fixed payment contract where a set amount of gold is agreed upon and they can also have a wager percentage requirement meaning that a percentage of the wager pot will be automatically paid to the mercenaries if the defenders win.\nMercenaries will always be required to pay a bond to issue a contract. This is to ensure that they will actually show up and try their best to aid the defender.\nDefenders are only needed to pay a bond in the case of a fixed payment contract to ensure that the payment is made towards the mercenaries. Bonds are returned at the end of the contract but defender bonds are not returned if they are victorious as the bond is the mercenary reward.\nThe moment that a contract is accepted by the defending clan, the mercenary becomes part of the challenge, as if they were the defender and their political stances are automatically set to ally towards the defenders and war towards all attackers.\nContracts are only considered “successfully completed” if the defender wins the challenge and retains ownership of the holding, at this point the mercenaries are automatically paid their rewards.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/clan-relations",
+    "title": "Clan Relations",
+    "text": "Relations with other clans are very important in Darkfall Unholy Wars. Politics play a major role in every aspect of a clans life and knowing who your friends and enemies are is essential. \nTo help clan members identify their allies and enemies the political stance setting can be used.\nTo change the stance between your clan and another you will first need to search for the clan in the Browse Clans menu. \nOnce you find the clan you are looking for you can click on it and then click on the information button to reveal it’s details.\nAt the very top of this window you will see five colored circles.\nNeutral Stance\nThe middle gray one is the default neutral stance. Clans that you have set as neutral will not be marked in any special way.\nFriendly Stance\nThe green circle will set the clan as friendly. Friendly does not bestow any special privileges to a clan but it indicates that there \nis some trust and appreciation towards it.\nAllied Stance\nThe light blue circle will set the clan as Allied. For all the benefits that come with an alliance to be activated, both clans need\nto set each other as allied. Allied clan members may be allowed to bind at your clan’s holding bindstone.\nAllied clan members will display a tab marked A above their heads.\nWary Stance\nThe orange circle will set your clan as Wary towards the other clan. Being wary against a clan indicates a state of mistrust\nand notifies your clan members to be careful around members of that clan.\nThe standing between two clans will be displayed in the GUI as an appropriate text color of the clan’s name and in game as the color of the targeted player’s name.\nWar Stance\nThe final standing, War, cannot be set by clicking on the red circle like the other stances. War is declared between two \nclans when one issues a siege challenge against a clan holding that belongs to the other.\nDeclaring a challenge against another clan’s holding is done through the same window you used to set the political stance, the Clan Overview window. \nBelow all the clan information and above the tags you will see the holdings that the clan owns. \nTo declare a challenge click on the information button next to the holding name and then click the attack holding button. \nThe wager amount in gold that you will need to deposit to initiate the challenge will be displayed right above the button. \nVerifying the challenge will set the political standing between the two clans to War and enemy clan members will be display a red clan name in game when targeted.\nEnemies will display a red tab marked W above \ntheir heads.\nOn the subject of capturing holdings, if your clan desires a holding that is not owned by another clan matters are a lot simpler as all you need to do is approach the Clan stone of said holding, hold the use button down and select the appropriate option from the radial menu. A short countdown will appear and once it counts down the holding will belong to your clan.\nCapturing a holding, whether it’s occupied or not, has a prowess cost associated with it.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/dominion",
+    "title": "Dominion",
+    "text": "Dominion is the Prowess of a clan. It represents a clan’s victories and overall standing and influence over the lands.\nDominion is acquired by enlarging the collective total of Prowess all of it’s members possess. Dominion is used in siege declarations and in issuing mercenary contracts.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/feats",
+    "title": "Feats",
+    "text": "The feats system is designed to provide long or short term goals to you without forcing you to follow specific steps or limiting your freedom.\nThere are various categories of feats covering many aspects of game-play. Feats are automatically completed when you meet their requirements, provided they are unlocked.\nCollapsed Tray\nExpanded Tray\nOnce you conclude your training in the Vale of the Custodian and appear in your starting city, a tray at the top left of your screen will prompt you to complete some tasks.\nThis is the feat tray and it’s initial purpose is to provide a bit more information about the possibilities that lay before you once you start your adventuring career.\nThe feat tray can be collapsed and expanded by clicking the little star icon at its corner.\nOnce you complete the tasks that the feat tray presents to you, you can still use it to help you track feats you are trying to complete.\nPressing \nat any time or clicking the Feat icon while in GUI mode will open the Feat window. Here you can use various filters visible at the left of your screen, to change the type and state of the feats that are displayed to you.\nTo track feats without having to open the Feat window all the time, you can drag their icon to one of the eight circles at the top left.\nThis way you will be able to observe your progress and feat details by hovering your mouse over any of the icons.\nEmpty Feat Tracker\nFull Feat Tracker\nThe Feat that is placed in the leftmost circle slot will also be displayed in the Feat tray provided you have completed all the starting feats.\nFeats are a great source of Prowess, especially early on and can help you set your goals and track them as you see fit.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/crafting",
+    "title": "Crafting",
+    "text": "The vast majority of items in Agon are crafted by players. From weapons and armor to food and potions, even Clan holdings and ships, all are created by the hands of a crafter.\nThere are 17 crafting skills in Darkfall Unholy Wars, 12 of which also have a corresponding mastery skill.\nItems created by any player will also bear his or her name for bragging rights under the Maker label in the item’s tooltip.\nCrafting is done at crafting stations. These stations exists in NPC cities, Clan holdings and some can even be found in player houses.\nCRAFTING STATIONS\nWorkbench\nSmithy \nOven\nLaboratory \nTo start crafting, click \non a crafting station.\nSelect the recipe you want from the list by dragging it in the slot labeled “Drop Here”.\nOnce this is done you will be able to see what materials the item requires. Materials marked in red are missing from your backpack or you do not have the required quantity. Different recipes require different materials all of which you will need to have in your inventory to initiate the crafting procedure.\nBefore initiating the crafting procedure you can also select how many of the selected item you want to create by entering a number in the “Set amount” text field.\nMaximum Amount Button\nClicking the maximum button will automatically enter the amount number based on how many materials you carry.\nOnce the procedure is initiated, a countdown will indicate how long it will take for the item to be created.\nThere is always a chance that you will not succeed at creating the item. In such a case you lose some of the materials but you can always try again provided you have enough materials in your backpack.\nThe higher your crafting skill, the more likely you are to succeed and thus less materials will be lost. Raising a crafting skill requires patience and a lot of materials but the higher your skill, the better the items you can create.\nIf a crafting skill has a corresponding mastery, you will need to reach your basic skill to 100 before you can purchase and skill up the mastery.\nCrafting Mastery skills can be purchased from the Vendors in NPC cities as well as Vendors in Clan Holdings.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/teleportation-chambers",
+    "title": "Teleportation Chambers",
+    "text": "Moving around the huge world of Agon can sometimes appear daunting. Because of this, teleportation chambers have been placed around the world in key locations, to aid players who need to cross great distances.\nThere are a total of 10 such chambers scattered around the landscape, 1 in each subcontinent and 6 all around the mainland of Agon.\nSigns that will lead you to a Teleportation Chamber nearby\nTeleportation Chambers\nTo use such a chamber you will need to possess a Teleportation Shard. Shards can be found in various locations including monster loot.\nWhen you approach and use such a chamber, you will be presented with a map of the other chambers.\nYou will have to choose your desired location from this map and accept the indicated Teleportation Shard cost. \nThe further away the chamber you want to teleport to, the higher the cost.\nBe wary when using these chambers as you never know who may be waiting on the other side.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/treasure-maps",
+    "title": "Treasure Maps",
+    "text": "Treasure maps are items than can show you the way to buried chests of loot. \nThey can be found in monster graves, chaos chests and other locations.\nTypes of Treasure Maps\nLocating and unearthing the loot is quite simple. You need to double click the map in your backpack and use the pulsing indicator ring around your minimap to reach the location.\nThe ring will pulse:\nRed when you are \nmoving away from it.\nWhite while you \nare not moving.\nGreen when you \nare moving towards it.\nThe closer you get to the location the faster the ring will pulse. When the rings stops pulsing and remains constantly lit you are on top of the treasure chest.\nYou will then need to use a shovel to unearth it.\nOnce unearthed, the loot will be automatically placed in your backpack.\nTo stop tracking the map at any time, press the X button that appears on the minimap.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  },
+  {
+    "url": "http://www.darkfallonline.com/manual/player-housing",
+    "title": "Player Housing",
+    "text": "Houses in Darkfall Unholy Wars are located in villages and offer various perks to the owner. All player houses are located in villages.\nTo obtain a house you first need to find a house deed.\nHouse deeds\nHouse deeds can be found in chaos chests, treasure map loot and may even be dropped from monsters.\nOnce you have found the deed you will need to locate a village with an empty house slot of the same type as your deed. To erect your house, approach the house slot and double click the deed in your backpack.\nTypes of Houses\nThere are 5 types of houses, cottage, house, villa, large villa and keep.\nCottage\nHouse \nVilla\nLarge Villa \nKeep\nOnce your house is placed you can add decorations to it that you will find in similar places as the house deed.\nVarious House Decorations\nHouses can also have a crafting station as well as a resource node got wood and cotton among other things.\nYou will also want to place a door on your house to make it safer. Doors can be destroyed but this takes a long time.\nOnce you have a house you can also use the House Recall button on your minimap to teleport to it as housed offer you with an additional automatic bind location.\nHouse Recall Button\nTo manage your household click on the Player Housing icon at the right side of your screen while in GUI mode. In the housing window you can manage your home’s tenants, check and pay the rent if it’s due and have an overview of any installed internal and external items. \nBe warned that if you leave your house’s rent unpaid for a long period of time, your house will be demolished and any other player with a deed will be able to claim the spot.",
+    "links": [
+      [
+        "#main-content",
+        "Skip to main content"
+      ],
+      [
+        "/",
+        ""
+      ],
+      [
+        "/manual",
+        "Introduction"
+      ],
+      [
+        "/manual/races",
+        "Races"
+      ],
+      [
+        "/manual/prowess",
+        "Character"
+      ],
+      [
+        "/manual/prowess",
+        "Prowess"
+      ],
+      [
+        "/manual/role-system",
+        "The Role System"
+      ],
+      [
+        "/manual/skills",
+        "Skills"
+      ],
+      [
+        "/manual/common-skills",
+        "Common Skills"
+      ],
+      [
+        "/manual/role-specific-skills",
+        "Role Specific Skills"
+      ],
+      [
+        "/manual/basic-controls",
+        "Starting Out"
+      ],
+      [
+        "/manual/character-creation",
+        "Character Creation"
+      ],
+      [
+        "/manual/basic-controls",
+        "Basic Controls"
+      ],
+      [
+        "/manual/vale-custodian",
+        "Tutorial Area"
+      ],
+      [
+        "/manual/gui",
+        "The GUI"
+      ],
+      [
+        "/manual/gearing",
+        "Gearing Up"
+      ],
+      [
+        "/manual/vendors",
+        "World of Agon"
+      ],
+      [
+        "/manual/basic-geography",
+        "Basic Geography"
+      ],
+      [
+        "/manual/map",
+        "The Map"
+      ],
+      [
+        "/manual/safe-zones",
+        "Safe Zones"
+      ],
+      [
+        "/manual/vendors",
+        "Vendors"
+      ],
+      [
+        "/manual/world-interaction",
+        "World Interaction"
+      ],
+      [
+        "/manual/combat",
+        "Combat"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Clans"
+      ],
+      [
+        "/manual/clan-essentials",
+        "Essentials"
+      ],
+      [
+        "/manual/clan-relations",
+        "Relations"
+      ],
+      [
+        "/manual/clan-holdings",
+        "Holdings"
+      ],
+      [
+        "/manual/clan-holding-construction",
+        "Holding Construction"
+      ],
+      [
+        "/manual/challenge-specifics",
+        "Challenge Specifics"
+      ],
+      [
+        "/manual/mercenaries",
+        "Mercenaries"
+      ],
+      [
+        "/manual/dominion",
+        "Dominion"
+      ],
+      [
+        "/manual/chat-window",
+        "Social"
+      ],
+      [
+        "/manual/chat-window",
+        "The Chat Window"
+      ],
+      [
+        "/manual/player-interaction",
+        "Player Interaction"
+      ],
+      [
+        "/manual/social-menu",
+        "Social Menu"
+      ],
+      [
+        "/manual/feats",
+        "Activities"
+      ],
+      [
+        "/manual/feats",
+        "Feats"
+      ],
+      [
+        "/manual/crafting",
+        "Crafting"
+      ],
+      [
+        "/manual/harvesting",
+        "Harvesting"
+      ],
+      [
+        "/manual/refining-materials",
+        "Refining Materials"
+      ],
+      [
+        "/manual/salvaging",
+        "Salvaging"
+      ],
+      [
+        "/manual/crafting-professions",
+        "Professions"
+      ],
+      [
+        "/manual/teleportation-chambers",
+        "Teleportation"
+      ],
+      [
+        "/manual/treasure-maps",
+        "Treasure Maps"
+      ],
+      [
+        "/manual/player-housing",
+        "Player Housing"
+      ],
+      [
+        "/legal",
+        "Legal Info"
+      ],
+      [
+        "/rss.xml",
+        ""
+      ],
+      [
+        "http://twitter.com/DarkfallMMORPG",
+        ""
+      ],
+      [
+        "http://www.facebook.com/darkfalluw",
+        ""
+      ],
+      [
+        "http://www.youtube.com/user/DarkfallOnline",
+        ""
+      ]
+    ]
+  }
+]

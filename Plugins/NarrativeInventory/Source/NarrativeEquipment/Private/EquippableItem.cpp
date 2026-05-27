@@ -9,6 +9,41 @@
 
 #define LOCTEXT_NAMESPACE "EquippableItem"
 
+namespace
+{
+	struct FSpellRiseNarrativeEquipParams
+	{
+		UObject* ItemObject = nullptr;
+		bool bShouldEquip = false;
+	};
+
+	bool TryRouteToSpellRiseEquipmentManager(APawn* OwningPawn, UEquippableItem* Item, bool bShouldEquip)
+	{
+		if (!OwningPawn || !Item)
+		{
+			return false;
+		}
+
+		// Prefer the explicit server RPC; when called on clients this still routes to server.
+		UFunction* RouteFunction = OwningPawn->FindFunction(FName(TEXT("ServerHandleNarrativeItemActivationForEquipment")));
+		if (!RouteFunction)
+		{
+			// Fallback for projects exposing a non-RPC helper with similar intent.
+			RouteFunction = OwningPawn->FindFunction(FName(TEXT("HandleNarrativeItemActivationForEquipment")));
+		}
+		if (!RouteFunction)
+		{
+			return false;
+		}
+
+		FSpellRiseNarrativeEquipParams Params;
+		Params.ItemObject = Item;
+		Params.bShouldEquip = bShouldEquip;
+		OwningPawn->ProcessEvent(RouteFunction, &Params);
+		return true;
+	}
+}
+
 UEquippableItem::UEquippableItem()
 {
 	UseActionText = LOCTEXT("UseActionText_Equippable", "Equip");
@@ -35,6 +70,16 @@ void UEquippableItem::Deactivated_Implementation()
 	{
 		UseActionText = LOCTEXT("EquipText", "Equip");
 
+		if (TryRouteToSpellRiseEquipmentManager(GetOwningPawn(), this, false))
+		{
+			return;
+		}
+
+		if (!HasAuthority())
+		{
+			return;
+		}
+
 		if (UEquipmentComponent* EquipmentComponent = Cast<UEquipmentComponent>(GetOwningPawn()->GetComponentByClass(UEquipmentComponent::StaticClass())))
 		{
 			EquipmentComponent->UnequipItem(this);
@@ -47,6 +92,16 @@ void UEquippableItem::Activated_Implementation()
 	if (GetOwningPawn())
 	{
 		UseActionText = LOCTEXT("UnequipText", "Unequip");
+
+		if (TryRouteToSpellRiseEquipmentManager(GetOwningPawn(), this, true))
+		{
+			return;
+		}
+
+		if (!HasAuthority())
+		{
+			return;
+		}
 
 		if (UEquipmentComponent* EquipmentComponent = Cast<UEquipmentComponent>(GetOwningPawn()->GetComponentByClass(UEquipmentComponent::StaticClass())))
 		{

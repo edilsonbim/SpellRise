@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Persistence/SpellRisePostgresPersistenceProvider.h"
 
 #include "Dom/JsonObject.h"
@@ -55,12 +56,25 @@ FSpellRisePostgresPersistenceProvider::FSpellRisePostgresPersistenceProvider()
 
 	if (ConnectionString.IsEmpty())
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Error, TEXT("[Persistence][Postgres][InitFailed] Reason=missing_connection_string Env=SR_PG_CONN Cmd=SRPgConn"));
 		bReady = false;
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresInitRejected] Reason=missing_connection_string"));
 		return;
 	}
 
 	bReady = InitializeSchema();
+	if (bReady)
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Log,
+			TEXT("[Persistence][PostgresInitSucceeded] PsqlPath=%s"),
+			*PsqlPath);
+	}
+	else
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresInitRejected] PsqlPath=%s"),
+			*PsqlPath);
+	}
 }
 
 bool FSpellRisePostgresPersistenceProvider::LoadCharacterState(const FString& SteamId64, FSpellRiseCharacterSaveData& OutData, int64& OutRevision)
@@ -149,11 +163,12 @@ bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 	FString StdErr;
 	if (!ExecSql(SchemaSql, StdOut, StdErr))
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Error, TEXT("[Persistence][Postgres][SchemaFailed] StdErr=%s"), *StdErr);
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresSchemaRejected] Reason=exec_failed Stderr=%s"),
+			*StdErr.Left(512));
 		return false;
 	}
 
-	UE_LOG(LogSpellRisePersistencePostgres, Log, TEXT("[Persistence][Postgres][SchemaOk]"));
 	return true;
 }
 
@@ -164,6 +179,9 @@ bool FSpellRisePostgresPersistenceProvider::ExecSql(const FString& Sql, FString&
 
 	if (Sql.IsEmpty() || ConnectionString.IsEmpty())
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresSqlRejected] Reason=%s"),
+			Sql.IsEmpty() ? TEXT("empty_sql") : TEXT("missing_connection_string"));
 		return false;
 	}
 
@@ -172,6 +190,9 @@ bool FSpellRisePostgresPersistenceProvider::ExecSql(const FString& Sql, FString&
 	const FString TempSqlPath = FPaths::Combine(TempDir, FString::Printf(TEXT("psql_%s.sql"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)));
 	if (!FFileHelper::SaveStringToFile(Sql, *TempSqlPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresSqlRejected] Reason=temp_sql_write_failed Path=%s"),
+			*TempSqlPath);
 		return false;
 	}
 
@@ -181,7 +202,10 @@ bool FSpellRisePostgresPersistenceProvider::ExecSql(const FString& Sql, FString&
 	IFileManager::Get().Delete(*TempSqlPath, false, true, true);
 	if (ReturnCode != 0)
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Warning, TEXT("[Persistence][Postgres][ExecFailed] ReturnCode=%d StdErr=%s"), ReturnCode, *OutStdErr);
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresSqlRejected] Reason=psql_failed ReturnCode=%d StdErr=%s"),
+			ReturnCode,
+			*OutStdErr.Left(512));
 	}
 	return ReturnCode == 0;
 }
@@ -193,7 +217,10 @@ bool FSpellRisePostgresPersistenceProvider::ExecMutatingSql(const FString& Sql, 
 	const bool bOk = ExecSql(Sql, StdOut, StdErr);
 	if (!bOk)
 	{
-		UE_LOG(LogSpellRisePersistencePostgres, Warning, TEXT("[Persistence][Postgres][ExecFailed] Context=%s StdErr=%s"), Context ? Context : TEXT("unknown"), *StdErr);
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresMutationRejected] Context=%s StdErr=%s"),
+			Context ? Context : TEXT("unknown"),
+			*StdErr.Left(512));
 	}
 	return bOk;
 }
@@ -205,6 +232,10 @@ bool FSpellRisePostgresPersistenceProvider::LoadRevisionedSnapshot(const FString
 
 	if (TableName.IsEmpty() || KeyColumn.IsEmpty() || KeyValue.IsEmpty())
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresLoadRejected] Reason=invalid_load_key Table=%s KeyColumn=%s"),
+			*TableName,
+			*KeyColumn);
 		return false;
 	}
 
@@ -219,22 +250,40 @@ bool FSpellRisePostgresPersistenceProvider::LoadRevisionedSnapshot(const FString
 	FString StdErr;
 	if (!ExecSql(Sql, StdOut, StdErr))
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresLoadRejected] Reason=query_failed Table=%s Stderr=%s"),
+			*TableName,
+			*StdErr.Left(512));
 		return false;
 	}
 
 	const FString JsonLine = StdOut.TrimStartAndEnd();
 	if (JsonLine.IsEmpty())
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Log,
+			TEXT("[Persistence][PostgresLoadRejected] Reason=not_found Table=%s"),
+			*TableName);
 		return false;
 	}
 
-	return ParseRevisionAndSnapshot(JsonLine, OutRevision, OutSnapshotJson);
+	const bool bParsed = ParseRevisionAndSnapshot(JsonLine, OutRevision, OutSnapshotJson);
+	if (!bParsed)
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresLoadRejected] Reason=parse_failed Table=%s"),
+			*TableName);
+	}
+	return bParsed;
 }
 
 bool FSpellRisePostgresPersistenceProvider::SaveRevisionedSnapshot(const FString& TableName, const FString& KeyColumn, const FString& KeyValue, const FString& SnapshotJson, int64 ExpectedRevision, int64 TargetRevision) const
 {
 	if (TableName.IsEmpty() || KeyColumn.IsEmpty() || KeyValue.IsEmpty() || SnapshotJson.IsEmpty() || TargetRevision <= 0)
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=invalid_save_args Table=%s TargetRevision=%lld"),
+			*TableName,
+			TargetRevision);
 		return false;
 	}
 
@@ -261,11 +310,25 @@ bool FSpellRisePostgresPersistenceProvider::SaveRevisionedSnapshot(const FString
 	FString StdErr;
 	if (!ExecSql(UpdateSql, StdOut, StdErr))
 	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=query_failed Table=%s Stderr=%s"),
+			*TableName,
+			*StdErr.Left(512));
 		return false;
 	}
 
 	const FString Result = StdOut.TrimStartAndEnd();
-	return Result == TEXT("1");
+	const bool bSaved = Result == TEXT("1");
+	if (!bSaved)
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=revision_conflict Table=%s ExpectedRevision=%lld TargetRevision=%lld Result=%s"),
+			*TableName,
+			ExpectedRevision,
+			TargetRevision,
+			*Result.Left(64));
+	}
+	return bSaved;
 }
 
 FString FSpellRisePostgresPersistenceProvider::EscapeSqlLiteral(const FString& InValue)

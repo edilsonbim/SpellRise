@@ -1,5 +1,6 @@
-﻿// FallDamageComponent.h
 #pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
@@ -62,6 +63,9 @@ protected:
 
 	UPROPERTY(Transient)
 	float FallStartZ = 0.f;
+
+	UPROPERTY(Transient)
+	float MaxAirZ = 0.f;
 
 	UPROPERTY(Transient)
 	float FallStartTime = 0.f;

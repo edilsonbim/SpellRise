@@ -1,5 +1,7 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
@@ -12,6 +14,7 @@ class UInputMappingContext;
 class UInputAction;
 class UCameraComponent;
 class UAudioComponent;
+class UChildActorComponent;
 class USkeletalMeshComponent;
 class UAnimMontage;
 class USpellRiseAbilitySystemComponent;
@@ -25,6 +28,7 @@ class UCatalystComponent;
 class UDerivedStatsAttributeSet;
 class UAbilitySystemComponent;
 class ASpellRisePlayerState;
+class USpellRiseEquipmentManagerComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
 
@@ -39,21 +43,29 @@ enum class ESpellRiseArchetype : uint8
 	Cleric UMETA(DisplayName="Cleric")
 };
 
+UENUM(BlueprintType)
+enum class ESpellRiseAnimationRuntimeStandard : uint8
+{
+	GameAnimationSampleMannyQuinn UMETA(DisplayName="Game Animation Sample / UE5 Manny-Quinn"),
+	MetaHumanVisualOverride UMETA(DisplayName="MetaHuman VisualOverride"),
+	UEFNRetargetedSource UMETA(DisplayName="UEFN Retargeted Source")
+};
+
 USTRUCT(BlueprintType)
 struct FSpellRiseGrantedAbility
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant")
-	TSubclassOf<UGameplayAbility> Ability = nullptr;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
+	TSoftClassPtr<UGameplayAbility> AbilityClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
 	int32 AbilityLevel = 1;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
 	FGameplayTag InputTag;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant")
 	bool bAutoActivateIfNoInputTag = false;
 };
 
@@ -87,6 +99,7 @@ public:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnRep_Controller() override;
 	virtual void OnRep_PlayerState() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
@@ -101,7 +114,19 @@ public:
 	void SR_ClearAbilityInput();
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant);
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level = 1);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS", meta=(DisplayName="Grant Ability"))
+	FGameplayAbilitySpecHandle GrantAbility(
+		TSoftClassPtr<UGameplayAbility> AbilityClass,
+		UPARAM(meta=(ClampMin="1")) int32 AbilityLevel,
+		UPARAM(meta=(Categories="InputTag")) FGameplayTag InputTag,
+		bool bAutoActivateIfNoInputTag);
+
+	TArray<FGameplayAbilitySpecHandle> GrantAbilitiesFromSource(
+		const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+		UObject* SourceObject,
+		bool bAllowDuplicateAbilityClassesForDifferentSources = true);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
@@ -112,8 +137,11 @@ public:
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|GAS")
 	void ServerSendGameplayEventToSelf(const FGameplayEventData& EventData);
 
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|GAS")
+	void MultiSendGameplayEventToActor(AActor* TargetActor, FGameplayEventData EventData);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
-	bool IsDead() const { return bIsDead; }
+	bool IsDead() const;
 
 	const UInputMappingContext* GetDefaultInputMappingContext() const { return IMC_Default; }
 
@@ -126,6 +154,9 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void MultiHandleDeath();
 
+	UFUNCTION(NetMulticast, Reliable)
+	void MultiHandleCorpseDespawn();
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Catalyst")
 	UCatalystAttributeSet* GetCatalystAttributeSet() const { return CatalystAttributeSet; }
 
@@ -134,6 +165,15 @@ public:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiOnCatalystProc(int32 CatalystTier);
+
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|Equipment")
+	void MultiRefreshEquipmentVisuals();
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
+	USpellRiseEquipmentManagerComponent* GetSpellRiseEquipmentManager() const;
+
+	UFUNCTION(Server, Reliable)
+	void ServerHandleNarrativeItemActivationForEquipment(UObject* ItemObject, bool bShouldEquip);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Catalyst")
 	void BP_OnCatalystProc(int32 CatalystTier);
@@ -150,8 +190,13 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
 	USkeletalMeshComponent* GetVisualMeshComponent() const;
 
+	FVector GetDamageNumberWorldLocation() const;
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
 	USkeletalMeshComponent* GetEquipmentAttachMeshComponent() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
+	USkeletalMeshComponent* GetEquipmentAttachMeshComponentForSocket(FName TargetSocket) const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Camera")
 	UCameraComponent* GetActiveAimCameraComponent() const;
@@ -179,9 +224,6 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement")
 	float BaseWalkSpeed = 500.f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<USpellRiseAbilitySystemComponent> CachedASCFromPlayerState = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
@@ -227,6 +269,18 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Mesh")
 	FName EquipmentAttachMeshComponentName = TEXT("VisualOverride");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation")
+	ESpellRiseAnimationRuntimeStandard AnimationRuntimeStandard = ESpellRiseAnimationRuntimeStandard::GameAnimationSampleMannyQuinn;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation")
+	bool bTreatVisualOverrideAsPresentationOnly = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation", meta=(EditCondition="bTreatVisualOverrideAsPresentationOnly"))
+	bool bEnforceAliveVisualMeshPresentationCollision = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation", meta=(EditCondition="bTreatVisualOverrideAsPresentationOnly"))
+	FName AliveVisualMeshCollisionProfileName = TEXT("CharacterMesh");
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Camera")
 	FName AimCameraComponentName = TEXT("GameplayCamera");
@@ -283,6 +337,27 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float RespawnDelaySeconds = 30.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Corpse", meta=(ClampMin="0.0"))
+	float CorpseDespawnDelaySeconds = 20.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll")
+	FName DeathRagdollCollisionProfileName = TEXT("Ragdoll");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollBackwardImpulse = 9000.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollUpwardImpulse = 5500.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollInheritedVelocityScale = 45.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll", meta=(ClampMin="0.0"))
+	float DeathRagdollMaxImpulse = 18000.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Ragdoll")
+	FName DeathRagdollImpulseBoneName = TEXT("pelvis");
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float DeathMessageHideLeadTimeSeconds = 1.0f;
 
@@ -317,8 +392,10 @@ public:
 	TObjectPtr<class USpellRiseDeathScreenWidget> LocalDeathScreenWidget = nullptr;
 
 	FTimerHandle RespawnTimerHandle;
+	FTimerHandle CorpseDespawnTimerHandle;
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
+	FTimerHandle ASCInitializationRetryTimerHandle;
 
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpecHandle> StartupGrantedAbilityHandles;
@@ -327,19 +404,22 @@ public:
 	bool bASCDelegatesBound = false;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
+	TObjectPtr<USpellRiseAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
 
 	void InitASCActorInfo();
+	void ScheduleASCInitializationRetry();
+	void HandleASCInitializationRetry();
+	bool HasValidASCActorInfo() const;
+	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	bool InitializeAbilitySystemFromPlayerState();
 	void ApplyStartupEffects();
 	void BindASCDelegates();
 	void RecalculateDerivedStats();
 	void ApplyDerivedStatsInfinite();
-	void LogDerivedDebug();
 	void ResetDeathStateAndResources_Server();
 	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
@@ -348,6 +428,8 @@ protected:
 	void SetCharacterInputEnabled(bool bEnabled);
 	void ScheduleRespawn_Server();
 	void ExecuteRespawn_Server();
+	void ScheduleCorpseDespawn_Server();
+	void ExecuteCorpseDespawn_Server();
 	void RefreshCombatLockFromDamage_Server(float DamageDelta);
 	bool IsCombatLockActive_Server(double* OutSecondsRemaining = nullptr) const;
 	void StopAllCharacterAudio(bool bIncludeAttachedActors);
@@ -357,12 +439,20 @@ protected:
 	void HideLocalDeathScreenText();
 	void RemoveRuntimeGrantedAbilitiesOnDeath_Server();
 	void DestroyDeathAttachments_Server(USkeletalMeshComponent* VisualMesh);
+	void ConfigureDeathRagdoll(USkeletalMeshComponent* VisualMesh, const FVector& PreDeathVelocity);
+	FVector BuildDeathRagdollImpulse(const FVector& PreDeathVelocity) const;
+	void ApplyAnimationPresentationPolicy();
+	void ValidateAnimationPresentationPolicy() const;
 	void ForceServerAnimTick();
 	void EnsureAnimInstanceInitialized();
 	USkeletalMeshComponent* FindCharacterSkeletalMeshComponentByName(FName ComponentName) const;
+	UChildActorComponent* FindCharacterChildActorComponentByName(FName ComponentName) const;
+	USkeletalMeshComponent* ResolveSkeletalMeshFromChildActorComponent(FName ComponentName) const;
 	UCameraComponent* FindCharacterCameraComponentByName(FName ComponentName) const;
 	void HandleArchetypeChanged(ESpellRiseArchetype OldArchetype);
 	void HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag);
+	void SyncDeadStateFromASC(const TCHAR* Context);
+	void SyncASCSelectedSpellFromReplicatedTag();
 	bool IsAllowedServerEventTag(const FGameplayTag& EventTag) const;
 	bool ValidateServerGameplayEventPayload(const FGameplayEventData& EventData, FString& OutRejectReason) const;
 	bool CheckServerGameplayEventRateLimit(const FGameplayTag& EventTag, FString& OutRejectReason);
@@ -376,6 +466,7 @@ protected:
 	void AuditRejectedServerRpc(const TCHAR* RpcName, const FString& RejectReason);
 	void AuditRejectedServerGameplayEvent(const FGameplayTag& EventTag, const FString& RejectReason);
 	float ResolveMaxAbsServerEventMagnitude(const FGameplayTag& EventTag) const;
+	bool CanIssueOwnerServerRpc(FString& OutRejectReason) const;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|GameplayEvent")
 	FGameplayTagContainer AllowedServerEventTags;

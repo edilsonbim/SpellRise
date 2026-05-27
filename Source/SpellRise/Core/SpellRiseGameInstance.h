@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
@@ -11,6 +13,9 @@ class SPELLRISE_API USpellRiseGameInstance : public UGameInstance
 
 public:
 	virtual void Init() override;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
+	void RestoreGameplayInputMode();
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Online")
 	bool IsSteamSubsystemActive() const;

@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/SpellRiseConstructionModeComponent.h"
 
 #include "AbilitySystemComponent.h"
@@ -29,7 +30,7 @@ void USpellRiseConstructionModeComponent::GetLifetimeReplicatedProps(TArray<FLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(USpellRiseConstructionModeComponent, bConstructionModeEnabled);
+	DOREPLIFETIME_CONDITION(USpellRiseConstructionModeComponent, bConstructionModeEnabled, COND_OwnerOnly);
 }
 
 void USpellRiseConstructionModeComponent::RequestSetConstructionMode(bool bEnableConstructionMode)
@@ -67,13 +68,7 @@ void USpellRiseConstructionModeComponent::ServerSetConstructionMode_Implementati
 	FString RejectReason;
 	if (!CanAcceptConstructionToggle(bEnableConstructionMode, RejectReason))
 	{
-		UE_LOG(
-			LogSpellRiseConstructionMode,
-			Warning,
-			TEXT("[ConstructionMode][Reject] Owner=%s Requested=%d Reason=%s"),
-			*GetNameSafe(GetOwner()),
-			bEnableConstructionMode ? 1 : 0,
-			*RejectReason);
+		AuditRejectedConstructionModeRpc(RejectReason, bEnableConstructionMode);
 		return;
 	}
 
@@ -92,12 +87,6 @@ void USpellRiseConstructionModeComponent::ApplyConstructionModeInternal(bool bEn
 
 	if (bLog)
 	{
-		UE_LOG(
-			LogSpellRiseConstructionMode,
-			Log,
-			TEXT("[ConstructionMode][StateChanged] Owner=%s Enabled=%d"),
-			*GetNameSafe(GetOwner()),
-			bConstructionModeEnabled ? 1 : 0);
 	}
 }
 
@@ -154,4 +143,15 @@ bool USpellRiseConstructionModeComponent::IsBlockedForConstructionEntry(FString&
 	}
 
 	return false;
+}
+
+void USpellRiseConstructionModeComponent::AuditRejectedConstructionModeRpc(const FString& RejectReason, bool bRequestedEnable)
+{
+	++RejectedConstructionModeRpcCount;
+	UE_LOG(LogSpellRiseConstructionMode, Warning,
+		TEXT("[RPC][Rejected] Rpc=ServerSetConstructionMode Reason=%s Count=%d Owner=%s RequestedEnable=%d"),
+		*RejectReason,
+		RejectedConstructionModeRpcCount,
+		*GetNameSafe(GetOwner()),
+		bRequestedEnable ? 1 : 0);
 }

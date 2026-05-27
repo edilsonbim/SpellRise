@@ -1,7 +1,8 @@
 #pragma once
 
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
+
 #include "CoreMinimal.h"
-#include "Engine/EngineTypes.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagContainer.h"
 #include "TimerManager.h"
@@ -13,36 +14,7 @@ class UInputAction;
 class UGameplayAbility;
 class USpellRiseNumberPopComponent_NiagaraText;
 class USpellRiseAbilitySystemComponent;
-class USpellRiseCombatHUDWidget;
 class UNarrativeInteractionComponent;
-class UUserWidget;
-class UResourceAttributeSet;
-class ASpellRisePlayerState;
-struct FOnAttributeChangeData;
-
-USTRUCT(BlueprintType)
-struct FSpellRiseAimTraceResult
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
-	bool bHit = false;
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
-	FHitResult HitResult;
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
-	FVector TraceStart = FVector::ZeroVector;
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
-	FVector TraceEnd = FVector::ZeroVector;
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
-	FVector AimDirection = FVector::ForwardVector;
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Aim")
-	FVector TargetPoint = FVector::ZeroVector;
-};
 
 UCLASS()
 class SPELLRISE_API ASpellRisePlayerController : public APlayerController
@@ -51,6 +23,12 @@ class SPELLRISE_API ASpellRisePlayerController : public APlayerController
 
 public:
 	ASpellRisePlayerController();
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|HUD")
+	void BP_StartCastBar(float CastDuration);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|HUD")
+	void BP_StopCastBar();
 
 	virtual void ProcessEvent(UFunction* Function, void* Parameters) override;
 
@@ -62,9 +40,6 @@ public:
 		bool bIsCritical
 	);
 
-	UFUNCTION(BlueprintCallable, Category="SpellRise|Aim")
-	bool GetCurrentAimTraceResult(FSpellRiseAimTraceResult& OutResult) const;
-
 	UFUNCTION(Client, Reliable, Category="SpellRise|Chat")
 	void ClientReceiveCombatLogEntry(float Damage, const FString& OtherActorName, bool bIsOutgoing);
 
@@ -73,15 +48,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
 	void ReceiveChatMessageLocal(const FSpellRiseChatMessage& Message);
-
-	UFUNCTION(BlueprintCallable, Category="SpellRise|HUD")
-	void SetCombatHUDSuppressedByDeath(bool bSuppressed);
-
-	UFUNCTION(Exec, Category="SpellRise|Debug")
-	void SR_ForceDeath();
-
-	UFUNCTION(Server, Reliable, Category="SpellRise|Debug")
-	void ServerSR_ForceDeath();
 
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Inventory")
 	void InventorySplitSlotSERVER(UObject* FromContainer, int32 Slot, int32 Amount);
@@ -101,9 +67,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
 	bool IsConstructionModeActive() const;
 
+	APawn* GetLastSpellRiseControlledPawn() const;
+
 protected:
 	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void SetupInputComponent() override;
 	virtual void OnPossess(APawn* InPawn) override;
@@ -195,28 +162,10 @@ protected:
 	TObjectPtr<UInputAction> IA_Ability8 = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_PauseMenu = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TSubclassOf<UGameplayAbility> AttackAbilityClass;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Feedback", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USpellRiseNumberPopComponent_NiagaraText> NumberPopComponent = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim", meta=(ClampMin="1.0"))
-	float DefaultAimTraceDistance = 10000.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim", meta=(ClampMin="0.0"))
-	float DefaultAimTraceRadius = 10.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim")
-	TEnumAsByte<ECollisionChannel> DefaultAimTraceChannel = ECC_Visibility;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Aim")
-	bool bDefaultAimTraceComplex = false;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|HUD")
-	TSubclassOf<USpellRiseCombatHUDWidget> CombatHUDWidgetClass = nullptr;
 
 	void SetupEnhancedInput();
 	void RefreshEnhancedInputContexts();
@@ -247,23 +196,11 @@ protected:
 	void OnAbility7Released();
 	void OnAbility8Pressed();
 	void OnAbility8Released();
-	void OnPauseMenuPressed();
 
 private:
+	void LogInputFocusSnapshot(const TCHAR* SourceLabel);
 	bool CanRunLocalHUDFlow(FString* OutSkipReason = nullptr) const;
-	void LogASCBindSkipReason(const FString& SkipReason);
 	void HandlePawnChangedRuntime(APawn* NewPawn, const TCHAR* SourceLabel);
-	void EnsureCombatHUDCreated();
-	void CleanupCombatHUD();
-	void TryBindHUDToCurrentASC();
-	void UnbindHUDFromASC();
-	void UpdateCombatHUDVisibility();
-	void SetPlayerHUDWidgetsSuppressed(bool bSuppressed);
-	bool IsKnownPlayerHUDWidget(const UUserWidget* Widget) const;
-	void BroadcastResourcesToHUD();
-	void BroadcastAbilitySlotsToHUD();
-	void BroadcastTargetToHUD(const FSpellRiseAimTraceResult& AimResult);
-	void OnResourceAttributeChanged(const FOnAttributeChangeData& Data);
 
 	USpellRiseAbilitySystemComponent* GetSpellRiseASCFromPawn() const;
 	void SendAbilityInputTagPressed(FGameplayTag InputTag);
@@ -273,70 +210,23 @@ private:
 	bool TryExecuteNarrativeInteract(bool bPressed) const;
 	bool IsControlledCharacterDead() const;
 	bool IsGameplayInputBlocked() const;
-	bool IsPersistenceProfileReady() const;
 	UNarrativeInteractionComponent* ResolveNarrativeInteractionComponent() const;
-	void ExecuteForceDeath_Server();
-
-	bool BuildAimTraceResult(
-		FSpellRiseAimTraceResult& OutResult,
-		float TraceDistance,
-		float TraceRadius,
-		ECollisionChannel TraceChannel,
-		bool bTraceComplex) const;
-
-	void CollectAimIgnoredActors(TArray<AActor*>& OutActorsToIgnore) const;
+	void AuditRejectedInventoryRpc(const TCHAR* RpcName, const FString& RejectReason);
 
 	void PushCombatLogMessage(const FString& MessageText);
-	void FlushPendingChatMessages();
-	bool TryAppendPendingChatMessage(const FSpellRiseChatMessage& Message) const;
-	bool IsChatWidgetReadyForAppend() const;
-	bool TryAppendCombatLogToChatChannel(const FString& MessageText) const;
 	bool ShouldEnableUIInputContext() const;
-	UObject* FindChatComponentObject() const;
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Chat")
-	bool bEnableLegacyReflectionChatRouting = false;
 
 	UPROPERTY(Transient)
-	TArray<FSpellRiseChatMessage> PendingChatMessages;
+	double LastInputFocusSnapshotTimeSeconds = 0.0;
 
 	UPROPERTY(Transient)
-	TObjectPtr<USpellRiseCombatHUDWidget> CombatHUDWidget = nullptr;
+	FString LastInputFocusSnapshotSignature;
 
 	UPROPERTY(Transient)
-	bool bCombatHUDHiddenByDeath = false;
+	TWeakObjectPtr<APawn> LastSpellRiseControlledPawn;
 
 	UPROPERTY(Transient)
-	bool bCombatHUDSuppressedByDeath = false;
-
-	UPROPERTY(Transient)
-	TArray<TWeakObjectPtr<UUserWidget>> DeathSuppressedHUDWidgets;
-
-	TWeakObjectPtr<USpellRiseAbilitySystemComponent> HUDObservedASC;
-	FDelegateHandle HUDHealthChangedHandle;
-	FDelegateHandle HUDManaChangedHandle;
-	FDelegateHandle HUDStaminaChangedHandle;
-
-	double NextHUDAbilitiesRefreshTimeSeconds = 0.0;
-	double NextHUDTargetRefreshTimeSeconds = 0.0;
-	bool bLastKnownPersistenceProfileReady = false;
-	bool bAutoForceDeathFromCommandLine = false;
-	bool bAutoForceDeathTriggered = false;
-	double AutoForceDeathTriggerAtServerTimeSeconds = -1.0;
-
-	UPROPERTY(Transient)
-	bool bLoggedHUDCreateAttempt = false;
-
-	UPROPERTY(Transient)
-	bool bLoggedHUDCreateSuccess = false;
-
-	UPROPERTY(Transient)
-	FString LastHUDCreateFailureReason;
-
-	UPROPERTY(Transient)
-	FString LastASCBindSkipReason;
+	TMap<FString, int32> RejectedInventoryRpcCountByReason;
 
 protected:
-	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|UI")
-	void BP_OnPauseMenuInput();
 };

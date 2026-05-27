@@ -6,6 +6,101 @@
 #include "GameFramework/PlayerController.h"
 #include "InventoryComponent.h"
 #include "NarrativeItem.h"
+#include "Algo/Sort.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogNarrativeInventoryFunctionLibrary, Log, All);
+
+namespace
+{
+	static UNarrativeInventoryComponent* ResolveBestInventoryComponent(AActor* Target)
+	{
+		if (!Target)
+		{
+			return nullptr;
+		}
+
+		TArray<UNarrativeInventoryComponent*> InventoryComponents;
+		Target->GetComponents<UNarrativeInventoryComponent>(InventoryComponents);
+
+		if (InventoryComponents.Num() <= 0)
+		{
+			return nullptr;
+		}
+
+		if (InventoryComponents.Num() == 1)
+		{
+			return InventoryComponents[0];
+		}
+
+		// Deterministic order to avoid client/server choosing different components.
+		Algo::Sort(InventoryComponents, [](const UNarrativeInventoryComponent* A, const UNarrativeInventoryComponent* B)
+		{
+			return GetNameSafe(A) < GetNameSafe(B);
+		});
+
+		auto ScoreInventory = [](const UNarrativeInventoryComponent* Inventory) -> int32
+		{
+			if (!Inventory)
+			{
+				return -1000;
+			}
+
+			const FString Name = Inventory->GetName();
+			int32 Score = 0;
+
+			if (Name.Equals(TEXT("NarrativeInventoryComponent"), ESearchCase::IgnoreCase))
+			{
+				Score += 100;
+			}
+			else if (Name.Equals(TEXT("InventoryComponent"), ESearchCase::IgnoreCase))
+			{
+				Score += 90;
+			}
+			else if (Name.Contains(TEXT("inventory"), ESearchCase::IgnoreCase))
+			{
+				Score += 40;
+			}
+
+			if (Inventory->GetIsReplicated())
+			{
+				Score += 20;
+			}
+
+			Score += FMath::Clamp(Inventory->GetCapacity(), 0, 1000) / 20;
+			return Score;
+		};
+
+		UNarrativeInventoryComponent* BestInventory = InventoryComponents[0];
+		int32 BestScore = ScoreInventory(BestInventory);
+		for (int32 Index = 1; Index < InventoryComponents.Num(); ++Index)
+		{
+			UNarrativeInventoryComponent* Candidate = InventoryComponents[Index];
+			const int32 CandidateScore = ScoreInventory(Candidate);
+			if (CandidateScore > BestScore)
+			{
+				BestInventory = Candidate;
+				BestScore = CandidateScore;
+			}
+		}
+
+		TArray<FString> ComponentNames;
+		ComponentNames.Reserve(InventoryComponents.Num());
+		for (const UNarrativeInventoryComponent* Inventory : InventoryComponents)
+		{
+			ComponentNames.Add(GetNameSafe(Inventory));
+		}
+
+		UE_LOG(
+			LogNarrativeInventoryFunctionLibrary,
+			Warning,
+			TEXT("[NarrativeInventory] Multiple inventory components found on %s. Components=[%s] Selected=%s"),
+			*GetNameSafe(Target),
+			*FString::Join(ComponentNames, TEXT(", ")),
+			*GetNameSafe(BestInventory));
+
+		return BestInventory;
+	}
+}
 
 class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryComponentFromTarget(AActor* Target)
 {
@@ -14,7 +109,7 @@ class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryCompo
 		return nullptr;
 	}
 
-	if (UNarrativeInventoryComponent* InventoryComp = Target->FindComponentByClass<UNarrativeInventoryComponent>())
+	if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(Target))
 	{
 		return InventoryComp;
 	}
@@ -24,7 +119,7 @@ class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryCompo
 	{
 		if (const APlayerState* PlayerState = OwningPawn->GetPlayerState<APlayerState>())
 		{
-			if (UNarrativeInventoryComponent* InventoryComp = PlayerState->FindComponentByClass<UNarrativeInventoryComponent>())
+			if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(const_cast<APlayerState*>(PlayerState)))
 			{
 				return InventoryComp;
 			}
@@ -32,7 +127,7 @@ class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryCompo
 
 		if (const AController* OwningController = OwningPawn->GetController())
 		{
-			if (UNarrativeInventoryComponent* InventoryComp = OwningController->FindComponentByClass<UNarrativeInventoryComponent>())
+			if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(const_cast<AController*>(OwningController)))
 			{
 				return InventoryComp;
 			}
@@ -44,13 +139,13 @@ class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryCompo
 		{
 			if (const APlayerState* PlayerState = OwningController->GetPlayerState<APlayerState>())
 			{
-				if (UNarrativeInventoryComponent* InventoryComp = PlayerState->FindComponentByClass<UNarrativeInventoryComponent>())
+				if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(const_cast<APlayerState*>(PlayerState)))
 				{
 					return InventoryComp;
 				}
 			}
 
-			return OwningController->GetPawn()->FindComponentByClass<UNarrativeInventoryComponent>();
+			return ResolveBestInventoryComponent(OwningController->GetPawn());
 		}
 	}
 

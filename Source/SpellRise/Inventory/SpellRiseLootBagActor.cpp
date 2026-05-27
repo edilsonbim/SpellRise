@@ -1,10 +1,13 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 
 #include "Containers/StringConv.h"
+#include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
 #include "InteractableComponent.h"
 #include "InventoryComponent.h"
+#include "NarrativeItem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseLootBagActor, Log, All);
 
@@ -23,6 +26,12 @@ void ASpellRiseLootBagActor::BeginPlay()
 	CachedInventoryComponent = FindComponentByClass<UNarrativeInventoryComponent>();
 	ResolveLootInteractable();
 	ApplyDeadPlayerNameToInteractable();
+
+	if (HasAuthority())
+	{
+		BindInventoryEmptyDespawn_Server();
+		ScheduleEmptyDespawnIfNeeded_Server();
+	}
 }
 
 void ASpellRiseLootBagActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -55,12 +64,109 @@ void ASpellRiseLootBagActor::OnRep_DeadPlayerDisplayName()
 	ApplyDeadPlayerNameToInteractable();
 }
 
+void ASpellRiseLootBagActor::HandleInventoryUpdated()
+{
+	ScheduleEmptyDespawnIfNeeded_Server();
+}
+
+void ASpellRiseLootBagActor::HandleInventoryItemRemoved(UNarrativeItem* Item, int32 Amount)
+{
+	ScheduleEmptyDespawnIfNeeded_Server();
+}
+
+void ASpellRiseLootBagActor::BindInventoryEmptyDespawn_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!CachedInventoryComponent)
+	{
+		CachedInventoryComponent = FindComponentByClass<UNarrativeInventoryComponent>();
+	}
+
+	if (!CachedInventoryComponent)
+	{
+		return;
+	}
+
+	CachedInventoryComponent->OnInventoryUpdated.RemoveDynamic(this, &ASpellRiseLootBagActor::HandleInventoryUpdated);
+	CachedInventoryComponent->OnItemRemoved.RemoveDynamic(this, &ASpellRiseLootBagActor::HandleInventoryItemRemoved);
+	CachedInventoryComponent->OnInventoryUpdated.AddDynamic(this, &ASpellRiseLootBagActor::HandleInventoryUpdated);
+	CachedInventoryComponent->OnItemRemoved.AddDynamic(this, &ASpellRiseLootBagActor::HandleInventoryItemRemoved);
+}
+
+void ASpellRiseLootBagActor::ScheduleEmptyDespawnIfNeeded_Server()
+{
+	if (!HasAuthority() || !IsLootInventoryEmpty())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	if (World->GetTimerManager().IsTimerActive(EmptyDespawnTimerHandle))
+	{
+		return;
+	}
+
+	World->GetTimerManager().SetTimer(
+		EmptyDespawnTimerHandle,
+		this,
+		&ASpellRiseLootBagActor::ExecuteEmptyDespawn_Server,
+		FMath::Max(0.0f, EmptyDespawnDelaySeconds),
+		false);
+}
+
+void ASpellRiseLootBagActor::ExecuteEmptyDespawn_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (!IsLootInventoryEmpty())
+	{
+		return;
+	}
+
+	Destroy();
+}
+
+bool ASpellRiseLootBagActor::IsLootInventoryEmpty() const
+{
+	const UNarrativeInventoryComponent* InventoryComponent = CachedInventoryComponent.Get();
+	if (!InventoryComponent)
+	{
+		InventoryComponent = FindComponentByClass<UNarrativeInventoryComponent>();
+	}
+
+	if (!InventoryComponent)
+	{
+		return false;
+	}
+
+	for (UNarrativeItem* Item : InventoryComponent->GetItems())
+	{
+		if (Item && Item->GetQuantity() > 0)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void ASpellRiseLootBagActor::ApplyDeadPlayerNameToInteractable()
 {
 	UNarrativeInteractableComponent* LootInteractable = ResolveLootInteractable();
 	if (!LootInteractable)
 	{
-		UE_LOG(LogSpellRiseLootBagActor, Verbose, TEXT("[FullLoot][Bag] Interactable_Loot nao encontrado em %s"), *GetNameSafe(this));
 		return;
 	}
 

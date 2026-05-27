@@ -1,0 +1,79 @@
+name: SpellRise AAA Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+  workflow_dispatch:
+    inputs:
+      gate_mode:
+        description: Gate mode
+        required: true
+        default: Auto
+        type: choice
+        options:
+          - Auto
+          - DocsOnly
+          - Build
+          - NetCritical
+          - Persistence
+          - Combat
+          - Release
+      skip_smoke:
+        description: Skip smoke gate
+        required: false
+        default: false
+        type: boolean
+      no_steam:
+        description: Run with -NoSteam
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  aaa-gate:
+    name: AAA Operational Gate
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - unreal-source
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Run AAA gate
+        shell: powershell
+        run: |
+          $gateMode = '${{ github.event.inputs.gate_mode }}'
+          if ([string]::IsNullOrWhiteSpace($gateMode)) {
+            $gateMode = 'Auto'
+          }
+
+          $args = @(
+            '-ExecutionPolicy', 'Bypass',
+            '-File', '.\Scripts\Pipeline\Run-SpellRise-AAAGate.ps1',
+            '-GateMode', $gateMode
+          )
+
+          if ('${{ github.event.inputs.skip_smoke }}' -eq 'true') {
+            $args += '-SkipSmoke'
+          }
+
+          if ('${{ github.event.inputs.no_steam }}' -ne 'false') {
+            $args += '-NoSteam'
+          }
+
+          & powershell @args
+
+      - name: Upload gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spellrise-aaa-gate-logs
+          path: Saved/Logs/Automation/AAAOperationalGate/**

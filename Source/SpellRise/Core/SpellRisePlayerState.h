@@ -1,4 +1,6 @@
-﻿#pragma once
+#pragma once
+
+// Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
@@ -25,7 +27,7 @@ class SPELLRISE_API ASpellRisePlayerState : public APlayerState, public IAbility
 public:
 	ASpellRisePlayerState();
 
-	// IAbilitySystemInterface
+
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -73,7 +75,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
 
-	// Attribute sets live on PlayerState (authoritative GAS owner)
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
 
@@ -115,6 +117,8 @@ private:
 	};
 
 	bool CheckRespawnBedServerRateLimit(FString& OutRejectReason);
+	void AuditRejectedRespawnBedRpc(const FString& RejectReason, const FString& InActorName, const FString& InClassPath, const FVector& InLocation);
+	void RecordOnRepTelemetry(const TCHAR* RepName);
 
 	bool ValidateRespawnBedPayload(
 		const AController* OwnerController,
@@ -134,6 +138,9 @@ private:
 	int32 RespawnBedRpcRateLimitMaxCountPerWindow = 2;
 
 	FRespawnBedRpcRateState RespawnBedRpcRateState;
+	TMap<FString, int32> RejectedRpcCountByReason;
+	TMap<FString, int32> OnRepCountByName;
+	TMap<FString, double> OnRepWindowStartByName;
 
 	void MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR* Reason);
 

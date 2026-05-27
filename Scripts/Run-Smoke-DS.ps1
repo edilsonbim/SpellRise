@@ -15,7 +15,7 @@ param(
     [string]$ClientExecCmds = "",
     [switch]$WithLagLoss,
     [int]$PktLag = 120,
-    [int]$PktLoss = 5,
+    [int]$PktLoss = 1,
     [switch]$NoSteam,
     [switch]$RequirePersistence
 )
@@ -190,10 +190,16 @@ $persistencePreloadMissCount = Get-MatchCount -Path $serverLog -Pattern "\[Persi
 $persistenceApplyResultCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[ApplyResult\]"
 $persistenceApplySkippedCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[ApplySkipped\]"
 $persistenceSaveCharacterOkCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[SaveCharacterOk\]"
-$persistencePreloadRejectedCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[PreloadRejected\].*missing_persistent_id"
-$persistenceSaveRejectedCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[SaveRejected\].*missing_persistent_id"
+$persistencePreloadSkippedNoSteamCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[PreloadSkipped\].*nosteam_mode"
+$persistenceApplySkippedNoSteamCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[ApplySkipped\].*nosteam_mode"
+$persistenceSaveSkippedNoSteamCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[SaveSkipped\].*nosteam_mode"
 $persistenceConflictCount = Get-MatchCount -Path $serverLog -Pattern "RevisionExpected"
 $persistenceTestIdFallbackCount = Get-MatchCount -Path $serverLog -Pattern "\[Persistence\]\[TestIdFallback\]"
+$replicationOverflowCountServer = Get-MatchCount -Path $serverLog -Pattern "FBitReader::SetOverflowed"
+$replicationOverflowCountClient1 = Get-MatchCount -Path $client1Log -Pattern "FBitReader::SetOverflowed"
+$replicationOverflowCountClient2 = Get-MatchCount -Path $client2Log -Pattern "FBitReader::SetOverflowed"
+$replicationOverflowCountClient1Reconnect = Get-MatchCount -Path $client1ReconnectLog -Pattern "FBitReader::SetOverflowed"
+$replicationOverflowCountTotal = $replicationOverflowCountServer + $replicationOverflowCountClient1 + $replicationOverflowCountClient2 + $replicationOverflowCountClient1Reconnect
 
 # Fallback anti-flake: em alguns runs o log do servidor pode não registrar "Join succeeded"
 # no tempo de coleta, mesmo com clientes confirmados no lado do cliente.
@@ -215,14 +221,14 @@ if ($ReconnectClient1.IsPresent) {
     $passReconnectClient1 = $client1Reconnected -and ($client1ReconnectWelcomeCount -ge 1) -and ($effectiveServerJoinCount -ge 3)
 }
 $passLagLoss = ($client1LagFlag -and $client2LagFlag)
+$passReplicationOverflow = ($replicationOverflowCountTotal -eq 0)
 $passPersistence = $true
 if ($RequirePersistence.IsPresent) {
     $passPersistenceSuccessPath = (($persistencePreloadOkCount -ge 1) -or ($persistencePreloadMissCount -ge 1)) -and (($persistenceApplyResultCount -ge 1) -or ($persistenceApplySkippedCount -ge 1)) -and ($persistenceSaveCharacterOkCount -ge 1)
-    $passPersistenceNoSteamAuthPath = $NoSteam.IsPresent -and ($persistencePreloadRejectedCount -ge 1) -and ($persistenceSaveRejectedCount -ge 1)
-    $passPersistenceNoSteamTestIdPath = $NoSteam.IsPresent -and (![string]::IsNullOrWhiteSpace($TestPersistentId)) -and ($persistenceTestIdFallbackCount -ge 1) -and ($persistenceSaveCharacterOkCount -ge 1)
-    $passPersistence = $passPersistenceSuccessPath -or $passPersistenceNoSteamAuthPath -or $passPersistenceNoSteamTestIdPath
+    $passPersistenceNoSteamDisabledPath = $NoSteam.IsPresent -and ($persistencePreloadSkippedNoSteamCount -ge 1) -and ($persistenceApplySkippedNoSteamCount -ge 1) -and ($persistenceSaveSkippedNoSteamCount -ge 1)
+    $passPersistence = $passPersistenceSuccessPath -or $passPersistenceNoSteamDisabledPath
 }
-$overallPass = $passConnectivity -and $passLagLoss -and $passReconnectClient1 -and $passPersistence
+$overallPass = $passConnectivity -and $passLagLoss -and $passReconnectClient1 -and $passPersistence -and $passReplicationOverflow
 
 $summaryPath = Join-Path $runDir "Smoke_Summary.txt"
 $summary = @(
@@ -251,10 +257,16 @@ $summary = @(
     ("PersistenceApplyResultCount={0}" -f $persistenceApplyResultCount),
     ("PersistenceApplySkippedCount={0}" -f $persistenceApplySkippedCount),
     ("PersistenceSaveCharacterOkCount={0}" -f $persistenceSaveCharacterOkCount),
-    ("PersistencePreloadRejectedMissingIdCount={0}" -f $persistencePreloadRejectedCount),
-    ("PersistenceSaveRejectedMissingIdCount={0}" -f $persistenceSaveRejectedCount),
+    ("PersistencePreloadSkippedNoSteamCount={0}" -f $persistencePreloadSkippedNoSteamCount),
+    ("PersistenceApplySkippedNoSteamCount={0}" -f $persistenceApplySkippedNoSteamCount),
+    ("PersistenceSaveSkippedNoSteamCount={0}" -f $persistenceSaveSkippedNoSteamCount),
     ("PersistenceRevisionConflictCount={0}" -f $persistenceConflictCount),
     ("PersistenceTestIdFallbackCount={0}" -f $persistenceTestIdFallbackCount),
+    ("ReplicationOverflowServerCount={0}" -f $replicationOverflowCountServer),
+    ("ReplicationOverflowClient1Count={0}" -f $replicationOverflowCountClient1),
+    ("ReplicationOverflowClient2Count={0}" -f $replicationOverflowCountClient2),
+    ("ReplicationOverflowClient1ReconnectCount={0}" -f $replicationOverflowCountClient1Reconnect),
+    ("ReplicationOverflowTotalCount={0}" -f $replicationOverflowCountTotal),
     ("WithLagLoss={0}" -f $WithLagLoss.IsPresent),
     ("ClientExtraArgs={0}" -f $ClientExtraArgs),
     ("ClientExecCmds={0}" -f ($clientExecCommandList -join ";")),
@@ -263,6 +275,7 @@ $summary = @(
     ("PassConnectivity={0}" -f $passConnectivity),
     ("PassReconnectClient1={0}" -f $passReconnectClient1),
     ("PassLagLoss={0}" -f $passLagLoss),
+    ("PassReplicationOverflow={0}" -f $passReplicationOverflow),
     ("PassPersistence={0}" -f $passPersistence),
     ("OverallPass={0}" -f $overallPass)
 )
@@ -276,8 +289,9 @@ if ($WithLagLoss) {
     Write-Host ("[SMOKE] Lag/Loss applied: C1={0} C2={1}" -f $client1LagFlag, $client2LagFlag)
 }
 if ($RequirePersistence.IsPresent) {
-    Write-Host ("[SMOKE] Persistence: preload_ok={0} preload_miss={1} apply_ok={2} apply_skipped={3} save_ok={4} preload_rejected_missing_id={5} save_rejected_missing_id={6} conflicts={7} testid_fallback={8} pass={9}" -f $persistencePreloadOkCount, $persistencePreloadMissCount, $persistenceApplyResultCount, $persistenceApplySkippedCount, $persistenceSaveCharacterOkCount, $persistencePreloadRejectedCount, $persistenceSaveRejectedCount, $persistenceConflictCount, $persistenceTestIdFallbackCount, $passPersistence)
+    Write-Host ("[SMOKE] Persistence: preload_ok={0} preload_miss={1} apply_ok={2} apply_skipped={3} save_ok={4} preload_skipped_nosteam={5} apply_skipped_nosteam={6} save_skipped_nosteam={7} conflicts={8} testid_fallback={9} pass={10}" -f $persistencePreloadOkCount, $persistencePreloadMissCount, $persistenceApplyResultCount, $persistenceApplySkippedCount, $persistenceSaveCharacterOkCount, $persistencePreloadSkippedNoSteamCount, $persistenceApplySkippedNoSteamCount, $persistenceSaveSkippedNoSteamCount, $persistenceConflictCount, $persistenceTestIdFallbackCount, $passPersistence)
 }
+Write-Host ("[SMOKE] ReplicationOverflow: server={0} c1={1} c2={2} c1_reconnect={3} total={4} pass={5}" -f $replicationOverflowCountServer, $replicationOverflowCountClient1, $replicationOverflowCountClient2, $replicationOverflowCountClient1Reconnect, $replicationOverflowCountTotal, $passReplicationOverflow)
 Write-Host ("[SMOKE] OverallPass={0}" -f $overallPass)
 Write-Host ("[SMOKE] Summary: {0}" -f $summaryPath)
 

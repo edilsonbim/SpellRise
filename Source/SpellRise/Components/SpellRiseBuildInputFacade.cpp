@@ -1,3 +1,4 @@
+// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Components/SpellRiseBuildInputFacade.h"
 
 #include "GameFramework/Actor.h"
@@ -5,6 +6,8 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Blueprint/UserWidget.h"
+#include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/Components/SpellRiseNarrativeBuildBridge.h"
@@ -13,6 +16,21 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseBuildInputFacade, Log, All);
 
 namespace
 {
+	FString GetSlateFocusWidgetDescription()
+	{
+		if (!FSlateApplication::IsInitialized())
+		{
+			return TEXT("SlateUninitialized");
+		}
+
+		if (TSharedPtr<SWidget> FocusedWidget = FSlateApplication::Get().GetUserFocusedWidget(0))
+		{
+			return FString::Printf(TEXT("%s|%s"), *FocusedWidget->ToString(), *FocusedWidget->GetTypeAsString());
+		}
+
+		return TEXT("NoSlateFocus");
+	}
+
 	bool SetBoolCompatibleProperty(FProperty* Property, void* ValuePtr, bool bValue)
 	{
 		if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
@@ -114,8 +132,8 @@ void USpellRiseBuildInputFacade::BeginPlay()
 		NarrativeBuildBridge = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseNarrativeBuildBridge>() : nullptr;
 	}
 
-	// Startup menu sync is intentionally deferred until pawn possession is stable.
-	// Some EBS variants alter local view/input state when called too early in controller BeginPlay.
+
+
 	bStartupMenuSyncDone = false;
 }
 
@@ -154,11 +172,12 @@ void USpellRiseBuildInputFacade::SetConstructionModeActive(bool bInConstructionM
 		return;
 	}
 
-	// Prime the build component on mode enter to reduce cases where preview/widget doesn't show.
+
 	if (UObject* BuildingComponent = ResolveEBSBuildingComponent())
 	{
 		CallNoParamFunction(BuildingComponent, TEXT("AutoInitComponent"));
 	}
+
 }
 
 void USpellRiseBuildInputFacade::SetConstructionModifierHeld(bool bIsHeld)
@@ -179,13 +198,13 @@ void USpellRiseBuildInputFacade::OnBuildMenuPressed()
 		return;
 	}
 
-	// Manual init mode requires explicit component init before opening the radial menu.
+
 	CallNoParamFunction(BuildingComponent, TEXT("AutoInitComponent"));
 	CallNoParamFunction(BuildingComponent, TEXT("ShowBuildingMenu"));
 	bHasCachedTraceToMouseMode = GetBooleanProperty(BuildingComponent, TEXT("TraceToMouseMode"), bCachedTraceToMouseMode);
 	SetBooleanProperty(BuildingComponent, TEXT("TraceToMouseMode"), true);
 
-	// Allow explicit mouse click navigation/selection on radial menu.
+
 	if (APlayerController* PC = Cast<APlayerController>(GetOwner()))
 	{
 		bCachedClickEvents = PC->bEnableClickEvents;
@@ -198,6 +217,7 @@ void USpellRiseBuildInputFacade::OnBuildMenuPressed()
 		PC->SetShowMouseCursor(true);
 		PC->bEnableClickEvents = true;
 		PC->bEnableMouseOverEvents = true;
+
 	}
 }
 
@@ -220,7 +240,7 @@ void USpellRiseBuildInputFacade::OnBuildMenuReleased()
 		SetBooleanProperty(BuildingComponent, TEXT("TraceToMouseMode"), bCachedTraceToMouseMode);
 	}
 
-	// Restore gameplay input after closing menu.
+
 	if (APlayerController* PC = Cast<APlayerController>(GetOwner()))
 	{
 		FInputModeGameOnly InputMode;
@@ -228,6 +248,7 @@ void USpellRiseBuildInputFacade::OnBuildMenuReleased()
 		PC->SetShowMouseCursor(false);
 		PC->bEnableClickEvents = bCachedClickEvents;
 		PC->bEnableMouseOverEvents = bCachedMouseOverEvents;
+
 	}
 }
 
@@ -328,7 +349,6 @@ void USpellRiseBuildInputFacade::OnBuildAdjustWheel(float AxisValue)
 
 	if (!bApplied && bEnableLegacyEBSAxisCalls)
 	{
-		UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Construction][Facade] Wheel axis sem função compatível no componente EBS (Rotation/Offset)."));
 	}
 }
 
@@ -362,13 +382,19 @@ void USpellRiseBuildInputFacade::OnBuildInteractPressed()
 	const bool bHandledByNarrative = HandleMalletInteraction(true);
 	if (!bHandledByNarrative)
 	{
+		FString RateRejectReason;
+		if (!CanSubmitBuildConfirmCommand(RateRejectReason))
+		{
+			UE_LOG(LogSpellRiseBuildInputFacade, Verbose, TEXT("[Build][ConfirmRejected] Reason=%s Owner=%s"),
+				*RateRejectReason,
+				*GetNameSafe(GetOwner()));
+			return;
+		}
+
 		UObject* BuildingComponent = ResolveEBSBuildingComponent();
 		if (!BuildingComponent)
 		{
-			UE_LOG(
-				LogSpellRiseBuildInputFacade,
-				Warning,
-				TEXT("[Construction][Facade] ConfirmBuild rejeitado: componente de construcao ausente. Owner=%s"),
+			UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Build][ConfirmRejected] Reason=missing_build_component Owner=%s"),
 				*GetNameSafe(GetOwner()));
 			return;
 		}
@@ -378,27 +404,23 @@ void USpellRiseBuildInputFacade::OnBuildInteractPressed()
 			FString RejectReason;
 			if (!CanConfirmBuild(BuildingComponent, RejectReason))
 			{
-				UE_LOG(
-					LogSpellRiseBuildInputFacade,
-					Warning,
-					TEXT("[Construction][Facade] ConfirmBuild rejeitado por validacao de material/contexto. Owner=%s Reason=%s"),
+				UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Build][ConfirmRejected] Reason=%s Owner=%s Component=%s"),
+					*RejectReason,
 					*GetNameSafe(GetOwner()),
-					*RejectReason);
+					*GetNameSafe(BuildingComponent));
 				return;
 			}
 		}
 
-		CallFirstAvailableNoParamFunction(
-			BuildingComponent,
-			{
-				TEXT("ServerConfirmBuild"),
-				TEXT("ServerPlaceBuilding"),
-				TEXT("ConfirmBuild"),
-				TEXT("PlaceBuilding"),
-				TEXT("BuildInteractPressed"),
-				TEXT("Build"),
-				TEXT("TryBuild")
-			});
+		const AActor* OwnerActor = GetOwner();
+		const bool bAuthorityFallbackAllowed = OwnerActor && OwnerActor->HasAuthority();
+		if (!CallBuildConfirmFunction(BuildingComponent, bAuthorityFallbackAllowed))
+		{
+			UE_LOG(LogSpellRiseBuildInputFacade, Warning, TEXT("[Build][ConfirmRejected] Reason=no_allowed_confirm_function Owner=%s Component=%s AuthorityFallback=%d"),
+				*GetNameSafe(GetOwner()),
+				*GetNameSafe(BuildingComponent),
+				bAuthorityFallbackAllowed ? 1 : 0);
+		}
 	}
 }
 
@@ -669,7 +691,7 @@ bool USpellRiseBuildInputFacade::CallOperationFunction(UObject* Target, const FN
 			continue;
 		}
 
-		// Out/ref params in reflective calls are too risky for this generic bridge.
+
 		if (Property->HasAnyPropertyFlags(CPF_OutParm) || Property->HasAnyPropertyFlags(CPF_ReferenceParm))
 		{
 			Function->DestroyStruct(ParamsBuffer);
@@ -688,12 +710,12 @@ bool USpellRiseBuildInputFacade::CallOperationFunction(UObject* Target, const FN
 		}
 		else if (PropertyName.Contains(TEXT("UpdateVisibility"), ESearchCase::IgnoreCase))
 		{
-			// Optional EBS param used by some variants.
+
 			SetBoolCompatibleProperty(Property, ValuePtr, true);
 		}
 		else
 		{
-			// Accept only primitive optional params to avoid unsafe ProcessEvent payloads.
+
 			const bool bIsPrimitiveOptional =
 				CastField<FBoolProperty>(Property) ||
 				CastField<FByteProperty>(Property) ||
@@ -709,7 +731,7 @@ bool USpellRiseBuildInputFacade::CallOperationFunction(UObject* Target, const FN
 		}
 	}
 
-	// Must at least match operation/value contract.
+
 	if (!bOperationSet || !bValueSet)
 	{
 		Function->DestroyStruct(ParamsBuffer);
@@ -777,7 +799,6 @@ bool USpellRiseBuildInputFacade::CallDisplayedFloorFunction(bool bIncrease)
 
 	if (!bVisibilitySet)
 	{
-		UE_LOG(LogSpellRiseBuildInputFacade, Verbose, TEXT("[Construction][Facade] ChangeDisplayedFloor sem parametro UpdateVisibility."));
 	}
 
 	BuildingComponent->ProcessEvent(Function, ParamsBuffer);
@@ -907,3 +928,57 @@ bool USpellRiseBuildInputFacade::CanConfirmBuild(UObject* BuildingComponent, FSt
 	return true;
 }
 
+bool USpellRiseBuildInputFacade::CanSubmitBuildConfirmCommand(FString& OutRejectReason)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		OutRejectReason = TEXT("missing_world");
+		return false;
+	}
+
+	const double NowSeconds = World->GetTimeSeconds();
+	const double MinInterval = FMath::Max(0.05, static_cast<double>(MinBuildConfirmCommandIntervalSeconds));
+	if ((NowSeconds - LastBuildConfirmCommandTimeSeconds) < MinInterval)
+	{
+		OutRejectReason = TEXT("confirm_rate_limited");
+		return false;
+	}
+
+	LastBuildConfirmCommandTimeSeconds = NowSeconds;
+	OutRejectReason = TEXT("accepted");
+	return true;
+}
+
+bool USpellRiseBuildInputFacade::CallBuildConfirmFunction(UObject* BuildingComponent, bool bAuthorityFallbackAllowed) const
+{
+	if (!BuildingComponent)
+	{
+		return false;
+	}
+
+	if (CallFirstAvailableNoParamFunction(
+		BuildingComponent,
+		{
+			TEXT("ServerConfirmBuild"),
+			TEXT("ServerPlaceBuilding")
+		}))
+	{
+		return true;
+	}
+
+	if (!bAuthorityFallbackAllowed)
+	{
+		return false;
+	}
+
+	return CallFirstAvailableNoParamFunction(
+		BuildingComponent,
+		{
+			TEXT("ConfirmBuild"),
+			TEXT("PlaceBuilding"),
+			TEXT("BuildInteractPressed"),
+			TEXT("Build"),
+			TEXT("TryBuild")
+		});
+}

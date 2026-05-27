@@ -84,3 +84,33 @@ void UEquipmentComponent::UnequipItem(class UEquippableItem* Equippable)
 		OnItemUnequipped.Broadcast(Equippable->EquippableSlot, Equippable);
 	}
 }
+
+void UEquipmentComponent::ApplyEquippableVisual(class UEquippableItem* Equippable, bool bEquip)
+{
+	if (bEquip)
+	{
+		EquipItem(Equippable);
+	}
+	else
+	{
+		UnequipItem(Equippable);
+	}
+}
+
+void UEquipmentComponent::SyncEquippedItemState(class UEquippableItem* Equippable, bool bEquip)
+{
+	if (!Equippable)
+	{
+		return;
+	}
+
+	if (bEquip)
+	{
+		EquippedItems.Add(Equippable->EquippableSlot, Equippable);
+		OnItemEquipped.Broadcast(Equippable->EquippableSlot, Equippable);
+		return;
+	}
+
+	EquippedItems.Remove(Equippable->EquippableSlot);
+	OnItemUnequipped.Broadcast(Equippable->EquippableSlot, Equippable);
+}

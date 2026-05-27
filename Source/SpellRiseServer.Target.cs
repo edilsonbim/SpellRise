@@ -1,4 +1,5 @@
-﻿using UnrealBuildTool;
+// Cabeçalho de módulo: configura o alvo Unreal e suas regras de build.
+using UnrealBuildTool;
 
 public class SpellRiseServerTarget : TargetRules
 {
