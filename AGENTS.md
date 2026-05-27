@@ -40,6 +40,7 @@ Se houver conflito entre codigo legado e documentacao atual, sinalize o conflito
 - Primarios validos: STR, AGI, INT, WIS.
 - Novo codigo e novos assets nao devem usar aliases legados como VIG e FOC.
 - O cliente nunca e autoridade para dano, recursos, atributos primarios, morte, loot ou resultado final de gameplay.
+- O fluxo de projetil deve permanecer: aim local -> target data -> validacao server -> commit -> spawn replicado -> hit/GE no servidor.
 - Dedicated server nao pode depender de HUD, widget, camera ou logica de UI.
 
 ## Regra fixa de build
@@ -53,10 +54,17 @@ Se houver conflito entre codigo legado e documentacao atual, sinalize o conflito
 
 ## Padrao de engenharia
 - Responder em portugues do Brasil.
-- Responder em passos curtos e diretos.
+- Responder por padrao de forma curta, objetiva e bem resumida.
+- Falar apenas o basico quando a pergunta for simples.
+- Usar respostas maiores somente quando o usuario pedir detalhe, plano, revisao completa ou quando o risco tecnico exigir contexto.
+- Responder em passos curtos e diretos quando houver procedimento.
 - Priorizar C++.
 - Usar Blueprint apenas para UI, animacao, VFX, assets, data assets e configuracao.
+- Evitar solucao estrutural generica em Blueprint.
 - Preservar nomes, arquitetura, convencoes e fluxo existentes salvo defeito real.
+- Nao inventar classe, asset, tag, API ou funcao sem verificar se ja existe equivalente no projeto.
+- Preferir solucoes data-driven quando isso nao enfraquecer a arquitetura.
+- Evitar abstracao precoce e bases excessivamente genericas.
 - Nao afirmar build, teste ou validacao sem ter verificado.
 
 ## Server vs Client
@@ -68,6 +76,7 @@ Se houver conflito entre codigo legado e documentacao atual, sinalize o conflito
 - spawna projeteis replicados;
 - aplica GameplayEffects autoritativos;
 - decide transicoes de estado de gameplay.
+- executa fall damage, catalyst, respawn, loot, persistencia e reconciliacao server-side.
 
 ### Client
 - coleta input;
@@ -82,12 +91,125 @@ Se houver conflito entre codigo legado e documentacao atual, sinalize o conflito
 - Ability code nao deve depender apenas de `HasAuthority()` para ativacao.
 - Separar claramente previsao local, confirmacao do servidor e reconciliacao.
 - Evitar replicacao desnecessaria, Tick desnecessario e payload excessivo.
+- Para mudancas de combate/rede, sempre informar escopo de replicacao, authority, RPC, prediction e risco de OnRep.
+
+## PlayerController
+- PlayerController e camada de input, UX local e ponte de RPC validada.
+- PlayerController nao deve armazenar estado autoritativo de gameplay.
+- PlayerController nao deve replicar payload cosmetico.
+- PlayerController nao decide dano, custo, cooldown, loot, morte, persistencia ou resultado final de gameplay.
+- Toda nova replicacao no PlayerController exige justificativa de budget, condicao de replica e alternativa considerada.
+- Mudancas no PlayerController devem avaliar risco de `FBitReader::SetOverflowed`.
 
 ## GAS
 - Respeitar a arquitetura atual baseada em GAS.
 - Separar claramente ativacao, target data, commit, aplicacao de GE, cue/apresentacao replicada, cosmetico local e cleanup.
 - Ao alterar abilities, informar onde inicia, commita, valida no servidor, preve no cliente e replica.
 - Ao alterar atributos, informar impacto em AttributeSet, MMC, ExecCalc, GameplayEffect, UI e replicacao.
+
+## Regras de codigo
+- Em implementacao, entregar codigo claro e compile-ready.
+- Em edicao, preservar arquitetura e nomes salvo necessidade real.
+- Nao remover replicacao existente sem justificativa.
+- Se adicionar variavel replicada, incluir `UPROPERTY` adequada, `GetLifetimeReplicatedProps`, condicao de replica e `OnRep` quando necessario.
+- Se adicionar RPC, validar origem, payload, contexto, ownership e abuso.
+- Preferir clareza, determinismo, baixo acoplamento e seguranca de rede.
+- Evitar `LogTemp` em fluxo importante; usar categorias explicitas.
+- Nao deixar debug FX, debug logs ou caminhos editor-only no runtime shipping.
+
+## Contrato obrigatorio de RPC
+Todo RPC novo ou alterado deve declarar:
+- origem permitida;
+- owner esperado;
+- payload maximo e limites por campo;
+- validacao de contexto;
+- validacao de ownership;
+- rate-limit/anti-spam;
+- comportamento em rejeicao;
+- categoria de log;
+- se afeta gameplay, por que precisa existir e nao pode ser derivado no servidor.
+
+## Budget de rede
+Mudanca net-critical deve informar:
+- atores replicados afetados;
+- propriedades replicadas novas ou alteradas;
+- condicao de replicacao (`OwnerOnly`, `SkipOwner`, `None` etc.);
+- `NetUpdateFrequency` dos atores relevantes;
+- RPC/s maximo esperado por jogador;
+- tamanho aproximado do payload;
+- taxa/tamanho de target data quando aplicavel;
+- risco de burst;
+- risco de `OnRep` fora de ordem;
+- impacto esperado em DS+2 e lag/loss.
+
+## Gate por tipo de mudanca
+| Tipo de mudanca | Validacao minima | Smoke obrigatorio | Evidencia |
+|---|---|---|---|
+| C++ simples sem rede/GAS | `SpellRiseEditor` quando build for pedida | Nao obrigatorio | log de build se executado |
+| `UCLASS`/`UFUNCTION`/`UPROPERTY` | `SpellRiseEditor` com UHT | Conforme escopo | sem erro UHT |
+| GAS/Ability/GE/ExecCalc/MMC | `SpellRiseEditor` + revisao GAS | Standalone, Listen, DS+2 | activation/commit/GE documentado |
+| Projetil/combate/prediction | `SpellRiseEditor` + DS quando aplicavel | DS+2 normal + lag/loss | sem hit client-authoritative |
+| PlayerController/RPC/replicacao | `SpellRiseEditor` + revisao net | DS+2 normal + lag/loss | sem `FBitReader::SetOverflowed` |
+| Persistencia/loot/economia | Editor + DS | DS+2 + reconexao quando aplicavel | auditoria server-side |
+| UI/VFX/SFX | Editor quando necessario | smoke visual/local | sem dependencia em Dedicated Server |
+
+## Observabilidade minima
+Fluxos criticos devem usar categoria de log explicita, nunca `LogTemp`.
+
+Registrar quando aplicavel:
+- RPC rejeitado e motivo;
+- ability activation fail e `FailureTags`;
+- commit/cost/cooldown negado;
+- target data rejeitado;
+- overflow de replicacao;
+- falha de auth/session;
+- persistencia recusada, reconciliada ou salva.
+
+## Live Ops / Rollback
+Mudanca sensivel de gameplay, rede, economia ou persistencia deve ter:
+- default seguro no servidor;
+- caminho de rollback;
+- compatibilidade com dados persistidos;
+- flag/config/data asset para desabilitar quando viavel;
+- nota em CHANGELOG quando alterar contrato live.
+
+## Migracao de atributos legados
+- `VIG` e `FOC` so podem existir como compatibilidade passiva.
+- Nenhum novo codigo, asset, GameplayEffect, tag, UI ou formula pode depender desses aliases.
+- Qualquer uso encontrado deve ser classificado como compatibilidade temporaria, divida de migracao ou bug.
+
+## Foco ativo atual
+1. Corrigir overflow de replicacao no PlayerController.
+2. Fechar bootstrap/auth Steam em Dedicated Server.
+3. Fechar persistencia/economia server-side de producao.
+4. Consolidar building mode com budget de rede e matriz de RPC.
+5. Avancar automacao multiplayer em gate continuo/CI.
+
+## Formato de resposta
+Quando aplicavel, responder em:
+1. Problema
+2. Causa provavel
+3. Correcao exata
+4. Server
+5. Client
+6. Riscos de authority / prediction / RPC / OnRep
+7. Arquivos completos alterados ou patch exato
+8. Checklist de teste
+
+## Debug
+Quando o pedido for debug:
+- listar primeiro a causa mais provavel;
+- depois a correcao exata;
+- depois o risco de replicacao;
+- depois o que testar em Standalone, Listen Server e Dedicated Server;
+- incluir lag/loss simulado apenas quando tocar combate, prediction, RPC, projetil, atributos replicados ou outro sistema net-critical.
+
+## Documentacao viva
+Se a mudanca altera contrato de authority, replicacao, atributo, persistencia, RPC ou build:
+- atualizar o documento fonte correspondente;
+- registrar conflito encontrado;
+- registrar decisao tecnica curta;
+- atualizar BACKLOG/BUG_LOG/CHANGELOG quando aplicavel.
 
 ## Definicao de pronto
 So considerar pronto quando:

@@ -10,6 +10,7 @@
 #include "GameplayAbilitySpec.h"
 #include "GameplayEffect.h"
 #include "Net/UnrealNetwork.h"
+#include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEnemyEquipment, Log, All);
@@ -107,14 +108,27 @@ USpellRiseAbilitySystemComponent* USpellRiseEnemyEquipmentComponent::ResolveEnem
 		OwnerActor->FindComponentByClass<UAbilitySystemComponent>());
 }
 
-USkeletalMeshComponent* USpellRiseEnemyEquipmentComponent::ResolveAttachMesh() const
+USkeletalMeshComponent* USpellRiseEnemyEquipmentComponent::ResolveAttachMesh(FName TargetSocket) const
 {
-	if (const ACharacter* CharacterOwner = Cast<ACharacter>(GetOwner()))
+	if (const ASpellRiseCharacterBase* SpellRiseCharacterOwner = Cast<ASpellRiseCharacterBase>(GetOwner()))
 	{
-		return CharacterOwner->GetMesh();
+		return SpellRiseCharacterOwner->GetEquipmentAttachMeshComponentForSocket(TargetSocket);
 	}
 
-	return GetOwner() ? GetOwner()->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+	if (AActor* OwnerActor = GetOwner())
+	{
+		TArray<USkeletalMeshComponent*> SkeletalMeshes;
+		OwnerActor->GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+		for (USkeletalMeshComponent* MeshComp : SkeletalMeshes)
+		{
+			if (IsValid(MeshComp) && (TargetSocket == NAME_None || MeshComp->DoesSocketExist(TargetSocket)))
+			{
+				return MeshComp;
+			}
+		}
+	}
+
+	return nullptr;
 }
 
 USceneComponent* USpellRiseEnemyEquipmentComponent::ResolveWeaponAttachComponent(AActor* WeaponActor) const
@@ -124,6 +138,7 @@ USceneComponent* USpellRiseEnemyEquipmentComponent::ResolveWeaponAttachComponent
 		return nullptr;
 	}
 
+	USceneComponent* NamedWeaponAttachComponent = nullptr;
 	if (!WeaponAttachComponentName.IsNone())
 	{
 		TArray<USceneComponent*> SceneComponents;
@@ -132,9 +147,33 @@ USceneComponent* USpellRiseEnemyEquipmentComponent::ResolveWeaponAttachComponent
 		{
 			if (IsValid(SceneComponent) && SceneComponent->GetFName() == WeaponAttachComponentName)
 			{
-				return SceneComponent;
+				NamedWeaponAttachComponent = SceneComponent;
+				break;
 			}
 		}
+	}
+
+	USceneComponent* RootComponent = WeaponActor->GetRootComponent();
+	USceneComponent* SpawnPointComponent = nullptr;
+	TArray<USceneComponent*> SceneComponents;
+	WeaponActor->GetComponents<USceneComponent>(SceneComponents);
+	for (USceneComponent* SceneComponent : SceneComponents)
+	{
+		if (IsValid(SceneComponent) && SceneComponent->GetFName() == TEXT("SpawnPoint"))
+		{
+			SpawnPointComponent = SceneComponent;
+			break;
+		}
+	}
+
+	if (IsValid(NamedWeaponAttachComponent))
+	{
+		if (IsValid(SpawnPointComponent) && !SpawnPointComponent->IsAttachedTo(NamedWeaponAttachComponent) && IsValid(RootComponent))
+		{
+			return RootComponent;
+		}
+
+		return NamedWeaponAttachComponent;
 	}
 
 	return WeaponActor->GetRootComponent();
@@ -213,7 +252,7 @@ bool USpellRiseEnemyEquipmentComponent::AttachWeaponActor()
 		return false;
 	}
 
-	USkeletalMeshComponent* AttachMesh = ResolveAttachMesh();
+	USkeletalMeshComponent* AttachMesh = ResolveAttachMesh(EquippedSocket);
 	USceneComponent* WeaponAttachComponent = ResolveWeaponAttachComponent(WeaponActor);
 	if (!AttachMesh || !WeaponAttachComponent || EquippedSocket == NAME_None)
 	{

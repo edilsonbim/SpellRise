@@ -4,6 +4,8 @@
 Starter kit operacional para transformar a documentação das fases 1-4 em gate executável.
 
 ## Scripts
+- `Run-SpellRise-AAAGate.ps1`
+  - gate operacional AAA: classifica mudancas, chama build/smoke/release/persistence/combat e bloqueia overflow de replicacao
 - `Run-SpellRise-ReleaseGate.ps1`
   - build + package + package parity + smoke gate
 - `Test-SpellRise-PackageParity.ps1`
@@ -21,6 +23,11 @@ Starter kit operacional para transformar a documentação das fases 1-4 em gate 
 - script de projeto `Scripts\Run-Smoke-Gate.ps1` para a parte automatizada de smoke
 
 ## Uso rápido
+
+### AAA operational gate
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Scripts\Pipeline\Run-SpellRise-AAAGate.ps1
+```
 
 ### Release gate
 ```powershell
@@ -42,3 +49,5 @@ Os scripts são deliberadamente conservadores:
 - falham quando o smoke gate do projeto não existe
 - exigem paridade explícita client/server
 - gravam summary/log em `Saved\Logs\Automation`
+
+Detalhes do fluxo AAA ficam em `Docs\Pipeline\AAA_LIVE_SERVICE_GATE.md`.

@@ -284,6 +284,7 @@ namespace
 ASpellRisePlayerController::ASpellRisePlayerController()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	bShowMouseCursor = false;
 	NumberPopComponent = CreateDefaultSubobject<USpellRiseNumberPopComponent_NiagaraText>(TEXT("NumberPopComponent"));
 }
@@ -337,6 +338,8 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 void ASpellRisePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	SetActorTickEnabled(GetNetMode() != NM_DedicatedServer && IsLocalController());
+
 	if (IsLocalController())
 	{
 		FInputModeGameOnly Mode;

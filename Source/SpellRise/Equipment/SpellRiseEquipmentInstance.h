@@ -16,6 +16,7 @@ class SPELLRISE_API USpellRiseEquipmentInstance : public UObject
 
 public:
 	virtual bool IsSupportedForNetworking() const override { return true; }
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	void Initialize(USpellRiseEquipmentManagerComponent* InOwnerComponent, UEquippableItem* InSourceItem);
 
@@ -32,7 +33,7 @@ public:
 	virtual void OnUnequipped();
 
 private:
-	UPROPERTY()
+	UPROPERTY(Replicated)
 	TObjectPtr<UEquippableItem> SourceItem = nullptr;
 
 	UPROPERTY()

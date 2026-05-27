@@ -1,6 +1,7 @@
 // Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 
+#include "Abilities/GameplayAbility.h"
 #include "Engine/ActorChannel.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -16,6 +17,7 @@
 #include "InventoryComponent.h"
 #include "InventoryFunctionLibrary.h"
 #include "NarrativeItem.h"
+#include "TimerManager.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentInstance.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
@@ -27,6 +29,67 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseWeaponAttach, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEquipmentTrace, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEquipmentSecurity, Log, All);
 
+namespace SpellRiseEquipmentAbilityPreview
+{
+	static void CaptureCooldown(
+		const UObject* WorldContextObject,
+		const UAbilitySystemComponent* ASC,
+		const UGameplayAbility* Ability,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilitySpecHandle& AbilityHandle,
+		FSpellRiseEquipmentAbilityPreview& Preview)
+	{
+		if (!ASC || !Ability)
+		{
+			return;
+		}
+
+		float TimeRemaining = 0.f;
+		float CooldownDuration = 0.f;
+		if (ActorInfo && AbilityHandle.IsValid())
+		{
+			Ability->GetCooldownTimeRemainingAndDuration(AbilityHandle, ActorInfo, TimeRemaining, CooldownDuration);
+		}
+
+		if (TimeRemaining <= KINDA_SMALL_NUMBER)
+		{
+			const FGameplayTagContainer* CooldownTags = Ability->GetCooldownTags();
+			if (CooldownTags && CooldownTags->Num() > 0)
+			{
+				const FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(*CooldownTags);
+				const TArray<TPair<float, float>> DurationAndTimeRemaining = ASC->GetActiveEffectsTimeRemainingAndDuration(Query);
+				for (const TPair<float, float>& CooldownPair : DurationAndTimeRemaining)
+				{
+					if (CooldownPair.Key > TimeRemaining)
+					{
+						TimeRemaining = CooldownPair.Key;
+						CooldownDuration = CooldownPair.Value;
+					}
+				}
+			}
+		}
+
+		Preview.CooldownRemaining = FMath::Max(0.f, TimeRemaining);
+		Preview.CooldownDuration = FMath::Max(0.f, CooldownDuration);
+		Preview.bIsOnCooldown = Preview.CooldownRemaining > KINDA_SMALL_NUMBER;
+		if (!Preview.bIsOnCooldown)
+		{
+			Preview.CooldownCapturedWorldTimeSeconds = 0.0;
+			Preview.CooldownStartWorldTimeSeconds = 0.0;
+			Preview.CooldownEndWorldTimeSeconds = 0.0;
+			return;
+		}
+
+		const UWorld* World = WorldContextObject ? WorldContextObject->GetWorld() : nullptr;
+		const double NowSeconds = World ? World->GetTimeSeconds() : 0.0;
+		Preview.CooldownCapturedWorldTimeSeconds = NowSeconds;
+		Preview.CooldownEndWorldTimeSeconds = NowSeconds + static_cast<double>(Preview.CooldownRemaining);
+		Preview.CooldownStartWorldTimeSeconds = Preview.CooldownDuration > KINDA_SMALL_NUMBER
+			? Preview.CooldownEndWorldTimeSeconds - static_cast<double>(Preview.CooldownDuration)
+			: NowSeconds;
+	}
+}
+
 namespace SpellRiseEquipmentSlots
 {
 	constexpr uint8 MainHandSlotBase = 200;
@@ -35,6 +98,8 @@ namespace SpellRiseEquipmentSlots
 
 namespace SpellRiseEquipmentAttach
 {
+	static USceneComponent* FindSceneComponentByName(AActor* Actor, FName ComponentName);
+
 	static USceneComponent* ResolveWeaponAttachSceneComponent(AActor* WeaponActor)
 	{
 		if (!IsValid(WeaponActor))
@@ -43,17 +108,32 @@ namespace SpellRiseEquipmentAttach
 		}
 
 		static const FName WeaponComponentName(TEXT("Weapon"));
+		static const FName SpawnPointComponentName(TEXT("SpawnPoint"));
+		USceneComponent* WeaponComponent = nullptr;
 		TArray<USceneComponent*> SceneComponents;
 		WeaponActor->GetComponents<USceneComponent>(SceneComponents);
 		for (USceneComponent* Comp : SceneComponents)
 		{
 			if (IsValid(Comp) && Comp->GetFName() == WeaponComponentName)
 			{
-				return Comp;
+				WeaponComponent = Comp;
+				break;
 			}
 		}
 
-		return WeaponActor->GetRootComponent();
+		USceneComponent* RootComponent = WeaponActor->GetRootComponent();
+		USceneComponent* SpawnPointComponent = FindSceneComponentByName(WeaponActor, SpawnPointComponentName);
+		if (IsValid(WeaponComponent))
+		{
+			if (IsValid(SpawnPointComponent) && !SpawnPointComponent->IsAttachedTo(WeaponComponent) && IsValid(RootComponent))
+			{
+				return RootComponent;
+			}
+
+			return WeaponComponent;
+		}
+
+		return RootComponent;
 	}
 
 	static UPrimitiveComponent* ResolveWeaponAttachPrimitiveComponent(AActor* WeaponActor)
@@ -79,6 +159,216 @@ namespace SpellRiseEquipmentAttach
 		}
 
 		return nullptr;
+	}
+}
+
+namespace SpellRiseDropPickup
+{
+	static UClass* ResolveDropPickupClass(const TSoftClassPtr<AActor>& ConfiguredDropPickupActorClass)
+	{
+		UClass* DropPickupClass = ConfiguredDropPickupActorClass.LoadSynchronous();
+		if (!DropPickupClass)
+		{
+			DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+		}
+		if (!DropPickupClass)
+		{
+			DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/Game/UI/InventorySystem/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+		}
+
+		return DropPickupClass;
+	}
+
+	static bool IsNarrativeItemClassProperty(const FProperty* Property)
+	{
+		if (const FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
+		{
+			return ClassProperty->MetaClass && ClassProperty->MetaClass->IsChildOf(UNarrativeItem::StaticClass());
+		}
+
+		if (const FSoftClassProperty* SoftClassProperty = CastField<FSoftClassProperty>(Property))
+		{
+			return SoftClassProperty->MetaClass && SoftClassProperty->MetaClass->IsChildOf(UNarrativeItem::StaticClass());
+		}
+
+		if (const FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+		{
+			return ObjectProperty->PropertyClass && ObjectProperty->PropertyClass->IsChildOf(UClass::StaticClass());
+		}
+
+		return false;
+	}
+
+	static bool SetNarrativeItemClassProperty(void* Container, FProperty* Property, TSubclassOf<UNarrativeItem> ItemClass)
+	{
+		if (!Container || !Property || !ItemClass)
+		{
+			return false;
+		}
+
+		void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Container);
+		if (FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
+		{
+			if (ClassProperty->MetaClass && ClassProperty->MetaClass->IsChildOf(UNarrativeItem::StaticClass()))
+			{
+				ClassProperty->SetPropertyValue(ValuePtr, ItemClass.Get());
+				return true;
+			}
+		}
+		else if (FSoftClassProperty* SoftClassProperty = CastField<FSoftClassProperty>(Property))
+		{
+			if (SoftClassProperty->MetaClass && SoftClassProperty->MetaClass->IsChildOf(UNarrativeItem::StaticClass()))
+			{
+				SoftClassProperty->SetPropertyValue(ValuePtr, FSoftObjectPtr(ItemClass.Get()));
+				return true;
+			}
+		}
+		else if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+		{
+			if (ObjectProperty->PropertyClass && ObjectProperty->PropertyClass->IsChildOf(UClass::StaticClass()))
+			{
+				ObjectProperty->SetObjectPropertyValue(ValuePtr, ItemClass.Get());
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static bool SetQuantityProperty(void* Container, FProperty* Property, const int32 QuantityToDrop)
+	{
+		if (!Container || !Property)
+		{
+			return false;
+		}
+
+		if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
+		{
+			if (NumericProperty->IsInteger())
+			{
+				NumericProperty->SetIntPropertyValue(Property->ContainerPtrToValuePtr<void>(Container), static_cast<int64>(QuantityToDrop));
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static bool SetNamedClassProperty(UObject* Object, const FName PropertyName, TSubclassOf<UNarrativeItem> ItemClass)
+	{
+		return Object && SetNarrativeItemClassProperty(Object, Object->GetClass()->FindPropertyByName(PropertyName), ItemClass);
+	}
+
+	static bool SetAnyNarrativeItemClassProperty(UObject* Object, TSubclassOf<UNarrativeItem> ItemClass)
+	{
+		if (!Object || !ItemClass)
+		{
+			return false;
+		}
+
+		bool bSetAny = false;
+		for (TFieldIterator<FProperty> It(Object->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
+		{
+			FProperty* Property = *It;
+			if (IsNarrativeItemClassProperty(Property))
+			{
+				bSetAny |= SetNarrativeItemClassProperty(Object, Property, ItemClass);
+			}
+		}
+
+		return bSetAny;
+	}
+
+	static bool SetNamedQuantityProperty(UObject* Object, const FName PropertyName, const int32 QuantityToDrop)
+	{
+		return Object && SetQuantityProperty(Object, Object->GetClass()->FindPropertyByName(PropertyName), QuantityToDrop);
+	}
+
+	static bool SetAnyQuantityProperty(UObject* Object, const int32 QuantityToDrop)
+	{
+		if (!Object)
+		{
+			return false;
+		}
+
+		bool bSetAny = false;
+		for (TFieldIterator<FProperty> It(Object->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
+		{
+			FProperty* Property = *It;
+			if (Property->GetName().Contains(TEXT("Quantity"), ESearchCase::IgnoreCase) ||
+				Property->GetName().Contains(TEXT("Amount"), ESearchCase::IgnoreCase))
+			{
+				bSetAny |= SetQuantityProperty(Object, Property, QuantityToDrop);
+			}
+		}
+
+		return bSetAny;
+	}
+
+	static bool ApplyPickupRuntimeData(AActor* PickupActor, TSubclassOf<UNarrativeItem> ItemClass, const int32 QuantityToDrop)
+	{
+		if (!PickupActor || !ItemClass || QuantityToDrop <= 0)
+		{
+			return false;
+		}
+
+		const bool bSetItemClass =
+			SetNamedClassProperty(PickupActor, FName(TEXT("ItemClass")), ItemClass) |
+			SetNamedClassProperty(PickupActor, FName(TEXT("Item Class")), ItemClass) |
+			SetNamedClassProperty(PickupActor, FName(TEXT("Class")), ItemClass) |
+			SetNamedClassProperty(PickupActor, FName(TEXT("Item")), ItemClass) |
+			SetAnyNarrativeItemClassProperty(PickupActor, ItemClass);
+
+		const bool bSetQuantity =
+			SetNamedQuantityProperty(PickupActor, FName(TEXT("QuantityToGive")), QuantityToDrop) |
+			SetNamedQuantityProperty(PickupActor, FName(TEXT("Quantity to Give")), QuantityToDrop) |
+			SetNamedQuantityProperty(PickupActor, FName(TEXT("Quantity")), QuantityToDrop) |
+			SetNamedQuantityProperty(PickupActor, FName(TEXT("Amount")), QuantityToDrop) |
+			SetAnyQuantityProperty(PickupActor, QuantityToDrop);
+
+		return bSetItemClass && bSetQuantity;
+	}
+
+	static bool InvokeInitialize(AActor* PickupActor, TSubclassOf<UNarrativeItem> ItemClass, const int32 QuantityToDrop)
+	{
+		if (!PickupActor || !ItemClass || QuantityToDrop <= 0)
+		{
+			return false;
+		}
+
+		UFunction* InitializeFunction = PickupActor->FindFunction(TEXT("Initialize"));
+		if (!InitializeFunction)
+		{
+			return false;
+		}
+
+		uint8* ParamsBuffer = static_cast<uint8*>(FMemory_Alloca(InitializeFunction->ParmsSize));
+		FMemory::Memzero(ParamsBuffer, InitializeFunction->ParmsSize);
+
+		bool bSetItemClass = false;
+		bool bSetQuantity = false;
+		for (TFieldIterator<FProperty> It(InitializeFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
+		{
+			FProperty* Param = *It;
+			if (!bSetItemClass && IsNarrativeItemClassProperty(Param))
+			{
+				bSetItemClass = SetNarrativeItemClassProperty(ParamsBuffer, Param, ItemClass);
+				continue;
+			}
+
+			if (!bSetQuantity && SetQuantityProperty(ParamsBuffer, Param, QuantityToDrop))
+			{
+				bSetQuantity = true;
+			}
+		}
+
+		if (!bSetItemClass || !bSetQuantity)
+		{
+			return false;
+		}
+
+		PickupActor->ProcessEvent(InitializeFunction, ParamsBuffer);
+		return true;
 	}
 }
 
@@ -944,6 +1234,7 @@ TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::G
 			continue;
 		}
 
+		const UGameplayAbility* CooldownAbility = Cast<UGameplayAbility>(AbilityClass->GetDefaultObject());
 		for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
 		{
 			if (!Spec.Ability || Spec.Ability->GetClass() != AbilityClass)
@@ -951,33 +1242,33 @@ TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::G
 				continue;
 			}
 
+			if (!DoesAbilitySpecBelongToItem(Spec, Item))
+			{
+				continue;
+			}
+
 			Preview.GrantedSpecHandle = Spec.Handle;
 			Preview.bIsCurrentlyGranted = true;
 			Preview.bIsActive = Spec.IsActive();
+			CooldownAbility = Spec.Ability;
 
-			if (ActorInfo)
-			{
-				float TimeRemaining = 0.f;
-				float CooldownDuration = 0.f;
-				Spec.Ability->GetCooldownTimeRemainingAndDuration(Spec.Handle, ActorInfo, TimeRemaining, CooldownDuration);
-				Preview.CooldownRemaining = FMath::Max(0.f, TimeRemaining);
-				Preview.CooldownDuration = FMath::Max(0.f, CooldownDuration);
-				Preview.bIsOnCooldown = Preview.CooldownRemaining > KINDA_SMALL_NUMBER;
-				if (Preview.bIsOnCooldown)
-				{
-					const double NowSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-					Preview.CooldownCapturedWorldTimeSeconds = NowSeconds;
-					Preview.CooldownEndWorldTimeSeconds = NowSeconds + static_cast<double>(Preview.CooldownRemaining);
-					Preview.CooldownStartWorldTimeSeconds = Preview.CooldownDuration > KINDA_SMALL_NUMBER
-						? Preview.CooldownEndWorldTimeSeconds - static_cast<double>(Preview.CooldownDuration)
-						: NowSeconds;
-				}
-			}
+			SpellRiseEquipmentAbilityPreview::CaptureCooldown(this, ASC, CooldownAbility, ActorInfo, Spec.Handle, Preview);
 			break;
+		}
+
+		if (!Preview.bIsCurrentlyGranted)
+		{
+			SpellRiseEquipmentAbilityPreview::CaptureCooldown(this, ASC, CooldownAbility, ActorInfo, Preview.GrantedSpecHandle, Preview);
 		}
 	}
 
 	return PreviewAbilities;
+}
+
+TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::GetAbilitiesToGrantPreviewForQuickWeaponSlot(
+	const int32 QuickSlotIndex) const
+{
+	return GetAbilitiesToGrantPreviewForItem(GetQuickWeaponItemByIndex(QuickSlotIndex));
 }
 
 float USpellRiseEquipmentManagerComponent::GetAbilityPreviewCooldownRemainingAtCurrentTime(
@@ -1014,6 +1305,129 @@ float USpellRiseEquipmentManagerComponent::GetAbilityPreviewCooldownPercentAtCur
 	return bReadyProgress ? 1.f - RemainingPercent : RemainingPercent;
 }
 
+bool USpellRiseEquipmentManagerComponent::DoesAbilitySpecBelongToItem(
+	const FGameplayAbilitySpec& Spec,
+	UEquippableItem* Item) const
+{
+	if (!Item)
+	{
+		return false;
+	}
+
+	UObject* SourceObject = Spec.SourceObject.Get();
+	if (SourceObject == Item)
+	{
+		return true;
+	}
+
+	const USpellRiseEquipmentInstance* EquipmentInstance = Cast<USpellRiseEquipmentInstance>(SourceObject);
+	return EquipmentInstance && EquipmentInstance->GetSourceItem() == Item;
+}
+
+bool USpellRiseEquipmentManagerComponent::AreGrantedAbilitySpecsReadyForItem(UEquippableItem* Item) const
+{
+	TArray<FSpellRiseGrantedAbility> AbilitiesToGrant;
+	if (!ExtractAbilitiesToGrantFromItem(Item, AbilitiesToGrant))
+	{
+		return true;
+	}
+
+	const ASpellRiseCharacterBase* CharacterOwner = Cast<ASpellRiseCharacterBase>(GetOwner());
+	const USpellRiseAbilitySystemComponent* ASC = CharacterOwner
+		? Cast<USpellRiseAbilitySystemComponent>(CharacterOwner->GetAbilitySystemComponent())
+		: nullptr;
+	if (!ASC)
+	{
+		return false;
+	}
+
+	for (const FSpellRiseGrantedAbility& AbilityToGrant : AbilitiesToGrant)
+	{
+		UClass* AbilityClass = AbilityToGrant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
+		{
+			continue;
+		}
+
+		bool bFoundSpecForItem = false;
+		for (const FGameplayAbilitySpec& Spec : ASC->GetActivatableAbilities())
+		{
+			if (Spec.Ability && Spec.Ability->GetClass() == AbilityClass && DoesAbilitySpecBelongToItem(Spec, Item))
+			{
+				bFoundSpecForItem = true;
+				break;
+			}
+		}
+
+		if (!bFoundSpecForItem)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void USpellRiseEquipmentManagerComponent::BroadcastHUDEquipmentSlotsChanged()
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor || OwnerActor->HasAuthority())
+	{
+		OnHUDEquipmentSlotsChanged.Broadcast();
+		return;
+	}
+
+	const APawn* OwnerPawn = Cast<APawn>(OwnerActor);
+	if (!OwnerPawn || !OwnerPawn->IsLocallyControlled())
+	{
+		OnHUDEquipmentSlotsChanged.Broadcast();
+		return;
+	}
+
+	UEquippableItem* ActiveItem = QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex)
+		? QuickWeaponSlots[ActiveQuickWeaponSlotIndex]
+		: nullptr;
+	if (!ActiveItem || AreGrantedAbilitySpecsReadyForItem(ActiveItem))
+	{
+		bPendingHUDEquipmentAbilityRefresh = false;
+		PendingHUDEquipmentAbilityRefreshAttempts = 0;
+		OnHUDEquipmentSlotsChanged.Broadcast();
+		return;
+	}
+
+	if (PendingHUDEquipmentAbilityRefreshAttempts >= 8)
+	{
+		bPendingHUDEquipmentAbilityRefresh = false;
+		PendingHUDEquipmentAbilityRefreshAttempts = 0;
+		OnHUDEquipmentSlotsChanged.Broadcast();
+		return;
+	}
+
+	if (bPendingHUDEquipmentAbilityRefresh)
+	{
+		return;
+	}
+
+	bPendingHUDEquipmentAbilityRefresh = true;
+	++PendingHUDEquipmentAbilityRefreshAttempts;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateUObject(this, &ThisClass::BroadcastHUDEquipmentSlotsChangedWhenAbilitySpecsReady));
+		return;
+	}
+
+	bPendingHUDEquipmentAbilityRefresh = false;
+	PendingHUDEquipmentAbilityRefreshAttempts = 0;
+	OnHUDEquipmentSlotsChanged.Broadcast();
+}
+
+void USpellRiseEquipmentManagerComponent::BroadcastHUDEquipmentSlotsChangedWhenAbilitySpecsReady()
+{
+	bPendingHUDEquipmentAbilityRefresh = false;
+	BroadcastHUDEquipmentSlotsChanged();
+}
+
 void USpellRiseEquipmentManagerComponent::ApplyReplicatedEquipmentVisual(USpellRiseEquipmentInstance& EquipmentInstance, bool bEquipped)
 {
 	ApplyVisualForItem(EquipmentInstance.GetSourceItem(), bEquipped);
@@ -1033,7 +1447,7 @@ void USpellRiseEquipmentManagerComponent::HandleEntryAdded(const FSpellRiseAppli
 		SyncNarrativeEquipmentComponentState(Entry.SourceItem, true);
 	}
 
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::HandleEntryRemoved(const FSpellRiseAppliedEquipmentEntry& Entry)
@@ -1050,7 +1464,7 @@ void USpellRiseEquipmentManagerComponent::HandleEntryRemoved(const FSpellRiseApp
 		SyncNarrativeEquipmentComponentState(Entry.SourceItem, false);
 	}
 
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 bool USpellRiseEquipmentManagerComponent::ValidateItemOwnership(UEquippableItem* Item, FString& OutReason) const
@@ -1192,7 +1606,7 @@ FSpellRiseAppliedEquipmentEntry* USpellRiseEquipmentManagerComponent::AddEntry(U
 	{
 		NetOwnerActor->ForceNetUpdate();
 	}
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 	return &NewEntry;
 }
 
@@ -1228,7 +1642,7 @@ bool USpellRiseEquipmentManagerComponent::RemoveEntryBySlot(uint8 SlotValue)
 		{
 			OwnerActor->ForceNetUpdate();
 		}
-		OnHUDEquipmentSlotsChanged.Broadcast();
+		BroadcastHUDEquipmentSlotsChanged();
 		return true;
 	}
 
@@ -1715,7 +2129,7 @@ USceneComponent* USpellRiseEquipmentManagerComponent::ResolveWeaponSpawnPointCom
 	return nullptr;
 }
 
-USkeletalMeshComponent* USpellRiseEquipmentManagerComponent::ResolveEquipmentAttachMesh() const
+USkeletalMeshComponent* USpellRiseEquipmentManagerComponent::ResolveEquipmentAttachMesh(FName TargetSocket) const
 {
 	AActor* OwnerActor = GetOwner();
 	if (!OwnerActor)
@@ -1725,18 +2139,20 @@ USkeletalMeshComponent* USpellRiseEquipmentManagerComponent::ResolveEquipmentAtt
 
 	if (const ASpellRiseCharacterBase* CharacterOwner = Cast<ASpellRiseCharacterBase>(OwnerActor))
 	{
-		if (USkeletalMeshComponent* EquipmentMesh = CharacterOwner->GetEquipmentAttachMeshComponent())
-		{
-			return EquipmentMesh;
-		}
+		return CharacterOwner->GetEquipmentAttachMeshComponentForSocket(TargetSocket);
+	}
 
-		if (USkeletalMeshComponent* BaseMesh = CharacterOwner->GetMesh())
+	TArray<USkeletalMeshComponent*> SkeletalMeshes;
+	OwnerActor->GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+	for (USkeletalMeshComponent* MeshComp : SkeletalMeshes)
+	{
+		if (IsValid(MeshComp) && (TargetSocket == NAME_None || MeshComp->DoesSocketExist(TargetSocket)))
 		{
-			return BaseMesh;
+			return MeshComp;
 		}
 	}
 
-	return OwnerActor->FindComponentByClass<USkeletalMeshComponent>();
+	return nullptr;
 }
 
 void USpellRiseEquipmentManagerComponent::PrepareWeaponActorForAttachment(AActor* WeaponActor) const
@@ -1854,7 +2270,7 @@ void USpellRiseEquipmentManagerComponent::SnapItemWeaponToSocket(UEquippableItem
 		return;
 	}
 
-	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh(TargetSocket);
 	AActor* WeaponActor = ResolveOwnedWeaponActor(WeaponActorClass);
 	if (!AttachMesh || !WeaponActor)
 	{
@@ -1894,7 +2310,7 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Local(int32 Qui
 		return;
 	}
 
-	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh(TargetSocket);
 	AActor* WeaponActor = QuickWeaponActors.IsValidIndex(QuickSlotIndex)
 		? QuickWeaponActors[QuickSlotIndex].Get()
 		: nullptr;
@@ -2726,7 +3142,7 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 		bOffHandSuppressedByTwoHandedWeapon = false;
 		EquippedOffHandWeapon = nullptr;
 		BroadcastOffHandWeaponChangedIfNeeded();
-		OnHUDEquipmentSlotsChanged.Broadcast();
+		BroadcastHUDEquipmentSlotsChanged();
 		return;
 	}
 
@@ -2768,7 +3184,7 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandSuppression_Server()
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::RefreshWeaponLoadoutVisuals_Server()
@@ -2965,7 +3381,7 @@ bool USpellRiseEquipmentManagerComponent::HandleOffHandEquipIntent(UEquippableIt
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 	return true;
 }
 
@@ -3079,7 +3495,7 @@ bool USpellRiseEquipmentManagerComponent::AssignQuickWeaponSlot_Server(UEquippab
 	RefreshOffHandSuppression_Server();
 	RefreshWeaponLoadoutVisuals_Server();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("AssignQuickWeaponSlot concluido. Owner=%s Item=%s Slot=%d ActiveQuickSlot=%d SpawnedWeapon=%s Slot0=%s Slot1=%s"),
@@ -3125,7 +3541,7 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 		BroadcastWeaponChangedIfNeeded();
 		BroadcastOffHandWeaponChangedIfNeeded();
 		OnQuickWeaponSlotsChanged.Broadcast();
-		OnHUDEquipmentSlotsChanged.Broadcast();
+		BroadcastHUDEquipmentSlotsChanged();
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("ActivateQuickWeaponSlot ignorado: slot ja ativo. Owner=%s Slot=%d Item=%s"),
 			*GetNameSafe(GetOwner()),
@@ -3158,7 +3574,7 @@ bool USpellRiseEquipmentManagerComponent::ActivateQuickWeaponSlot_Server(int32 Q
 	RefreshOffHandSuppression_Server();
 	RefreshWeaponLoadoutVisuals_Server();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 	UE_LOG(LogSpellRiseEquipmentTrace, Log,
 		TEXT("ActivateQuickWeaponSlot concluido. Owner=%s Slot=%d Item=%s EquippedWeapon=%s"),
 		*GetNameSafe(GetOwner()),
@@ -3221,7 +3637,7 @@ void USpellRiseEquipmentManagerComponent::RemoveQuickWeaponSlot_Server(int32 Qui
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestroyWeaponActor)
@@ -3251,7 +3667,7 @@ void USpellRiseEquipmentManagerComponent::RemoveOffHandWeapon_Server(bool bDestr
 		OwnerActor->ForceNetUpdate();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, int32 QuantityToDrop)
@@ -3293,19 +3709,23 @@ bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, 
 	}
 
 
-	UClass* DropPickupClass = DropPickupActorClass.LoadSynchronous();
-	if (!DropPickupClass)
+	if (!SpellRiseDropPickup::ResolveDropPickupClass(DropPickupActorClass))
 	{
-
-		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
+		UE_LOG(LogSpellRiseEquipmentTrace, Error,
+			TEXT("DropItem_Server abortado: classe de pickup indisponivel. Owner=%s ItemClass=%s"),
+			*GetNameSafe(OwnerActor),
+			*GetNameSafe(ItemClass));
+		return false;
 	}
-	if (!DropPickupClass)
-	{
 
-		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/Game/UI/InventorySystem/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
-	}
-	if (!DropPickupClass)
+	AActor* SpawnedPickupActor = nullptr;
+	if (!SpawnPickupActorForDroppedItem_Server(ItemClass, SafeDropQuantity, SpawnLocation, SpawnRotation, SpawnedPickupActor))
 	{
+		UE_LOG(LogSpellRiseEquipmentTrace, Error,
+			TEXT("DropItem_Server falhou ao spawnar pickup antes da remocao. Owner=%s ItemClass=%s Quantity=%d"),
+			*GetNameSafe(OwnerActor),
+			*GetNameSafe(ItemClass),
+			SafeDropQuantity);
 		return false;
 	}
 
@@ -3323,43 +3743,15 @@ bool USpellRiseEquipmentManagerComponent::DropItem_Server(UNarrativeItem* Item, 
 
 	if (!bRemoved)
 	{
-		return false;
-	}
-
-	if (!SpawnPickupActorForDroppedItem_Server(ItemClass, SafeDropQuantity, SpawnLocation, SpawnRotation))
-	{
+		if (SpawnedPickupActor)
+		{
+			SpawnedPickupActor->Destroy();
+		}
 		UE_LOG(LogSpellRiseEquipmentTrace, Error,
-			TEXT("DropItem_Server falhou ao spawnar pickup. Owner=%s ItemClass=%s Quantity=%d"),
+			TEXT("DropItem_Server falhou ao remover item apos spawn do pickup. Owner=%s ItemClass=%s Quantity=%d"),
 			*GetNameSafe(OwnerActor),
 			*GetNameSafe(ItemClass),
 			SafeDropQuantity);
-
-		if (bRemovingEntireStack)
-		{
-			const FItemAddResult RestoreResult = OwnerInventory->TryAddItemFromClass(ItemClass, SafeDropQuantity, false);
-			if (RestoreResult.AmountGiven != SafeDropQuantity)
-			{
-				UE_LOG(LogSpellRiseEquipmentTrace, Error,
-					TEXT("Rollback de drop falhou parcialmente. Owner=%s ItemClass=%s Esperado=%d Restaurado=%d"),
-					*GetNameSafe(OwnerActor),
-					*GetNameSafe(ItemClass),
-					SafeDropQuantity,
-					RestoreResult.AmountGiven);
-			}
-		}
-		else
-		{
-			Item->SetQuantity(StackQuantity);
-		}
-
-		if (UEquippableItem* EquippableItem = Cast<UEquippableItem>(Item))
-		{
-			if (FindQuickSlotByItem(EquippableItem) == INDEX_NONE)
-			{
-				SetNarrativeItemActiveState(EquippableItem, false);
-			}
-		}
-
 		return false;
 	}
 
@@ -3424,22 +3816,15 @@ void USpellRiseEquipmentManagerComponent::AuditRejectedEquipmentRpc(const TCHAR*
 		*GetNameSafe(GetOwner()));
 }
 
-bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation)
+bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation, AActor*& OutSpawnedPickupActor)
 {
+	OutSpawnedPickupActor = nullptr;
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !ItemClass || QuantityToDrop <= 0)
 	{
 		return false;
 	}
 
-	UClass* DropPickupClass = DropPickupActorClass.LoadSynchronous();
-	if (!DropPickupClass)
-	{
-		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/NarrativeInventory/Blueprints/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
-	}
-	if (!DropPickupClass)
-	{
-		DropPickupClass = TSoftClassPtr<AActor>(FSoftClassPath(TEXT("/Game/UI/InventorySystem/BP_BasicItemPickup.BP_BasicItemPickup_C"))).LoadSynchronous();
-	}
+	UClass* DropPickupClass = SpellRiseDropPickup::ResolveDropPickupClass(DropPickupActorClass);
 	if (!DropPickupClass)
 	{
 		return false;
@@ -3464,158 +3849,46 @@ bool USpellRiseEquipmentManagerComponent::SpawnPickupActorForDroppedItem_Server(
 		return false;
 	}
 
+	PickupActor->SetReplicates(true);
+	PickupActor->SetReplicateMovement(true);
+	PickupActor->SetNetUpdateFrequency(10.0f);
 
-	auto TrySetItemClassPropertyByName = [&](const FName PropertyName) -> bool
+	const bool bInitializedBeforeConstruction = SpellRiseDropPickup::ApplyPickupRuntimeData(PickupActor, ItemClass, QuantityToDrop);
+	if (!bInitializedBeforeConstruction)
 	{
-		if (FProperty* ItemClassProperty = PickupActor->GetClass()->FindPropertyByName(PropertyName))
-		{
-			if (FClassProperty* ClassProperty = CastField<FClassProperty>(ItemClassProperty))
-			{
-				void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(PickupActor);
-				ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
-				return true;
-			}
-
-			if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(ItemClassProperty))
-			{
-				void* ValuePtr = ObjectProperty->ContainerPtrToValuePtr<void>(PickupActor);
-				ObjectProperty->SetObjectPropertyValue(ValuePtr, *ItemClass);
-				return true;
-			}
-		}
-
+		PickupActor->Destroy();
+		UE_LOG(LogSpellRiseEquipmentTrace, Error,
+			TEXT("SpawnPickupActorForDroppedItem_Server abortado: nao foi possivel aplicar ItemClass/Quantity antes da construcao. PickupClass=%s ItemClass=%s Quantity=%d"),
+			*GetNameSafe(DropPickupClass),
+			*GetNameSafe(ItemClass),
+			QuantityToDrop);
 		return false;
-	};
-
-	auto TrySetItemClassPropertyByType = [&]() -> bool
-	{
-		for (TFieldIterator<FProperty> It(PickupActor->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
-		{
-			FProperty* Property = *It;
-			if (FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
-			{
-				UClass* MetaClass = ClassProperty->MetaClass;
-				if (MetaClass && MetaClass->IsChildOf(UNarrativeItem::StaticClass()))
-				{
-					void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(PickupActor);
-					ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
-					return true;
-				}
-			}
-		}
-
-		return false;
-	};
-
-	auto TrySetQuantityProperty = [&](const FName PropertyName) -> bool
-	{
-		if (FProperty* QuantityProperty = PickupActor->GetClass()->FindPropertyByName(PropertyName))
-		{
-			if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(QuantityProperty))
-			{
-				void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(PickupActor);
-				NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
-				return true;
-			}
-		}
-
-		return false;
-	};
-
-	auto TrySetQuantityPropertyByType = [&]() -> bool
-	{
-		for (TFieldIterator<FProperty> It(PickupActor->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
-		{
-			FProperty* Property = *It;
-			if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property))
-			{
-				const FString PropertyName = Property->GetName();
-				if (PropertyName.Contains(TEXT("Quantity"), ESearchCase::IgnoreCase))
-				{
-					void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(PickupActor);
-					NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
-					return true;
-				}
-			}
-		}
-
-		return false;
-	};
-
-	const bool bSetItemClass =
-		TrySetItemClassPropertyByName(TEXT("ItemClass")) ||
-		TrySetItemClassPropertyByName(TEXT("Item Class")) ||
-		TrySetItemClassPropertyByName(TEXT("Class")) ||
-		TrySetItemClassPropertyByType();
-
-	const bool bSetQuantity =
-		TrySetQuantityProperty(TEXT("QuantityToGive")) ||
-		TrySetQuantityProperty(TEXT("Quantity to Give")) ||
-		TrySetQuantityProperty(TEXT("Quantity")) ||
-		TrySetQuantityPropertyByType();
-
-
-	if (UFunction* InitializeFunction = PickupActor->FindFunction(TEXT("Initialize")))
-	{
-		uint8* ParamsBuffer = static_cast<uint8*>(FMemory_Alloca(InitializeFunction->ParmsSize));
-		FMemory::Memzero(ParamsBuffer, InitializeFunction->ParmsSize);
-
-		if (FProperty* ClassParam = InitializeFunction->FindPropertyByName(TEXT("Class")))
-		{
-			if (FClassProperty* ClassProperty = CastField<FClassProperty>(ClassParam))
-			{
-				void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-				ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
-			}
-			else if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(ClassParam))
-			{
-				void* ValuePtr = ObjectProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-				ObjectProperty->SetObjectPropertyValue(ValuePtr, *ItemClass);
-			}
-		}
-		else
-		{
-			for (TFieldIterator<FProperty> It(InitializeFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
-			{
-				if (FClassProperty* ClassProperty = CastField<FClassProperty>(*It))
-				{
-					UClass* MetaClass = ClassProperty->MetaClass;
-					if (MetaClass && MetaClass->IsChildOf(UNarrativeItem::StaticClass()))
-					{
-						void* ValuePtr = ClassProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-						ClassProperty->SetPropertyValue(ValuePtr, *ItemClass);
-						break;
-					}
-				}
-			}
-		}
-
-		if (FProperty* QuantityParam = InitializeFunction->FindPropertyByName(TEXT("Quantity")))
-		{
-			if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(QuantityParam))
-			{
-				void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-				NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
-			}
-		}
-		else
-		{
-			for (TFieldIterator<FProperty> It(InitializeFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
-			{
-				if (FNumericProperty* NumericProperty = CastField<FNumericProperty>(*It))
-				{
-					void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(ParamsBuffer);
-					NumericProperty->SetIntPropertyValue(ValuePtr, static_cast<int64>(QuantityToDrop));
-					break;
-				}
-			}
-		}
-
-		PickupActor->ProcessEvent(InitializeFunction, ParamsBuffer);
 	}
 
 	UGameplayStatics::FinishSpawningActor(PickupActor, SpawnTransform);
 
+	const bool bInitializedAfterConstruction = SpellRiseDropPickup::ApplyPickupRuntimeData(PickupActor, ItemClass, QuantityToDrop);
+	const bool bInvokedInitialize = SpellRiseDropPickup::InvokeInitialize(PickupActor, ItemClass, QuantityToDrop);
+	if (!bInitializedAfterConstruction)
+	{
+		PickupActor->Destroy();
+		UE_LOG(LogSpellRiseEquipmentTrace, Error,
+			TEXT("SpawnPickupActorForDroppedItem_Server abortado: ItemClass/Quantity perdidos apos FinishSpawning. Pickup=%s ItemClass=%s Quantity=%d"),
+			*GetNameSafe(PickupActor),
+			*GetNameSafe(ItemClass),
+			QuantityToDrop);
+		return false;
+	}
+
+	PickupActor->ForceNetUpdate();
+	OutSpawnedPickupActor = PickupActor;
+	UE_LOG(LogSpellRiseEquipmentTrace, Log,
+		TEXT("Drop pickup spawnado no servidor. Pickup=%s PickupClass=%s ItemClass=%s Quantity=%d Initialize=%s"),
+		*GetNameSafe(PickupActor),
+		*GetNameSafe(DropPickupClass),
+		*GetNameSafe(ItemClass),
+		QuantityToDrop,
+		bInvokedInitialize ? TEXT("true") : TEXT("false"));
 	return true;
 }
 
@@ -3724,7 +3997,7 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandVisual_Local(bool bEquip
 	}
 
 	const FName TargetSocket = bEquipped ? EquippedSocket : HolsterSocket;
-	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh(TargetSocket);
 
 	UClass* WeaponActorClass = nullptr;
 	const void* WeaponConfigPtr = nullptr;
@@ -3775,15 +4048,20 @@ void USpellRiseEquipmentManagerComponent::RefreshOffHandVisual_Server(bool bEqui
 	}
 
 	AActor* WeaponActor = GetOrSpawnWeaponActorForItem(ActiveOffHandItem);
-	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh();
 	FName EquippedSocket = NAME_None;
 	FName HolsterSocket = NAME_None;
-	if (!WeaponActor || !AttachMesh || !ResolveWeaponSocketsForItem(ActiveOffHandItem, true, EquippedSocket, HolsterSocket))
+	if (!WeaponActor || !ResolveWeaponSocketsForItem(ActiveOffHandItem, true, EquippedSocket, HolsterSocket))
 	{
 		return;
 	}
 
 	const FName TargetSocket = bEquipped ? EquippedSocket : HolsterSocket;
+	USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh(TargetSocket);
+	if (!AttachMesh)
+	{
+		return;
+	}
+
 	if (TargetSocket != NAME_None)
 	{
 		AttachWeaponActorToSocket(WeaponActor, AttachMesh, TargetSocket);
@@ -3857,7 +4135,7 @@ void USpellRiseEquipmentManagerComponent::RefreshQuickSlotVisual_Server(int32 Qu
 		return;
 	}
 
-	if (USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh())
+	if (USkeletalMeshComponent* AttachMesh = ResolveEquipmentAttachMesh(TargetSocket))
 	{
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("RefreshQuickSlotVisual attachando. Owner=%s Item=%s WeaponActor=%s Slot=%d Equipped=%s Socket=%s Mesh=%s"),
@@ -3992,14 +4270,14 @@ void USpellRiseEquipmentManagerComponent::OnRep_QuickWeaponSlots()
 	}
 	ReconcileReplicatedQuickSlotVisuals();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_QuickWeaponActors()
 {
 	ReconcileReplicatedQuickSlotVisuals();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_ActiveQuickSlotIndex()
@@ -4011,7 +4289,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_ActiveQuickSlotIndex()
 		BroadcastWeaponChangedIfNeeded();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_EquippedWeapon()
@@ -4019,7 +4297,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_EquippedWeapon()
 	ReconcileReplicatedQuickSlotVisuals();
 	BroadcastWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_ActiveOffHandItem()
@@ -4034,7 +4312,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_ActiveOffHandItem()
 		BroadcastOffHandWeaponChangedIfNeeded();
 	}
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_OffHandSuppressedByTwoHandedWeapon()
@@ -4042,7 +4320,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_OffHandSuppressedByTwoHandedWeap
 	RefreshOffHandVisual_Local(IsOffHandGameplayActive());
 	BroadcastOffHandWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 void USpellRiseEquipmentManagerComponent::OnRep_EquippedOffHandWeapon()
@@ -4050,7 +4328,7 @@ void USpellRiseEquipmentManagerComponent::OnRep_EquippedOffHandWeapon()
 	RefreshOffHandVisual_Local(IsOffHandGameplayActive());
 	BroadcastOffHandWeaponChangedIfNeeded();
 	OnQuickWeaponSlotsChanged.Broadcast();
-	OnHUDEquipmentSlotsChanged.Broadcast();
+	BroadcastHUDEquipmentSlotsChanged();
 }
 
 UEquippableItem* USpellRiseEquipmentManagerComponent::GetQuickWeaponItemByIndex(int32 QuickSlotIndex) const

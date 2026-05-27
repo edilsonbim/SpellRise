@@ -78,7 +78,7 @@ private:
 	void OnRep_EquippedWeaponActor();
 
 	USpellRiseAbilitySystemComponent* ResolveEnemyASC() const;
-	USkeletalMeshComponent* ResolveAttachMesh() const;
+	USkeletalMeshComponent* ResolveAttachMesh(FName TargetSocket = NAME_None) const;
 	USceneComponent* ResolveWeaponAttachComponent(AActor* WeaponActor) const;
 	bool SpawnWeaponActor_Server();
 	void DestroyWeaponActor_Server();

@@ -249,6 +249,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Abilities")
 	TArray<FSpellRiseEquipmentAbilityPreview> GetAbilitiesToGrantPreviewForItem(UEquippableItem* Item) const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Abilities")
+	TArray<FSpellRiseEquipmentAbilityPreview> GetAbilitiesToGrantPreviewForQuickWeaponSlot(int32 QuickSlotIndex) const;
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment|Abilities", meta=(WorldContext="WorldContextObject"))
 	static float GetAbilityPreviewCooldownRemainingAtCurrentTime(const UObject* WorldContextObject, const FSpellRiseEquipmentAbilityPreview& Preview);
 
@@ -335,6 +338,10 @@ private:
 	void SyncNarrativeEquipmentComponentState(UEquippableItem* Item, bool bEquipped);
 	void ApplyVisualForItem(UEquippableItem* Item, bool bEquip);
 	bool ExtractAbilitiesToGrantFromItem(UEquippableItem* Item, TArray<struct FSpellRiseGrantedAbility>& OutAbilities) const;
+	bool DoesAbilitySpecBelongToItem(const FGameplayAbilitySpec& Spec, UEquippableItem* Item) const;
+	bool AreGrantedAbilitySpecsReadyForItem(UEquippableItem* Item) const;
+	void BroadcastHUDEquipmentSlotsChanged();
+	void BroadcastHUDEquipmentSlotsChangedWhenAbilitySpecsReady();
 	bool ResolveWeaponActorClassFromItem(UEquippableItem* Item, UClass*& OutWeaponActorClass, const void*& OutWeaponConfigPtr, const UStruct*& OutWeaponConfigStruct) const;
 	bool ResolveWeaponSocketsFromConfig(const void* WeaponConfigPtr, const UStruct* WeaponConfigStruct, FName& OutEquippedSocket, FName& OutStowedSocket) const;
 	bool ResolveWeaponSocketsForItem(UEquippableItem* Item, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const;
@@ -345,7 +352,7 @@ private:
 	void BroadcastWeaponLoadoutChangedIfNeeded();
 	AActor* ResolveOwnedWeaponActor(UClass* WeaponActorClass) const;
 	USceneComponent* ResolveWeaponSpawnPointComponent(AActor* WeaponActor) const;
-	USkeletalMeshComponent* ResolveEquipmentAttachMesh() const;
+	USkeletalMeshComponent* ResolveEquipmentAttachMesh(FName TargetSocket = NAME_None) const;
 	void PrepareWeaponActorForAttachment(AActor* WeaponActor) const;
 	bool AttachWeaponActorToSocket(AActor* WeaponActor, USkeletalMeshComponent* AttachMesh, FName TargetSocket) const;
 	void SnapItemWeaponToSocket(UEquippableItem* Item, bool bEquip);
@@ -381,7 +388,7 @@ private:
 		int32 MaxRequestsPerWindow,
 		FString& OutRejectReason);
 	void AuditRejectedEquipmentRpc(const TCHAR* RpcName, const FString& RejectReason);
-	bool SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation);
+	bool SpawnPickupActorForDroppedItem_Server(TSubclassOf<UNarrativeItem> ItemClass, int32 QuantityToDrop, const FVector& SpawnLocation, const FRotator& SpawnRotation, AActor*& OutSpawnedPickupActor);
 	AActor* GetOrSpawnWeaponActorForItem(UEquippableItem* Item);
 	void DestroyWeaponActorForItem(UEquippableItem* Item);
 	void RefreshWeaponLoadoutVisuals_Server();
@@ -488,4 +495,7 @@ private:
 	FSpellRiseEquipmentRpcRateLimitState DropItemRpcRateState;
 
 	int32 VisualSyncDepth = 0;
+
+	bool bPendingHUDEquipmentAbilityRefresh = false;
+	int32 PendingHUDEquipmentAbilityRefreshAttempts = 0;
 };

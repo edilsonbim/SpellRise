@@ -65,6 +65,9 @@ protected:
 	float FallStartZ = 0.f;
 
 	UPROPERTY(Transient)
+	float MaxAirZ = 0.f;
+
+	UPROPERTY(Transient)
 	float FallStartTime = 0.f;
 
 	UPROPERTY(Transient)

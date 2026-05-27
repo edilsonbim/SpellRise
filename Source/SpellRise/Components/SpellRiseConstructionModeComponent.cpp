@@ -30,7 +30,7 @@ void USpellRiseConstructionModeComponent::GetLifetimeReplicatedProps(TArray<FLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(USpellRiseConstructionModeComponent, bConstructionModeEnabled);
+	DOREPLIFETIME_CONDITION(USpellRiseConstructionModeComponent, bConstructionModeEnabled, COND_OwnerOnly);
 }
 
 void USpellRiseConstructionModeComponent::RequestSetConstructionMode(bool bEnableConstructionMode)

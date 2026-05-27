@@ -659,6 +659,48 @@ USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponent
 	return GetVisualMeshComponent();
 }
 
+USkeletalMeshComponent* ASpellRiseCharacterBase::GetEquipmentAttachMeshComponentForSocket(FName TargetSocket) const
+{
+	if (TargetSocket == NAME_None)
+	{
+		return GetEquipmentAttachMeshComponent();
+	}
+
+	if (UChildActorComponent* ChildActorComp = FindCharacterChildActorComponentByName(EquipmentAttachMeshComponentName))
+	{
+		if (AActor* ChildActor = ChildActorComp->GetChildActor())
+		{
+			TArray<USkeletalMeshComponent*> ChildMeshes;
+			ChildActor->GetComponents<USkeletalMeshComponent>(ChildMeshes);
+			for (USkeletalMeshComponent* MeshComp : ChildMeshes)
+			{
+				if (IsValid(MeshComp) && MeshComp->DoesSocketExist(TargetSocket))
+				{
+					return MeshComp;
+				}
+			}
+		}
+	}
+
+	if (USkeletalMeshComponent* NamedAttachMesh = FindCharacterSkeletalMeshComponentByName(EquipmentAttachMeshComponentName))
+	{
+		if (NamedAttachMesh->DoesSocketExist(TargetSocket))
+		{
+			return NamedAttachMesh;
+		}
+	}
+
+	if (USkeletalMeshComponent* MainMesh = GetMesh())
+	{
+		if (MainMesh->DoesSocketExist(TargetSocket))
+		{
+			return MainMesh;
+		}
+	}
+
+	return GetEquipmentAttachMeshComponent();
+}
+
 UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
 {
 	if (UCameraComponent* NamedCamera = FindCharacterCameraComponentByName(AimCameraComponentName))
@@ -1664,13 +1706,29 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 
 }
 
-TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant)
+TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level)
 {
 	return GrantAbilitiesFromSource(AbilitiesToGrant, this, false);
 }
 
+FGameplayAbilitySpecHandle ASpellRiseCharacterBase::GrantAbility(
+	TSoftClassPtr<UGameplayAbility> AbilityClass,
+	const int32 AbilityLevel,
+	FGameplayTag InputTag,
+	const bool bAutoActivateIfNoInputTag)
+{
+	FSpellRiseGrantedAbility Grant;
+	Grant.AbilityClass = AbilityClass;
+	Grant.AbilityLevel = FMath::Max(1, AbilityLevel);
+	Grant.InputTag = InputTag;
+	Grant.bAutoActivateIfNoInputTag = bAutoActivateIfNoInputTag;
+
+	const TArray<FGameplayAbilitySpecHandle> Handles = GrantAbilities({ Grant });
+	return Handles.Num() > 0 ? Handles[0] : FGameplayAbilitySpecHandle();
+}
+
 TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilitiesFromSource(
-	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level,
 	UObject* SourceObject,
 	const bool bAllowDuplicateAbilityClassesForDifferentSources)
 {

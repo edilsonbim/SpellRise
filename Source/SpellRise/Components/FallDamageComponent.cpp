@@ -47,6 +47,7 @@ void UFallDamageComponent::TickComponent(
 
 	const float DownSpeedAbs = FMath::Max(0.f, -OwnerCharacter->GetVelocity().Z);
 	MaxFallSpeedAbs = FMath::Max(MaxFallSpeedAbs, DownSpeedAbs);
+	MaxAirZ = FMath::Max(MaxAirZ, OwnerCharacter->GetActorLocation().Z);
 }
 
 void UFallDamageComponent::OnMovementModeChanged()
@@ -80,7 +81,7 @@ void UFallDamageComponent::OnLanded(const FHitResult& Hit)
 
 	const float Now = GetWorld()->GetTimeSeconds();
 	const float FallDuration = Now - FallStartTime;
-	const float DeltaZ = FallStartZ - OwnerCharacter->GetActorLocation().Z;
+	const float DeltaZ = FMath::Max(FallStartZ, MaxAirZ) - OwnerCharacter->GetActorLocation().Z;
 
 	if (bIgnoreNextFallDamage || HasFallImmunity() || IsSafeSurface(Hit))
 	{
@@ -125,6 +126,7 @@ void UFallDamageComponent::StartFallTracking()
 
 	bFallTrackingActive = true;
 	FallStartZ = OwnerCharacter->GetActorLocation().Z;
+	MaxAirZ = FallStartZ;
 	FallStartTime = GetWorld()->GetTimeSeconds();
 	MaxFallSpeedAbs = FMath::Max(0.f, -OwnerCharacter->GetVelocity().Z);
 
@@ -134,6 +136,7 @@ void UFallDamageComponent::StopFallTracking()
 {
 	bFallTrackingActive = false;
 	FallStartZ = 0.f;
+	MaxAirZ = 0.f;
 	FallStartTime = 0.f;
 	MaxFallSpeedAbs = 0.f;
 	bIgnoreNextFallDamage = false;

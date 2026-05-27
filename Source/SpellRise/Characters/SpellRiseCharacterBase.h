@@ -56,16 +56,16 @@ struct FSpellRiseGrantedAbility
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
 	TSoftClassPtr<UGameplayAbility> AbilityClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
 	int32 AbilityLevel = 1;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
 	FGameplayTag InputTag;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Grant")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant")
 	bool bAutoActivateIfNoInputTag = false;
 };
 
@@ -114,7 +114,14 @@ public:
 	void SR_ClearAbilityInput();
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant);
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level = 1);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS", meta=(DisplayName="Grant Ability"))
+	FGameplayAbilitySpecHandle GrantAbility(
+		TSoftClassPtr<UGameplayAbility> AbilityClass,
+		UPARAM(meta=(ClampMin="1")) int32 AbilityLevel,
+		UPARAM(meta=(Categories="InputTag")) FGameplayTag InputTag,
+		bool bAutoActivateIfNoInputTag);
 
 	TArray<FGameplayAbilitySpecHandle> GrantAbilitiesFromSource(
 		const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
@@ -187,6 +194,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
 	USkeletalMeshComponent* GetEquipmentAttachMeshComponent() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Mesh")
+	USkeletalMeshComponent* GetEquipmentAttachMeshComponentForSocket(FName TargetSocket) const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Character|Camera")
 	UCameraComponent* GetActiveAimCameraComponent() const;
