@@ -27,6 +27,8 @@ Server/
 
 # Large project assets kept outside GitHub
 Images/
+*.uasset
+*.umap
 Content/Hivemind/Medieval_Docks/SkySphere/Textures/HDRI/
 Content/Maps/SoulCave/Maps/LV_Soul_Cave_BuiltData.uasset
 Content/MetaHumans/
