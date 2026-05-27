@@ -27,6 +27,11 @@ Server/
 
 # Large project assets kept outside GitHub
 Images/
+Content/Hivemind/Medieval_Docks/SkySphere/Textures/HDRI/
+Content/Maps/SoulCave/Maps/LV_Soul_Cave_BuiltData.uasset
+Content/MetaHumans/
+Content/Characters/CharacterCreation/Visuals/Hair/
+Content/Characters/CharacterCreation/Visuals/Heads/
 
 # Local/runtime data
 Database/
