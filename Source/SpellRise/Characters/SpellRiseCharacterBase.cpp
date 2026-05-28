@@ -898,7 +898,7 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		return;
 	}
 
-	constexpr float Baseline = 20.f;
+	constexpr float Baseline = 0.f;
 
 	float dSTR = 0.f;
 	float dAGI = 0.f;
@@ -1706,9 +1706,50 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 
 }
 
-TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level)
+TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel)
 {
-	return GrantAbilitiesFromSource(AbilitiesToGrant, this, false);
+	if (!GetSpellRiseASC() || !HasAuthority())
+	{
+		return {};
+	}
+
+	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
+	AbilityHandles.Reserve(AbilitiesToGrant.Num());
+
+	const int32 FinalLevel = FMath::Max(1, AbilityLevel);
+	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
+	{
+		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
+		{
+			continue;
+		}
+
+		if (GetSpellRiseASC()->FindAbilitySpecFromClass(AbilityClass) != nullptr)
+		{
+			continue;
+		}
+
+		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, this);
+
+		if (Grant.InputTag.IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
+		}
+
+		const FGameplayAbilitySpecHandle Handle = GetSpellRiseASC()->GiveAbility(Spec);
+		AbilityHandles.Add(Handle);
+
+		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
+		{
+			GetSpellRiseASC()->TryActivateAbility(Handle);
+		}
+	}
+
+	GetSpellRiseASC()->RefreshAbilityActorInfo();
+	SendAbilitiesChangedEvent();
+
+	return AbilityHandles;
 }
 
 FGameplayAbilitySpecHandle ASpellRiseCharacterBase::GrantAbility(
@@ -1719,16 +1760,15 @@ FGameplayAbilitySpecHandle ASpellRiseCharacterBase::GrantAbility(
 {
 	FSpellRiseGrantedAbility Grant;
 	Grant.AbilityClass = AbilityClass;
-	Grant.AbilityLevel = FMath::Max(1, AbilityLevel);
 	Grant.InputTag = InputTag;
 	Grant.bAutoActivateIfNoInputTag = bAutoActivateIfNoInputTag;
 
-	const TArray<FGameplayAbilitySpecHandle> Handles = GrantAbilities({ Grant });
+	const TArray<FGameplayAbilitySpecHandle> Handles = GrantAbilities({ Grant }, AbilityLevel);
 	return Handles.Num() > 0 ? Handles[0] : FGameplayAbilitySpecHandle();
 }
 
 TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilitiesFromSource(
-	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level,
+	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
 	UObject* SourceObject,
 	const bool bAllowDuplicateAbilityClassesForDifferentSources)
 {
@@ -1771,8 +1811,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilitiesFromSo
 			}
 		}
 
-		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
-		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, SourceObject ? SourceObject : this);
+		FGameplayAbilitySpec Spec(AbilityClass, 1, INDEX_NONE, SourceObject ? SourceObject : this);
 
 		if (Grant.InputTag.IsValid())
 		{

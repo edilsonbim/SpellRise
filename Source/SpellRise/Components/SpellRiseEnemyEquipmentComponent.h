@@ -20,9 +20,6 @@ struct FSpellRiseEnemyEquipmentGrantedAbility
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment|GAS", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
 	TSoftClassPtr<UGameplayAbility> AbilityClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment|GAS", meta=(ClampMin="1"))
-	int32 AbilityLevel = 1;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|Equipment|GAS")
 	bool bAutoActivateIfNoInputTag = false;
 };

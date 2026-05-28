@@ -14,10 +14,6 @@ namespace SpellRiseDerivedStats
 	constexpr float SPELL_DAMAGE_MULTIPLIER_BASE = 1.f;
 	constexpr float HEALING_MULTIPLIER_BASE = 1.f;
 
-	constexpr float CAST_TIME_REDUCTION_MIN = 0.f;
-	constexpr float CAST_TIME_REDUCTION_MAX = 0.096f;
-	constexpr float CAST_TIME_REDUCTION_BASE = 0.f;
-
 	constexpr float CRIT_CHANCE_MIN = 0.f;
 	constexpr float CRIT_CHANCE_MAX = 0.25f;
 	constexpr float CRIT_CHANCE_BASE = 0.05f;
@@ -29,10 +25,6 @@ namespace SpellRiseDerivedStats
 	constexpr float ARMOR_PENETRATION_MIN = 0.f;
 	constexpr float ARMOR_PENETRATION_MAX = 0.30f;
 	constexpr float ARMOR_PENETRATION_BASE = 0.f;
-
-	constexpr float MANA_COST_REDUCTION_MIN = 0.f;
-	constexpr float MANA_COST_REDUCTION_MAX = 0.20f;
-	constexpr float MANA_COST_REDUCTION_BASE = 0.f;
 }
 
 UDerivedStatsAttributeSet::UDerivedStatsAttributeSet()
@@ -41,11 +33,9 @@ UDerivedStatsAttributeSet::UDerivedStatsAttributeSet()
 	InitBowDamageMultiplier(SpellRiseDerivedStats::BOW_DAMAGE_MULTIPLIER_BASE);
 	InitSpellDamageMultiplier(SpellRiseDerivedStats::SPELL_DAMAGE_MULTIPLIER_BASE);
 	InitHealingMultiplier(SpellRiseDerivedStats::HEALING_MULTIPLIER_BASE);
-	InitCastTimeReduction(SpellRiseDerivedStats::CAST_TIME_REDUCTION_BASE);
 	InitCritChance(SpellRiseDerivedStats::CRIT_CHANCE_BASE);
 	InitCritDamage(SpellRiseDerivedStats::CRIT_DAMAGE_BASE);
 	InitArmorPenetration(SpellRiseDerivedStats::ARMOR_PENETRATION_BASE);
-	InitManaCostReduction(SpellRiseDerivedStats::MANA_COST_REDUCTION_BASE);
 }
 
 void UDerivedStatsAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -57,13 +47,10 @@ void UDerivedStatsAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimePrope
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, SpellDamageMultiplier, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, HealingMultiplier,     COND_OwnerOnly, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, CastTimeReduction,     COND_OwnerOnly, REPNOTIFY_Always);
-
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, CritChance,            COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, CritDamage,            COND_OwnerOnly, REPNOTIFY_Always);
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, ArmorPenetration,      COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, ManaCostReduction,     COND_OwnerOnly, REPNOTIFY_Always);
 }
 
 void UDerivedStatsAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -77,10 +64,6 @@ void UDerivedStatsAttributeSet::PreAttributeChange(const FGameplayAttribute& Att
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX);
 	}
-	else if (Attribute == GetCastTimeReductionAttribute())
-	{
-		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::CAST_TIME_REDUCTION_MIN, SpellRiseDerivedStats::CAST_TIME_REDUCTION_MAX);
-	}
 	else if (Attribute == GetCritChanceAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::CRIT_CHANCE_MIN, SpellRiseDerivedStats::CRIT_CHANCE_MAX);
@@ -92,10 +75,6 @@ void UDerivedStatsAttributeSet::PreAttributeChange(const FGameplayAttribute& Att
 	else if (Attribute == GetArmorPenetrationAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::ARMOR_PENETRATION_MIN, SpellRiseDerivedStats::ARMOR_PENETRATION_MAX);
-	}
-	else if (Attribute == GetManaCostReductionAttribute())
-	{
-		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::MANA_COST_REDUCTION_MIN, SpellRiseDerivedStats::MANA_COST_REDUCTION_MAX);
 	}
 }
 
@@ -121,10 +100,6 @@ void UDerivedStatsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectM
 	{
 		SetHealingMultiplier(FMath::Clamp(GetHealingMultiplier(), SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX));
 	}
-	else if (Attribute == GetCastTimeReductionAttribute())
-	{
-		SetCastTimeReduction(FMath::Clamp(GetCastTimeReduction(), SpellRiseDerivedStats::CAST_TIME_REDUCTION_MIN, SpellRiseDerivedStats::CAST_TIME_REDUCTION_MAX));
-	}
 	else if (Attribute == GetCritChanceAttribute())
 	{
 		SetCritChance(FMath::Clamp(GetCritChance(), SpellRiseDerivedStats::CRIT_CHANCE_MIN, SpellRiseDerivedStats::CRIT_CHANCE_MAX));
@@ -136,10 +111,6 @@ void UDerivedStatsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectM
 	else if (Attribute == GetArmorPenetrationAttribute())
 	{
 		SetArmorPenetration(FMath::Clamp(GetArmorPenetration(), SpellRiseDerivedStats::ARMOR_PENETRATION_MIN, SpellRiseDerivedStats::ARMOR_PENETRATION_MAX));
-	}
-	else if (Attribute == GetManaCostReductionAttribute())
-	{
-		SetManaCostReduction(FMath::Clamp(GetManaCostReduction(), SpellRiseDerivedStats::MANA_COST_REDUCTION_MIN, SpellRiseDerivedStats::MANA_COST_REDUCTION_MAX));
 	}
 }
 
@@ -163,11 +134,6 @@ void UDerivedStatsAttributeSet::OnRep_HealingMultiplier(const FGameplayAttribute
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, HealingMultiplier, OldValue);
 }
 
-void UDerivedStatsAttributeSet::OnRep_CastTimeReduction(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, CastTimeReduction, OldValue);
-}
-
 void UDerivedStatsAttributeSet::OnRep_CritChance(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, CritChance, OldValue);
@@ -181,9 +147,4 @@ void UDerivedStatsAttributeSet::OnRep_CritDamage(const FGameplayAttributeData& O
 void UDerivedStatsAttributeSet::OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, ArmorPenetration, OldValue);
-}
-
-void UDerivedStatsAttributeSet::OnRep_ManaCostReduction(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, ManaCostReduction, OldValue);
 }

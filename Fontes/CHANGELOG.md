@@ -10,6 +10,10 @@
 - Combat log autoritativo com transporte nativo em C++.
 - Hardening de RPCs críticos de gameplay e respawn.
 - Validação server-side para target data de projétil.
+- Removido `ManaCostReduction` dos atributos derivados; redução/custo de mana passa a ser responsabilidade de GE/ability level.
+- Removido `CastTimeReduction` dos atributos derivados; duração/cast time passa a ser responsabilidade de GE/ability level.
+- Clamp dos primários ajustado para `0..120`; `AttributeSet` inicia em `0`, e o baseline de `20` passa a ser aplicado fora dele por BP/GE autoritativo.
+- Contrato de grant GAS ajustado: `FSpellRiseGrantedAbility` não carrega mais level; o level editável fica no Blueprint callable do `CharacterBase`, enquanto grants por source/inimigo usam default server-side seguro.
 - Fluxo de death -> full loot -> respawn fechado no recorte atual.
 - Full loot da morte ajustado para spawn com delay de 3s e verificação de piso no servidor (evita bag presa no ar).
 - Hook determinístico de QA para morte em smoke multiplayer.

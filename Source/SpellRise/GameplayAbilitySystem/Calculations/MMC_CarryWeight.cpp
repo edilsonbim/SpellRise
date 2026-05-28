@@ -25,7 +25,7 @@ float UMMC_CarryWeight::CalculateBaseMagnitude_Implementation(const FGameplayEff
 		Strength = 20.f;
 	}
 
-	const float ClampedStrength = FMath::Clamp(Strength, 20.f, 120.f);
+	const float ClampedStrength = FMath::Clamp(Strength, 0.f, 120.f);
 	const float LegacyStrengthScale = 10.f + (((ClampedStrength - 20.f) / 100.f) * 50.f);
 	const float StrengthEquivalent = FMath::Clamp(LegacyStrengthScale, 10.f, 60.f);
 

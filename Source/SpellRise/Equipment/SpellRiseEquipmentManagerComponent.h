@@ -90,9 +90,6 @@ struct FSpellRiseEquipmentAbilityPreview
 	TSubclassOf<class UGameplayAbility> Ability = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
-	int32 AbilityLevel = 1;
-
-	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")
 	FGameplayTag InputTag;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Equipment|Abilities")

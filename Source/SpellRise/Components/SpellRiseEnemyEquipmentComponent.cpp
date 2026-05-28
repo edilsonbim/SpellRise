@@ -297,7 +297,7 @@ void USpellRiseEnemyEquipmentComponent::GrantAbilities_Server()
 			continue;
 		}
 
-		FGameplayAbilitySpec Spec(AbilityClass, FMath::Max(1, Grant.AbilityLevel), INDEX_NONE, this);
+		FGameplayAbilitySpec Spec(AbilityClass, 1, INDEX_NONE, this);
 
 		const FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
 		if (Handle.IsValid())

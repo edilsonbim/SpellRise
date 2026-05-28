@@ -59,9 +59,6 @@ struct FSpellRiseGrantedAbility
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
 	TSoftClassPtr<UGameplayAbility> AbilityClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(ClampMin="1"))
-	int32 AbilityLevel = 1;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
 	FGameplayTag InputTag;
 
@@ -114,7 +111,7 @@ public:
 	void SR_ClearAbilityInput();
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 Level = 1);
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel = 1);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS", meta=(DisplayName="Grant Ability"))
 	FGameplayAbilitySpecHandle GrantAbility(

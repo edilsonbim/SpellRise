@@ -357,8 +357,7 @@ TArray<FGameplayAbilitySpecHandle> ASpellRiseEnemyCharacterBase::GrantAbilities(
 			continue;
 		}
 
-		const int32 FinalLevel = FMath::Max(1, Grant.AbilityLevel);
-		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, this);
+		FGameplayAbilitySpec Spec(AbilityClass, 1, INDEX_NONE, this);
 
 		if (Grant.InputTag.IsValid())
 		{

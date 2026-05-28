@@ -6,13 +6,14 @@
 
 namespace SR_Primary
 {
+	constexpr float MIN = 0.f;
 	constexpr float BASE = 20.f;
 	constexpr float EFFECTIVE_MAX = 120.f;
 	constexpr float BONUS_RANGE = 100.f;
 
 	static float ClampPrimary(float V)
 	{
-		return FMath::Clamp(V, BASE, EFFECTIVE_MAX);
+		return FMath::Clamp(V, MIN, EFFECTIVE_MAX);
 	}
 
 	static float Normalize01_FromBaseline(float V)
@@ -114,13 +115,6 @@ float UMMC_HealingMultiplier::CalculateBaseMagnitude_Implementation(const FGamep
 	return FMath::Clamp(1.f + (0.40f * T), 0.f, 10.f);
 }
 
-UMMC_CastTimeReduction::UMMC_CastTimeReduction() = default;
-float UMMC_CastTimeReduction::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
-{
-	const float T = Normalize01_FromBaseline(GetIntelligence(Spec));
-	return FMath::Clamp(0.f + (0.096f * T), 0.f, 0.096f);
-}
-
 UMMC_CritChance::UMMC_CritChance() = default;
 float UMMC_CritChance::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
@@ -140,13 +134,6 @@ float UMMC_ArmorPenetration::CalculateBaseMagnitude_Implementation(const FGamepl
 {
 	const float T = Normalize01_FromBaseline(GetStrength(Spec));
 	return FMath::Clamp(0.f + (0.30f * T), 0.f, 0.30f);
-}
-
-UMMC_ManaCostReduction::UMMC_ManaCostReduction() = default;
-float UMMC_ManaCostReduction::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
-{
-	const float T = Normalize01_FromBaseline(GetWisdom(Spec));
-	return FMath::Clamp(0.f + (0.20f * T), 0.f, 0.20f);
 }
 
 UMMC_MaxHealthFromPrimaries::UMMC_MaxHealthFromPrimaries() = default;

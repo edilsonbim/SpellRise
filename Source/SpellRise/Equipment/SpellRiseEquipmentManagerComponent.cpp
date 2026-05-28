@@ -1225,7 +1225,6 @@ TArray<FSpellRiseEquipmentAbilityPreview> USpellRiseEquipmentManagerComponent::G
 
 		FSpellRiseEquipmentAbilityPreview& Preview = PreviewAbilities.AddDefaulted_GetRef();
 		Preview.Ability = AbilityClass;
-		Preview.AbilityLevel = AbilityToGrant.AbilityLevel;
 		Preview.InputTag = AbilityToGrant.InputTag;
 		Preview.bAutoActivateIfNoInputTag = AbilityToGrant.bAutoActivateIfNoInputTag;
 

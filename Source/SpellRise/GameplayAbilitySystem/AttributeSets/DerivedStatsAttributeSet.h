@@ -39,10 +39,6 @@ public:
 	FGameplayAttributeData HealingMultiplier;
 	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, HealingMultiplier);
 
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Utility", ReplicatedUsing=OnRep_CastTimeReduction)
-	FGameplayAttributeData CastTimeReduction;
-	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, CastTimeReduction);
-
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Crit", ReplicatedUsing=OnRep_CritChance)
 	FGameplayAttributeData CritChance;
 	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, CritChance);
@@ -55,10 +51,6 @@ public:
 	FGameplayAttributeData ArmorPenetration;
 	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, ArmorPenetration);
 
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Utility", ReplicatedUsing=OnRep_ManaCostReduction)
-	FGameplayAttributeData ManaCostReduction;
-	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, ManaCostReduction);
-
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
@@ -70,11 +62,8 @@ protected:
 	UFUNCTION() void OnRep_SpellDamageMultiplier(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealingMultiplier(const FGameplayAttributeData& OldValue);
 
-	UFUNCTION() void OnRep_CastTimeReduction(const FGameplayAttributeData& OldValue);
-
 	UFUNCTION() void OnRep_CritChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CritDamage(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION() void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_ManaCostReduction(const FGameplayAttributeData& OldValue);
 };

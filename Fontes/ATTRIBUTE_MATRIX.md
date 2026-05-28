@@ -8,11 +8,18 @@
 
 ## Faixa efetiva
 - Baseline: `20`
-- Clamp de runtime: `20..120`
-- Normalização derivada: `20..120`
+- Clamp de runtime: `0..120`
+- Normalização derivada: bonus acima de `20`, limitado a `100` pontos efetivos
 
 ## Normalização
 `T = clamp((Primary - 20) / 100, 0, 1)`
+
+## Progressão autoritativa
+- Valor inicial do `AttributeSet`: `0`
+- Baseline de `20`: aplicado fora do `AttributeSet` por BP/GE autoritativo
+- Progressão por talentos autoritativos: até `100`
+- Booster de escolha do jogador: até `+20` em um atributo primário
+- Cap final por primário após baseline/talentos + booster: `120`
 
 ## Derivados
 ### STR
@@ -25,12 +32,10 @@
 
 ### INT
 - `SpellDamageMultiplier = 1.00 + 0.50 * T`
-- `CastTimeReduction = 0.00 + 0.096 * T`
 
 ### WIS
 - `HealingMultiplier = 1.00 + 0.40 * T`
 - `CritDamageMultiplier = 1.50 + 0.50 * T`
-- `ManaCostReduction = 0.00 + 0.20 * T`
 
 ## Caps de recurso
 Usando bônus sobre baseline:

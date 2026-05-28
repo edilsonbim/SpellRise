@@ -65,15 +65,6 @@ public:
 };
 
 UCLASS()
-class SPELLRISE_API UMMC_CastTimeReduction : public UMMC_PrimaryBase
-{
-	GENERATED_BODY()
-public:
-	UMMC_CastTimeReduction();
-	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
-};
-
-UCLASS()
 class SPELLRISE_API UMMC_CritChance : public UMMC_PrimaryBase
 {
 	GENERATED_BODY()
@@ -97,15 +88,6 @@ class SPELLRISE_API UMMC_ArmorPenetration : public UMMC_PrimaryBase
 	GENERATED_BODY()
 public:
 	UMMC_ArmorPenetration();
-	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
-};
-
-UCLASS()
-class SPELLRISE_API UMMC_ManaCostReduction : public UMMC_PrimaryBase
-{
-	GENERATED_BODY()
-public:
-	UMMC_ManaCostReduction();
 	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
 };
 
