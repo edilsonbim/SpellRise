@@ -269,6 +269,30 @@ bool FSpellRiseFilePersistenceProvider::SaveWorld(const FString& WorldId, const 
 	return bSaved;
 }
 
+bool FSpellRiseFilePersistenceProvider::SaveDeathEvent(const FSpellRiseDeathEventData& Data)
+{
+	if (Data.VictimPlayerId.IsEmpty() && Data.VictimName.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString EventId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	const FString Path = FPaths::Combine(RootDir, TEXT("Deaths"), FString::Printf(TEXT("%s.json"), *EventId));
+	TSharedPtr<FJsonObject> JsonObject = FJsonObjectConverter::UStructToJsonObject(Data);
+	if (!JsonObject.IsValid())
+	{
+		return false;
+	}
+
+	const bool bSaved = SaveJsonToPath(Path, JsonObject);
+	UE_LOG(LogSpellRisePersistenceFile, Log,
+		TEXT("[Persistence][FileDeathEvent%s] Victim=%s Path=%s"),
+		bSaved ? TEXT("Saved") : TEXT("Rejected"),
+		*Data.VictimName,
+		*Path);
+	return bSaved;
+}
+
 FString FSpellRiseFilePersistenceProvider::BuildCharacterPath(const FString& SteamId64) const
 {
 	return FPaths::Combine(RootDir, TEXT("Characters"), FString::Printf(TEXT("%s.json"), *SteamId64));

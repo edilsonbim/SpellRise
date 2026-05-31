@@ -20,7 +20,6 @@
 
 #include "InventoryFunctionLibrary.h"
 #include "SpellRise/Components/CatalystComponent.h"
-#include "SpellRise/Components/SpellRiseEnemyEquipmentComponent.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
@@ -135,7 +134,6 @@ ASpellRiseEnemyCharacterBase::ASpellRiseEnemyCharacterBase()
 	CatalystAttributeSet = CreateDefaultSubobject<UCatalystAttributeSet>(TEXT("CatalystAttributeSet"));
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
 	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
-	EnemyEquipmentComponent = CreateDefaultSubobject<USpellRiseEnemyEquipmentComponent>(TEXT("EnemyEquipmentComponent"));
 
 	DeadStateTag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"), false);
 	EnemyDisplayName = FText::FromString(TEXT("Enemy"));
@@ -165,10 +163,6 @@ void ASpellRiseEnemyCharacterBase::BeginPlay()
 		ApplyEnemyAttributeFallbacks_Server();
 		ApplyEnemyStartupEffects_Server();
 		GrantEnemyStartupAbilities_Server();
-		if (EnemyEquipmentComponent)
-		{
-			EnemyEquipmentComponent->ApplyLoadout_Server();
-		}
 		bStartupInitialized = true;
 	}
 }
@@ -212,10 +206,6 @@ void ASpellRiseEnemyCharacterBase::PossessedBy(AController* NewController)
 		ApplyEnemyAttributeFallbacks_Server();
 		ApplyEnemyStartupEffects_Server();
 		GrantEnemyStartupAbilities_Server();
-		if (EnemyEquipmentComponent)
-		{
-			EnemyEquipmentComponent->ApplyLoadout_Server();
-		}
 		bStartupInitialized = true;
 	}
 }
@@ -713,11 +703,6 @@ void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
 
 	if (HasAuthority())
 	{
-		if (EnemyEquipmentComponent)
-		{
-			EnemyEquipmentComponent->ClearLoadout_Server();
-		}
-
 		for (const FGameplayAbilitySpecHandle& Handle : StartupGrantedAbilityHandles)
 		{
 			if (Handle.IsValid())

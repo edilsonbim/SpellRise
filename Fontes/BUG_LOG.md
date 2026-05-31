@@ -32,6 +32,23 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### BUG-2026-05-27-036
+- Date: 2026-05-27
+- Severity: High
+- Status: Fixed
+- Area: Animation / AnimBlueprint / Editor Preview
+- Issue: `SpellRiseCharacter_CMC_ABP` nao compilava pelo fluxo normal do editor/Persona ao conectar o linked graph `OverlayStates`.
+- Reproduction: abrir `SpellRiseCharacter_CMC_ABP`, conectar `OverlayStates` no fluxo do AnimGraph e compilar com preview ativo.
+- Expected: AnimBP deve compilar e inicializar preview sem assert em `AnimNodeData`.
+- Actual: editor assertava em `AnimNodeData.cpp` (`Entries.IsValidIndex(InId.Index)`) durante inicializacao de linked anim graph/layer.
+- Root Cause: assinatura do linked graph `OverlayStates` estava inconsistente com o input pose esperado (`InPose`), causando falha de dynamic link do root `OverlayStates`.
+- Fix: recriado/corrigido o `Linked Input Pose` do graph `OverlayStates` com nome `InPose` e reconectado no fluxo esperado.
+- Tested On: 2026-05-27
+- Standalone: nao validado neste ciclo
+- Listen Server: nao validado neste ciclo
+- Dedicated Server: nao aplicavel ao preview/editor; sem impacto server-authoritative
+- Owner: Animation/Presentation
+
 ### BUG-2026-04-02-034
 - Date: 2026-04-02
 - Severity: High
@@ -52,26 +69,34 @@
 ### BUG-2026-03-30-033
 - Date: 2026-03-30
 - Severity: Critical
-- Status: Open
+- Status: Fixed
 - Area: Networking / Replication / PlayerController
 - Issue: `FBitReader::SetOverflowed` em tráfego replicado do `BP_SpellRisePlayerController_C`.
 - Reproduction: conectar cliente em DS e observar overflow em payloads como `ClientSetHUD`, `ClientRestart` e `ClientSetCameraMode`.
-- Tested On: baseline de gate executado em 2026-04-02
+- Tested On: baseline de gate executado em 2026-04-02; reconfirmado em 2026-05-27
 - Standalone: PASS (gate baseline)
 - Listen Server: PASS (gate baseline)
-- Dedicated Server: PASS em `DS+2` com reconnect + lag/loss Perfil A (120/1) e Perfil B (180/3), sem overflow no recorte
+- Dedicated Server: PASS em `DS+2` com reconnect + lag/loss Perfil A (120/1), sem overflow no recorte local
 - Evidência:
   - `C:\Users\biM\Documents\Unreal Projects\SpellRise\Saved\Logs\SmokeAuto\2026-04-02_21-03-10\Smoke_Summary.txt`
+  - `C:\Users\biM\Documents\Unreal Projects\SpellRise\Saved\Logs\SmokeAuto\2026-05-27_23-57-01\Smoke_Summary.txt`
   - `ReplicationOverflowTotalCount=0`
-- Observação: manter `Open` até repetibilidade em múltiplos runs e validação em ambiente AWS/staging.
+- Observação: corrigido no recorte local DS+2; validacao AWS/staging ainda pendente antes de `Verified`.
 - Owner: Multiplayer/Core
 
 ### BUG-2026-03-28-032
 - Severity: Critical
-- Status: Open
+- Status: In Progress
 - Area: Online / Dedicated Server / Steam
 - Issue: DS sobe com `OnlineSubsystem=NULL` e rejeita cliente Steam por `incompatible_unique_net_id`.
 - Reproduction: subir DS em ambiente Steam e observar fallback para `NULL` + `PreLoginFailure`.
+- Root Cause: bootstrap do `GameInstance` permitia continuar silenciosamente com default subsystem degradado para `NULL` antes do gate de `PreLogin`.
+- Fix: adicionada observabilidade `[Auth][Bootstrap]` e fail-fast no Dedicated Server quando Steam e obrigatorio e o default subsystem nao e `STEAM`; `-nosteam` continua permitido apenas no modo de teste configurado.
+- Tested On: 2026-05-27
+- Standalone: nao aplicavel
+- Listen Server: nao aplicavel
+- Dedicated Server: build pendente; link bloqueado por `UnrealEditor-SpellRise.dll` em uso pelo editor aberto
+- Observação: nao marcar `Fixed` ate build/link passar e smoke Steam/NoSteam confirmar o comportamento.
 - Owner: Backend/Online
 
 ### BUG-2026-03-28-031
@@ -109,16 +134,16 @@
 ### BUG-2026-04-06-035
 - Date: 2026-04-06
 - Severity: High
-- Status: In Progress
+- Status: Fixed
 - Area: Inventory / Drop / Dedicated Server
 - Issue: ao dropar item por UI no cliente conectado em DS, o item e removido do inventario, mas pickup nao aparece no mundo.
 - Reproduction: abrir `WBP_ItemInspector`, executar `Drop Item` em sessao DS+Client.
 - Expected: remocao autoritativa + spawn do `BP_BasicItemPickup` replicado com `ItemClass` e `QuantityToGive` validos.
 - Actual: item removido, mas sem pickup visivel/funcional em cliente; logs apontam `Item Class` nulo no pickup.
 - Root Cause: inicializacao do `BP_BasicItemPickup` ainda recebe classe nula em parte do fluxo (construction/event graph), apesar do request autoritativo estar ativo.
-- Fix: em andamento (server request em C++ + fallback de classe + inicializacao refletida; precisa fechar binding final do `ItemClass` no runtime do pickup).
-- Tested On: 2026-04-06
+- Fix: server request em C++ + fallback de classe + inicializacao refletida do pickup; validado manualmente com drop por um client e pickup por outro client.
+- Tested On: 2026-05-27
 - Standalone: Parcial
 - Listen Server: Nao validado neste ciclo
-- Dedicated Server: Falha reprodutivel em cliente
+- Dedicated Server: PASS manual em DS com dois clients; item dropado por um client apareceu no mundo e foi coletado por outro personagem em modo client
 - Owner: Multiplayer/Inventory

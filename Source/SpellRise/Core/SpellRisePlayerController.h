@@ -64,9 +64,6 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
 	void BP_OnChatMessageReceived(const FSpellRiseChatMessage& Message);
 
-	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
-	bool IsConstructionModeActive() const;
-
 	APawn* GetLastSpellRiseControlledPawn() const;
 
 protected:

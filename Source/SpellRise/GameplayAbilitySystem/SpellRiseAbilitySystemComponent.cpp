@@ -6,18 +6,10 @@
 #include "Abilities/GameplayAbilityTypes.h"
 #include "GameplayTagContainer.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/Character.h"
-#include "AbilitySystemBlueprintLibrary.h"
-#include "Animation/AnimInstance.h"
-#include "Animation/AnimMontage.h"
-#include "Components/SkeletalMeshComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
-#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGA_MeleeCombo.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
-#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityTagRelationshipMapping.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCombo, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCues, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCObservability, Log, All);
 
@@ -118,146 +110,6 @@ void USpellRiseAbilitySystemComponent::BroadcastEquipmentAbilityStateChanged() c
 	{
 		EquipmentManager->OnHUDEquipmentSlotsChanged.Broadcast();
 	}
-}
-
-int32 USpellRiseAbilitySystemComponent::HandleGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload)
-{
-	const auto IsNativeComboActive = [this]() -> bool
-	{
-		for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
-		{
-			if (Spec.IsActive() && Cast<USpellRiseGA_MeleeCombo>(Spec.Ability))
-			{
-				return true;
-			}
-		}
-		return false;
-	};
-
-	const bool bNativeComboActive = IsNativeComboActive();
-
-	if (EventTag.IsValid())
-	{
-		const FGameplayTag ComboStartEvent = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Start"), false);
-		const FGameplayTag ComboEndEvent = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.End"), false);
-		const FGameplayTag ComboInputEvent = FGameplayTag::RequestGameplayTag(TEXT("Event.ContinueCombo.Input"), false);
-		const bool bIsComboEvent =
-			EventTag.MatchesTagExact(ComboStartEvent) ||
-			EventTag.MatchesTagExact(ComboEndEvent) ||
-			EventTag.MatchesTagExact(ComboInputEvent);
-
-		if (bIsComboEvent)
-		{
-		}
-
-		if (!bNativeComboActive && EventTag.MatchesTagExact(ComboInputEvent))
-		{
-			bComboAdvanceRequested = true;
-		}
-
-		if (!bNativeComboActive && EventTag.MatchesTagExact(ComboStartEvent))
-		{
-			if (bComboAdvanceRequested)
-			{
-				const bool bAdvanced = TryAdvanceActiveComboMontage();
-				if (bAdvanced)
-				{
-					bComboAdvanceRequested = false;
-				}
-			}
-		}
-
-		if (!bNativeComboActive && EventTag.MatchesTagExact(ComboEndEvent))
-		{
-			bComboAdvanceRequested = false;
-		}
-	}
-
-	return Super::HandleGameplayEvent(EventTag, Payload);
-}
-
-bool USpellRiseAbilitySystemComponent::TryAdvanceActiveComboMontage()
-{
-	AActor* LocalAvatarActor = GetAvatarActor();
-	ACharacter* Character = Cast<ACharacter>(LocalAvatarActor);
-	if (!Character)
-	{
-		return false;
-	}
-
-	TArray<USkeletalMeshComponent*> CandidateMeshes;
-	if (ASpellRiseCharacterBase* SpellRiseCharacter = Cast<ASpellRiseCharacterBase>(Character))
-	{
-		if (USkeletalMeshComponent* VisualMesh = SpellRiseCharacter->GetVisualMeshComponent())
-		{
-			CandidateMeshes.AddUnique(VisualMesh);
-		}
-		if (USkeletalMeshComponent* EquipMesh = SpellRiseCharacter->GetEquipmentAttachMeshComponent())
-		{
-			CandidateMeshes.AddUnique(EquipMesh);
-		}
-	}
-
-	if (USkeletalMeshComponent* BaseMesh = Character->GetMesh())
-	{
-		CandidateMeshes.AddUnique(BaseMesh);
-	}
-
-	TArray<USkeletalMeshComponent*> AllMeshes;
-	Character->GetComponents<USkeletalMeshComponent>(AllMeshes);
-	for (USkeletalMeshComponent* MeshComp : AllMeshes)
-	{
-		CandidateMeshes.AddUnique(MeshComp);
-	}
-
-	UAnimInstance* SelectedAnimInstance = nullptr;
-	UAnimMontage* ActiveMontage = nullptr;
-
-	for (USkeletalMeshComponent* MeshComp : CandidateMeshes)
-	{
-		if (!MeshComp)
-		{
-			continue;
-		}
-
-		UAnimInstance* AnimInstance = MeshComp->GetAnimInstance();
-		if (!AnimInstance)
-		{
-			continue;
-		}
-
-		UAnimMontage* Montage = AnimInstance->GetCurrentActiveMontage();
-		if (!Montage)
-		{
-			continue;
-		}
-
-		SelectedAnimInstance = AnimInstance;
-		ActiveMontage = Montage;
-		break;
-	}
-
-	if (!SelectedAnimInstance || !ActiveMontage)
-	{
-		return false;
-	}
-
-	const FName CurrentSection = SelectedAnimInstance->Montage_GetCurrentSection(ActiveMontage);
-	const int32 CurrentSectionIndex = ActiveMontage->GetSectionIndex(CurrentSection);
-	const int32 SectionCount = ActiveMontage->CompositeSections.Num();
-	if (CurrentSectionIndex == INDEX_NONE || CurrentSectionIndex + 1 >= SectionCount)
-	{
-		return false;
-	}
-
-	const FName NextSection = ActiveMontage->CompositeSections[CurrentSectionIndex + 1].SectionName;
-	if (NextSection.IsNone() || NextSection == CurrentSection)
-	{
-		return false;
-	}
-
-	SelectedAnimInstance->Montage_JumpToSection(NextSection, ActiveMontage);
-	return true;
 }
 
 void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
@@ -836,53 +688,6 @@ void USpellRiseAbilitySystemComponent::RecordAbilityActivationFailure(
 		FailureCount,
 		*GetNameSafe(GetOwnerActor()),
 		*GetNameSafe(GetAvatarActor()));
-}
-
-void USpellRiseAbilitySystemComponent::SetTagRelationshipMapping(USpellRiseAbilityTagRelationshipMapping* NewMapping)
-{
-	TagRelationshipMapping = NewMapping;
-}
-
-void USpellRiseAbilitySystemComponent::GetAdditionalActivationTagRequirements(
-	const FGameplayTagContainer& AbilityTags,
-	FGameplayTagContainer& OutActivationRequired,
-	FGameplayTagContainer& OutActivationBlocked) const
-{
-	if (TagRelationshipMapping)
-	{
-		TagRelationshipMapping->GetRequiredAndBlockedActivationTags(
-			AbilityTags,
-			&OutActivationRequired,
-			&OutActivationBlocked);
-	}
-}
-
-void USpellRiseAbilitySystemComponent::ApplyAbilityBlockAndCancelTags(
-	const FGameplayTagContainer& AbilityTags,
-	UGameplayAbility* RequestingAbility,
-	bool bEnableBlockTags,
-	const FGameplayTagContainer& BlockTags,
-	bool bExecuteCancelTags,
-	const FGameplayTagContainer& CancelTags)
-{
-	FGameplayTagContainer ModifiedBlockTags = BlockTags;
-	FGameplayTagContainer ModifiedCancelTags = CancelTags;
-
-	if (TagRelationshipMapping)
-	{
-		TagRelationshipMapping->GetAbilityTagsToBlockAndCancel(
-			AbilityTags,
-			&ModifiedBlockTags,
-			&ModifiedCancelTags);
-	}
-
-	Super::ApplyAbilityBlockAndCancelTags(
-		AbilityTags,
-		RequestingAbility,
-		bEnableBlockTags,
-		ModifiedBlockTags,
-		bExecuteCancelTags,
-		ModifiedCancelTags);
 }
 
 void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()

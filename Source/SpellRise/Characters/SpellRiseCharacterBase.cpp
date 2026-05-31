@@ -304,18 +304,6 @@ void ASpellRiseCharacterBase::Tick(float DeltaTime)
 		return;
 	}
 
-	if (const ASpellRisePlayerController* SRPC = Cast<ASpellRisePlayerController>(GetController()))
-	{
-		if (SRPC->IsConstructionModeActive())
-		{
-			if (GetSpellRiseASC())
-			{
-				GetSpellRiseASC()->SR_ClearAbilityInput();
-			}
-			return;
-		}
-	}
-
 	SR_ProcessAbilityInput(DeltaTime, false);
 }
 
@@ -1528,6 +1516,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	GetSpellRiseASC()->CancelAllAbilities();
 	SyncDeadStateFromASC(TEXT("OnHealthChanged"));
+	ProcessFullLootDrop_Server(GetActorLocation());
 	ScheduleCorpseDespawn_Server();
 	ScheduleRespawn_Server();
 }
@@ -2204,6 +2193,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 		if (HasAuthority())
 		{
 			MultiHandleDeath();
+			ProcessFullLootDrop_Server(GetActorLocation());
 			ScheduleCorpseDespawn_Server();
 			ScheduleRespawn_Server();
 		}
@@ -2286,11 +2276,7 @@ void ASpellRiseCharacterBase::ExecuteCorpseDespawn_Server()
 
 	if (!bFullLootProcessedForCurrentDeath)
 	{
-		if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
-		{
-			FullLootSubsystem->HandleCharacterCorpseDespawn(this, FullLootBagClass, CorpseLocation);
-			bFullLootProcessedForCurrentDeath = true;
-		}
+		ProcessFullLootDrop_Server(CorpseLocation);
 	}
 
 	if (VisualMesh)
@@ -2301,6 +2287,26 @@ void ASpellRiseCharacterBase::ExecuteCorpseDespawn_Server()
 	}
 
 	MultiHandleCorpseDespawn();
+}
+
+void ASpellRiseCharacterBase::ProcessFullLootDrop_Server(const FVector& LootOrigin)
+{
+	if (!HasAuthority() || bFullLootProcessedForCurrentDeath)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
+	{
+		FullLootSubsystem->HandleCharacterCorpseDespawn(this, FullLootBagClass, LootOrigin);
+		bFullLootProcessedForCurrentDeath = true;
+	}
 }
 
 void ASpellRiseCharacterBase::ScheduleRespawn_Server()
@@ -2662,6 +2668,7 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 	}
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
 	GetCharacterMovement()->StopMovementImmediately();
 	GetCharacterMovement()->DisableMovement();
 	ConfigureDeathRagdoll(VisualMesh, PreDeathVelocity);
@@ -2720,6 +2727,9 @@ void ASpellRiseCharacterBase::ConfigureDeathRagdoll(USkeletalMeshComponent* Visu
 		VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
 
+	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	VisualMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
 	VisualMesh->SetGenerateOverlapEvents(false);
 	VisualMesh->SetNotifyRigidBodyCollision(false);
 	VisualMesh->SetAllBodiesSimulatePhysics(true);

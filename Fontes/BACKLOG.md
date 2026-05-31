@@ -22,6 +22,7 @@
 - Severidade: S1
 - Owner: Backend/Persistence
 - Alvo: economia + DB operacional + safeguards + reconciliação determinística.
+- Progresso: tabela `spellrise_death_events` e gravação server-side de morte adicionadas; falta validar em DS+2 normal e lag/loss.
 
 ### 4. Building mode network contract
 - Severidade: S2

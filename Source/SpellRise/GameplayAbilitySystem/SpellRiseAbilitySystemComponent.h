@@ -5,13 +5,11 @@
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagContainer.h"
-#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityTagRelationshipMapping.h"
 #include "SpellRiseAbilitySystemComponent.generated.h"
 
 class UGameplayEffect;
 class UGameplayAbility;
 class USpellRiseGameplayAbility;
-class USpellRiseAbilityTagRelationshipMapping;
 struct FGameplayEffectSpec;
 struct FActiveGameplayEffect;
 struct FActiveGameplayEffectHandle;
@@ -50,12 +48,10 @@ protected:
 	virtual void NotifyAbilityCommit(UGameplayAbility* Ability) override;
 	virtual void NotifyAbilityActivated(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability) override;
 	virtual void NotifyAbilityEnded(FGameplayAbilitySpecHandle Handle, UGameplayAbility* Ability, bool bWasCancelled) override;
-	virtual int32 HandleGameplayEvent(FGameplayTag EventTag, const FGameplayEventData* Payload) override;
 	void OnGameplayEffectAppliedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle ActiveHandle);
 	void OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle ActiveHandle);
 	void OnGameplayEffectRemovedFromSelf(const FActiveGameplayEffect& ActiveEffect);
 	void BroadcastEquipmentAbilityStateChanged() const;
-	bool TryAdvanceActiveComboMontage();
 
 public:
 
@@ -98,31 +94,7 @@ public:
 	bool SR_IsSelectedSpellAbilityHandle(FGameplayAbilitySpecHandle AbilityHandle) const;
 
 
-
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Tags")
-	TObjectPtr<USpellRiseAbilityTagRelationshipMapping> TagRelationshipMapping;
-
-
-	void SetTagRelationshipMapping(USpellRiseAbilityTagRelationshipMapping* NewMapping);
-
-
-
-	void GetAdditionalActivationTagRequirements(
-		const FGameplayTagContainer& AbilityTags,
-		FGameplayTagContainer& OutActivationRequired,
-		FGameplayTagContainer& OutActivationBlocked) const;
-
 protected:
-
-
-	virtual void ApplyAbilityBlockAndCancelTags(
-		const FGameplayTagContainer& AbilityTags,
-		UGameplayAbility* RequestingAbility,
-		bool bEnableBlockTags,
-		const FGameplayTagContainer& BlockTags,
-		bool bExecuteCancelTags,
-		const FGameplayTagContainer& CancelTags) override;
 
 	bool AbilitySpecMatchesInputTag(const FGameplayAbilitySpec& Spec, const FGameplayTag& InputTag) const;
 	void GetAbilitySpecsFromInputTag(const FGameplayTag& InputTag, TArray<FGameplayAbilitySpecHandle>& OutSpecHandles) const;
@@ -130,9 +102,6 @@ protected:
 
 	void MarkSpecInputPressed(FGameplayAbilitySpec& Spec);
 	void MarkSpecInputReleased(FGameplayAbilitySpec& Spec);
-
-	UPROPERTY(Transient)
-	bool bComboAdvanceRequested = false;
 
 	UPROPERTY(Transient)
 	TMap<FString, int32> AbilityActivationFailureCountByReason;

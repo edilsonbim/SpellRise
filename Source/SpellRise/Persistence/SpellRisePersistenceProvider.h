@@ -7,6 +7,7 @@
 struct FSpellRiseCharacterSaveData;
 struct FSpellRiseInventorySaveData;
 struct FSpellRiseWorldSaveData;
+struct FSpellRiseDeathEventData;
 
 class ISpellRisePersistenceProvider
 {
@@ -23,4 +24,6 @@ public:
 
 	virtual bool LoadWorld(const FString& WorldId, FSpellRiseWorldSaveData& OutData) = 0;
 	virtual bool SaveWorld(const FString& WorldId, const FSpellRiseWorldSaveData& Data) = 0;
+
+	virtual bool SaveDeathEvent(const FSpellRiseDeathEventData& Data) = 0;
 };

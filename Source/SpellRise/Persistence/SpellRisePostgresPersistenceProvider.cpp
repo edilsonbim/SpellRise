@@ -149,6 +149,69 @@ bool FSpellRisePostgresPersistenceProvider::SaveWorld(const FString& WorldId, co
 	return SaveRevisionedSnapshot(TEXT("spellrise_world_state"), TEXT("world_id"), WorldId, SnapshotJson, ExpectedRevision, TargetRevision);
 }
 
+bool FSpellRisePostgresPersistenceProvider::SaveDeathEvent(const FSpellRiseDeathEventData& Data)
+{
+	if (Data.VictimPlayerId.IsEmpty() && Data.VictimName.IsEmpty())
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresDeathEventRejected] Reason=missing_victim"));
+		return false;
+	}
+
+	FString EventJson;
+	if (!FJsonObjectConverter::UStructToJsonObjectString(Data, EventJson))
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresDeathEventRejected] Reason=serialize_failed Victim=%s"),
+			*Data.VictimName);
+		return false;
+	}
+
+	const FString OccurredAt = Data.OccurredAtUtcIso8601.IsEmpty() ? FDateTime::UtcNow().ToIso8601() : Data.OccurredAtUtcIso8601;
+	const FString CauseType = !Data.Fatal.CauseType.IsEmpty()
+		? Data.Fatal.CauseType
+		: (!Data.TopDamage.CauseType.IsEmpty() ? Data.TopDamage.CauseType : TEXT("unknown"));
+
+	const FString Sql = FString::Printf(
+		TEXT("INSERT INTO public.spellrise_death_events (")
+		TEXT("occurred_at, world_id, victim_player_id, victim_name, victim_level, ")
+		TEXT("top_damage_player_id, top_damage_name, top_damage_amount, ")
+		TEXT("fatal_player_id, fatal_name, fatal_damage_amount, ")
+		TEXT("cause_type, damage_type, location_x, location_y, location_z, message, event_json")
+		TEXT(") VALUES (")
+		TEXT("'%s'::timestamptz, '%s', '%s', '%s', %d, ")
+		TEXT("NULLIF('%s',''), NULLIF('%s',''), %.6f, ")
+		TEXT("NULLIF('%s',''), NULLIF('%s',''), %.6f, ")
+		TEXT("'%s', '%s', %.6f, %.6f, %.6f, '%s', '%s'::jsonb);"),
+		*EscapeSqlLiteral(OccurredAt),
+		*EscapeSqlLiteral(Data.WorldId),
+		*EscapeSqlLiteral(Data.VictimPlayerId),
+		*EscapeSqlLiteral(Data.VictimName),
+		Data.VictimLevel > 0 ? Data.VictimLevel : 0,
+		*EscapeSqlLiteral(Data.TopDamage.PlayerId),
+		*EscapeSqlLiteral(Data.TopDamage.DisplayName),
+		FMath::Max(0.0f, Data.TopDamage.DamageAmount),
+		*EscapeSqlLiteral(Data.Fatal.PlayerId),
+		*EscapeSqlLiteral(Data.Fatal.DisplayName),
+		FMath::Max(0.0f, Data.Fatal.DamageAmount),
+		*EscapeSqlLiteral(CauseType),
+		*EscapeSqlLiteral(Data.DamageType),
+		Data.DeathLocation.X,
+		Data.DeathLocation.Y,
+		Data.DeathLocation.Z,
+		*EscapeSqlLiteral(Data.Message),
+		*EscapeSqlLiteral(EventJson));
+
+	const bool bSaved = ExecMutatingSql(Sql, TEXT("save_death_event"));
+	UE_LOG(LogSpellRisePersistencePostgres, Log,
+		TEXT("[Persistence][PostgresDeathEvent%s] Victim=%s TopDamage=%s Fatal=%s"),
+		bSaved ? TEXT("Saved") : TEXT("Rejected"),
+		*Data.VictimName,
+		*Data.TopDamage.DisplayName,
+		*Data.Fatal.DisplayName);
+	return bSaved;
+}
+
 bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 {
 	const FString SchemaSql = TEXT(
@@ -157,7 +220,17 @@ bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 		"CREATE TABLE IF NOT EXISTS spellrise_inventory_state ("
 		"player_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), snapshot_json JSONB NOT NULL);"
 		"CREATE TABLE IF NOT EXISTS spellrise_world_state ("
-		"world_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), snapshot_json JSONB NOT NULL);");
+		"world_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), snapshot_json JSONB NOT NULL);"
+		"CREATE TABLE IF NOT EXISTS spellrise_death_events ("
+		"id BIGSERIAL PRIMARY KEY, occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), world_id TEXT NOT NULL DEFAULT '', "
+		"victim_player_id TEXT NOT NULL DEFAULT '', victim_name TEXT NOT NULL DEFAULT '', victim_level INT NULL, "
+		"top_damage_player_id TEXT NULL, top_damage_name TEXT NULL, top_damage_amount REAL NOT NULL DEFAULT 0, "
+		"fatal_player_id TEXT NULL, fatal_name TEXT NULL, fatal_damage_amount REAL NOT NULL DEFAULT 0, "
+		"cause_type TEXT NOT NULL DEFAULT 'unknown', damage_type TEXT NOT NULL DEFAULT '', "
+		"location_x REAL NULL, location_y REAL NULL, location_z REAL NULL, "
+		"message TEXT NOT NULL DEFAULT '', event_json JSONB NOT NULL DEFAULT '{}'::jsonb);"
+		"CREATE INDEX IF NOT EXISTS idx_spellrise_death_events_occurred_at ON spellrise_death_events (occurred_at DESC);"
+		"CREATE INDEX IF NOT EXISTS idx_spellrise_death_events_victim ON spellrise_death_events (victim_player_id, occurred_at DESC);");
 
 	FString StdOut;
 	FString StdErr;

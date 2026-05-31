@@ -1140,6 +1140,32 @@ bool USpellRisePersistenceSubsystem::LoadWorld(UWorld* World)
 	return true;
 }
 
+bool USpellRisePersistenceSubsystem::SaveDeathEvent(const FSpellRiseDeathEventData& Data)
+{
+	const double SaveStartSeconds = FPlatformTime::Seconds();
+	if (IsNoSteamPersistenceModeActive())
+	{
+		RecordPersistenceTelemetry(TEXT("SaveDeathEvent"), false, 0.0, TEXT("nosteam_mode"));
+		return false;
+	}
+
+	if (!Provider)
+	{
+		RecordPersistenceTelemetry(TEXT("SaveDeathEvent"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("provider_unavailable"));
+		return false;
+	}
+
+	if (Data.VictimPlayerId.IsEmpty() && Data.VictimName.IsEmpty())
+	{
+		RecordPersistenceTelemetry(TEXT("SaveDeathEvent"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("missing_victim"));
+		return false;
+	}
+
+	const bool bSaved = Provider->SaveDeathEvent(Data);
+	RecordPersistenceTelemetry(TEXT("SaveDeathEvent"), bSaved, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, bSaved ? TEXT("saved") : TEXT("provider_save_failed"));
+	return bSaved;
+}
+
 bool USpellRisePersistenceSubsystem::BuildRespawnTransformForController(AController* Controller, FTransform& OutSpawnTransform) const
 {
 	if (IsNoSteamPersistenceModeActive())

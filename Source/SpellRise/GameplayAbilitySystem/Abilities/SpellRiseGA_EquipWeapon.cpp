@@ -12,8 +12,6 @@ USpellRiseGA_EquipWeapon::USpellRiseGA_EquipWeapon()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 	CastType = ESpellRiseAbilityCastType::Instant;
-	bCommitAbilityOnActivate = false;
-	bEndAbilityAfterExecution = true;
 }
 
 void USpellRiseGA_EquipWeapon::ActivateAbility(

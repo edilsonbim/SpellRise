@@ -9,6 +9,7 @@
 ### Gameplay / Networking
 - Combat log autoritativo com transporte nativo em C++.
 - Hardening de RPCs críticos de gameplay e respawn.
+- Bootstrap/auth de Dedicated Server agora registra estado do OnlineSubsystem e falha cedo quando Steam e obrigatorio mas o processo degradou para `NULL`.
 - Validação server-side para target data de projétil.
 - Removido `ManaCostReduction` dos atributos derivados; redução/custo de mana passa a ser responsabilidade de GE/ability level.
 - Removido `CastTimeReduction` dos atributos derivados; duração/cast time passa a ser responsabilidade de GE/ability level.
@@ -22,12 +23,12 @@
 
 ### Persistence / Observability
 - Persistence foundation v1 ativa com snapshots de personagem e inventário.
+- Eventos de morte passam a ser persistidos em `spellrise_death_events`, com vítima, data/hora, maior causador de dano, golpe fatal, causa e mensagem auditável server-side.
 - Combat log durável owner-centric em `PlayerState`.
 - Gate local de smoke multiplayer com reconnect e lag/loss.
 
 ### Known Active Risks
-- overflow de replicação no `PlayerController`;
-- bootstrap/auth Steam em DS;
+- bootstrap/auth Steam em DS pendente de build/link e validação Steam real;
 - persistência de produção ainda incompleta;
 - contrato final de rede do building mode ainda pendente.
 

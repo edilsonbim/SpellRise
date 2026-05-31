@@ -38,7 +38,7 @@ private:
 	float LootBagMonitorIntervalSeconds = 1.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot", meta=(ClampMin="0.0"))
-	float LootBagSpawnDelaySeconds = 3.0f;
+	float LootBagSpawnDelaySeconds = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot", meta=(ClampMin="0.0"))
 	float LootBagEmptyDespawnDelaySeconds = 0.0f;

@@ -25,6 +25,7 @@ public:
 	bool SaveCharacterForController(AController* Controller);
 	bool SaveWorld(UWorld* World);
 	bool LoadWorld(UWorld* World);
+	bool SaveDeathEvent(const FSpellRiseDeathEventData& Data);
 	bool BuildRespawnTransformForController(AController* Controller, FTransform& OutSpawnTransform) const;
 	void SetControllerPersistentId(const AController* Controller, const FString& PersistentId);
 	void ClearControllerPersistentId(const AController* Controller);

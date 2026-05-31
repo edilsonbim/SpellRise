@@ -23,7 +23,6 @@
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
-#include "SpellRise/Components/SpellRiseConstructionModeComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
@@ -747,6 +746,8 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 
 	if (NewPawn && IsLocalController())
 	{
+		SetIgnoreMoveInput(false);
+		SetIgnoreLookInput(false);
 		SetupEnhancedInput();
 		RefreshEnhancedInputContexts();
 		LogInputFocusSnapshot(SourceLabel ? SourceLabel : TEXT("HandlePawnChangedRuntime"));
@@ -1101,16 +1102,6 @@ void ASpellRisePlayerController::OnAbility8Released() { HandleAbilitySlotRelease
 bool ASpellRisePlayerController::ShouldEnableUIInputContext() const
 {
 	return bShowMouseCursor || bEnableClickEvents || bEnableMouseOverEvents;
-}
-
-bool ASpellRisePlayerController::IsConstructionModeActive() const
-{
-	if (const USpellRiseConstructionModeComponent* ConstructionModeComponent = FindComponentByClass<USpellRiseConstructionModeComponent>())
-	{
-		return ConstructionModeComponent->IsConstructionModeEnabled();
-	}
-
-	return false;
 }
 
 void ASpellRisePlayerController::ShowDamageNumber(

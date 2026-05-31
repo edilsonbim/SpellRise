@@ -5,6 +5,9 @@
 #include "GameFramework/PlayerController.h"
 #include "OnlineSubsystem.h"
 #include "Interfaces/OnlineIdentityInterface.h"
+#include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/Parse.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -68,6 +71,46 @@ namespace
 		return OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("None");
 	}
 
+	FString DescribeOnlineSubsystemState()
+	{
+		const IOnlineSubsystem* DefaultSubsystem = IOnlineSubsystem::Get();
+		const IOnlineSubsystem* SteamSubsystem = IOnlineSubsystem::Get(TEXT("STEAM"));
+		const IOnlineSubsystem* NullSubsystem = IOnlineSubsystem::Get(TEXT("NULL"));
+
+		return FString::Printf(
+			TEXT("Default=%s SteamLoaded=%d NullLoaded=%d"),
+			*GetOnlineSubsystemNameSafe(DefaultSubsystem),
+			SteamSubsystem ? 1 : 0,
+			NullSubsystem ? 1 : 0);
+	}
+
+	bool IsNoSteamCommandLineParamPresent()
+	{
+		return FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
+	}
+
+	bool GetSpellRiseGameModeConfigBool(const TCHAR* Key, const bool DefaultValue)
+	{
+		bool bValue = DefaultValue;
+		if (GConfig)
+		{
+			GConfig->GetBool(TEXT("/Script/SpellRise.SpellRiseGameModeBase"), Key, bValue, GGameIni);
+		}
+		return bValue;
+	}
+
+	bool IsNoSteamTestingModeActive()
+	{
+		return GetSpellRiseGameModeConfigBool(TEXT("bEnableNoSteamTestingMode"), false) && IsNoSteamCommandLineParamPresent();
+	}
+
+	bool ShouldRequireSteamForDedicatedServer()
+	{
+		return IsRunningDedicatedServer() &&
+			GetSpellRiseGameModeConfigBool(TEXT("bRequireSteamAuthOnDedicatedServer"), true) &&
+			!IsNoSteamTestingModeActive();
+	}
+
 	bool ResolveLocalSessionIdentity(
 		const IOnlineSubsystem* OnlineSubsystem,
 		const int32 LocalUserNum,
@@ -111,6 +154,34 @@ void USpellRiseGameInstance::Init()
 	FString LocalSessionIdentity;
 	FString LocalSessionSource;
 	const bool bHasLocalSessionIdentity = ResolveLocalSessionIdentity(OnlineSubsystem, 0, LocalSessionIdentity, LocalSessionSource);
+	const bool bNoSteamParam = IsNoSteamCommandLineParamPresent();
+	const bool bNoSteamTestingMode = IsNoSteamTestingModeActive();
+	const bool bRequireSteamForDedicatedServer = ShouldRequireSteamForDedicatedServer();
+
+	UE_LOG(LogSpellRiseGameInstanceRuntime, Log,
+		TEXT("[Auth][Bootstrap] DedicatedServer=%d NoSteamParam=%d NoSteamTestingMode=%d RequireSteamDS=%d Subsystems=%s LocalIdentityValid=%d LocalIdentitySource=%s LocalIdentity=%s"),
+		IsRunningDedicatedServer() ? 1 : 0,
+		bNoSteamParam ? 1 : 0,
+		bNoSteamTestingMode ? 1 : 0,
+		bRequireSteamForDedicatedServer ? 1 : 0,
+		*DescribeOnlineSubsystemState(),
+		bHasLocalSessionIdentity ? 1 : 0,
+		*LocalSessionSource,
+		*LocalSessionIdentity);
+
+	if (bNoSteamParam && !bNoSteamTestingMode)
+	{
+		UE_LOG(LogSpellRiseGameInstanceRuntime, Warning,
+			TEXT("[Auth][BootstrapWarning] Reason=nosteam_param_ignored ConfigNoSteamTesting=0"));
+	}
+
+	if (bRequireSteamForDedicatedServer && SubsystemName != FName(TEXT("STEAM")))
+	{
+		UE_LOG(LogSpellRiseGameInstanceRuntime, Fatal,
+			TEXT("[Auth][BootstrapFailure] Reason=steam_required_but_default_subsystem_not_steam Subsystems=%s Hint=fix_steam_runtime_or_launch_with_nosteam_for_dev_only"),
+			*DescribeOnlineSubsystemState());
+	}
+
 	if (!bHasLocalSessionIdentity)
 	{
 		bLoggedLocalSessionFallback = true;

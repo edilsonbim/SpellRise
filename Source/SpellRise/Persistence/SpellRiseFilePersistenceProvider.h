@@ -20,6 +20,7 @@ public:
 
 	virtual bool LoadWorld(const FString& WorldId, FSpellRiseWorldSaveData& OutData) override;
 	virtual bool SaveWorld(const FString& WorldId, const FSpellRiseWorldSaveData& Data) override;
+	virtual bool SaveDeathEvent(const FSpellRiseDeathEventData& Data) override;
 
 private:
 	FString BuildCharacterPath(const FString& SteamId64) const;

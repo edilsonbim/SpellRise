@@ -57,7 +57,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
 	ESpellRiseAbilityCastType CastType = ESpellRiseAbilityCastType::Instant;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input")
 	bool bFireOnAbilityInput = true;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.0", EditCondition="CastType == ESpellRiseAbilityCastType::Cast", EditConditionHides))
@@ -69,22 +69,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(ClampMin="0.01", EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	float ChannelInterval = 0.25f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
-	bool bCommitAbilityOnActivate = true;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
-	bool bCommitAbilityEveryChannelTick = true;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
-	bool bEndAbilityAfterExecution = true;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell", meta=(EditCondition="CastType == ESpellRiseAbilityCastType::Channel", EditConditionHides))
 	bool bEndChannelOnInputRelease = true;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Activation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	bool AutoActivateWhenGranted = false;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input|Selection")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input")
 	bool bKeepSelectedAfterAbilityEnds = false;
 
 public:
@@ -183,7 +174,6 @@ public:
 		bool bWasCancelled) override;
 
 protected:
-	bool TryCommitSpellAbility();
 	void StartCastFlow();
 	void FinishCastFlow();
 	void StartChannelFlow();
@@ -193,7 +183,6 @@ protected:
 	void ResetSpellRuntimeState();
 	ESpellRiseCastCompletionPolicy GetEffectiveCastCompletionPolicy() const;
 	float ResolveElapsedCastTime() const;
-	bool CommitSpellAbilityForExecution();
 	void ApplyCastingEffect();
 	void ApplyCastingBarEffect();
 	void RemoveCastingEffect();
@@ -245,9 +234,6 @@ protected:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	bool bHasExecutedSpell = false;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
-	bool bHasCommittedSpellAbility = false;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Ability|State")
 	float CastElapsedTime = 0.0f;

@@ -6,7 +6,10 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "GameplayEffectExtension.h"
+#include "Engine/GameInstance.h"
 #include "Misc/DateTime.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Net/UnrealNetwork.h"
 
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
@@ -17,6 +20,8 @@
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Characters/SpellRiseEnemyCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
+#include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
+#include "SpellRise/Persistence/SpellRisePersistenceTypes.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseResourceRuntime, Log, All);
 
@@ -521,6 +526,224 @@ namespace
 	};
 
 	FResourceCombatRuntimeCounters GResourceCombatRuntimeCounters;
+
+	struct FSpellRiseDeathDamageContributor
+	{
+		TWeakObjectPtr<AActor> Actor;
+		FSpellRiseDeathParticipantData Participant;
+		double LastDamageWorldSeconds = 0.0;
+	};
+
+	constexpr double DeathDamageContributionWindowSeconds = 120.0;
+	TMap<TObjectKey<ASpellRiseCharacterBase>, TArray<FSpellRiseDeathDamageContributor>> GDeathDamageContributorsByVictim;
+
+	FString ResolveDeathWorldId(const UWorld* World)
+	{
+		if (!World)
+		{
+			return TEXT("UnknownWorld");
+		}
+
+		FString ServerInstanceId;
+		if (!FParse::Value(FCommandLine::Get(), TEXT("ServerInstanceId="), ServerInstanceId))
+		{
+			ServerInstanceId = World->URL.Port > 0
+				? FString::Printf(TEXT("Port%d"), World->URL.Port)
+				: TEXT("Local");
+		}
+
+		const FString MapId = UWorld::RemovePIEPrefix(World->GetMapName());
+		return FString::Printf(TEXT("%s@%s"), *MapId, *ServerInstanceId);
+	}
+
+	FString ResolvePersistentIdForDeathActor(const AActor* Actor, const UWorld* World)
+	{
+		const APawn* Pawn = Cast<APawn>(Actor);
+		const APlayerState* PlayerState = Pawn ? Pawn->GetPlayerState() : nullptr;
+		if (!PlayerState)
+		{
+			return FString();
+		}
+
+		const UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+		const USpellRisePersistenceSubsystem* Persistence = GameInstance ? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>() : nullptr;
+		FString PersistentId;
+		if (Persistence && Persistence->GetSteamIdFromPlayerState(PlayerState, PersistentId))
+		{
+			return PersistentId;
+		}
+
+		const FUniqueNetIdRepl UniqueIdRepl = PlayerState->GetUniqueId();
+		return UniqueIdRepl.IsValid() && UniqueIdRepl.GetUniqueNetId().IsValid()
+			? UniqueIdRepl.GetUniqueNetId()->ToString()
+			: FString();
+	}
+
+	FString ResolveDeathCauseType(const AActor* Actor, const FGameplayTag& DamageTypeTag)
+	{
+		if (IsFallDamageTypeTag(DamageTypeTag))
+		{
+			return TEXT("environment");
+		}
+		if (Cast<ASpellRiseCharacterBase>(Actor))
+		{
+			return TEXT("player");
+		}
+		if (Cast<ASpellRiseEnemyCharacterBase>(Actor))
+		{
+			return TEXT("enemy");
+		}
+		return Actor ? TEXT("actor") : TEXT("unknown");
+	}
+
+	FSpellRiseDeathParticipantData BuildDeathParticipant(AActor* Actor, const FString& FallbackName, const FGameplayTag& DamageTypeTag, float Damage, UWorld* World)
+	{
+		FSpellRiseDeathParticipantData Participant;
+		Participant.PlayerId = ResolvePersistentIdForDeathActor(Actor, World);
+		Participant.DisplayName = ResolveCombatSourceName(Actor, nullptr, DamageTypeTag);
+		if (Participant.DisplayName.IsEmpty() || Participant.DisplayName.Equals(TEXT("desconhecido"), ESearchCase::IgnoreCase))
+		{
+			Participant.DisplayName = FallbackName;
+		}
+		if (Participant.DisplayName.IsEmpty())
+		{
+			Participant.DisplayName = IsFallDamageTypeTag(DamageTypeTag) ? TEXT("fall") : TEXT("unknown");
+		}
+		Participant.CauseType = ResolveDeathCauseType(Actor, DamageTypeTag);
+		Participant.DamageAmount = FMath::Max(0.0f, Damage);
+		return Participant;
+	}
+
+	bool IsSameDeathContributor(const FSpellRiseDeathDamageContributor& Existing, AActor* Actor, const FSpellRiseDeathParticipantData& Participant)
+	{
+		if (!Existing.Participant.PlayerId.IsEmpty() && !Participant.PlayerId.IsEmpty())
+		{
+			return Existing.Participant.PlayerId == Participant.PlayerId;
+		}
+		if (Existing.Actor.IsValid() && Actor)
+		{
+			return Existing.Actor.Get() == Actor;
+		}
+		return Existing.Participant.DisplayName.Equals(Participant.DisplayName, ESearchCase::IgnoreCase)
+			&& Existing.Participant.CauseType.Equals(Participant.CauseType, ESearchCase::IgnoreCase);
+	}
+
+	void TrackDeathDamageContribution(ASpellRiseCharacterBase* Victim, AActor* Actor, const FSpellRiseDeathParticipantData& Participant, double WorldSeconds)
+	{
+		if (!Victim || Participant.DamageAmount <= 0.0f)
+		{
+			return;
+		}
+
+		TArray<FSpellRiseDeathDamageContributor>& Contributors = GDeathDamageContributorsByVictim.FindOrAdd(TObjectKey<ASpellRiseCharacterBase>(Victim));
+		for (int32 Index = Contributors.Num() - 1; Index >= 0; --Index)
+		{
+			if ((WorldSeconds - Contributors[Index].LastDamageWorldSeconds) > DeathDamageContributionWindowSeconds)
+			{
+				Contributors.RemoveAtSwap(Index);
+			}
+		}
+
+		for (FSpellRiseDeathDamageContributor& Existing : Contributors)
+		{
+			if (IsSameDeathContributor(Existing, Actor, Participant))
+			{
+				Existing.Participant.DamageAmount += Participant.DamageAmount;
+				Existing.LastDamageWorldSeconds = WorldSeconds;
+				return;
+			}
+		}
+
+		FSpellRiseDeathDamageContributor NewContributor;
+		NewContributor.Actor = Actor;
+		NewContributor.Participant = Participant;
+		NewContributor.LastDamageWorldSeconds = WorldSeconds;
+		Contributors.Add(MoveTemp(NewContributor));
+	}
+
+	FSpellRiseDeathParticipantData ResolveTopDamageParticipant(ASpellRiseCharacterBase* Victim, const FSpellRiseDeathParticipantData& FatalParticipant)
+	{
+		FSpellRiseDeathParticipantData TopDamage = FatalParticipant;
+		if (!Victim)
+		{
+			return TopDamage;
+		}
+
+		if (const TArray<FSpellRiseDeathDamageContributor>* Contributors = GDeathDamageContributorsByVictim.Find(TObjectKey<ASpellRiseCharacterBase>(Victim)))
+		{
+			for (const FSpellRiseDeathDamageContributor& Contributor : *Contributors)
+			{
+				if (Contributor.Participant.DamageAmount > TopDamage.DamageAmount)
+				{
+					TopDamage = Contributor.Participant;
+				}
+			}
+		}
+
+		return TopDamage;
+	}
+
+	bool AreSameDeathParticipants(const FSpellRiseDeathParticipantData& A, const FSpellRiseDeathParticipantData& B)
+	{
+		if (!A.PlayerId.IsEmpty() && !B.PlayerId.IsEmpty())
+		{
+			return A.PlayerId == B.PlayerId;
+		}
+		return A.DisplayName.Equals(B.DisplayName, ESearchCase::IgnoreCase)
+			&& A.CauseType.Equals(B.CauseType, ESearchCase::IgnoreCase);
+	}
+
+	FString BuildDeathMessage(const FSpellRiseDeathParticipantData& TopDamage, const FSpellRiseDeathParticipantData& Fatal)
+	{
+		if (TopDamage.DisplayName.IsEmpty() && Fatal.DisplayName.IsEmpty())
+		{
+			return TEXT("Died.");
+		}
+
+		if (AreSameDeathParticipants(TopDamage, Fatal) || Fatal.DisplayName.IsEmpty())
+		{
+			return FString::Printf(TEXT("Killed by %s."), *TopDamage.DisplayName);
+		}
+
+		return FString::Printf(TEXT("Killed by %s and %s."), *TopDamage.DisplayName, *Fatal.DisplayName);
+	}
+
+	void PersistDeathEventIfNeeded(
+		ASpellRiseCharacterBase* TargetCharacter,
+		const FSpellRiseDeathParticipantData& TopDamage,
+		const FSpellRiseDeathParticipantData& Fatal,
+		const FGameplayTag& DamageTypeTag)
+	{
+		if (!TargetCharacter)
+		{
+			return;
+		}
+
+		UWorld* World = TargetCharacter->GetWorld();
+		UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+		USpellRisePersistenceSubsystem* Persistence = GameInstance ? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>() : nullptr;
+		if (!Persistence)
+		{
+			UE_LOG(LogSpellRiseResourceRuntime, Warning,
+				TEXT("[Persistence][DeathEventRejected] Reason=persistence_unavailable Victim=%s"),
+				*GetNameSafe(TargetCharacter));
+			return;
+		}
+
+		FSpellRiseDeathEventData EventData;
+		EventData.OccurredAtUtcIso8601 = FDateTime::UtcNow().ToIso8601();
+		EventData.WorldId = ResolveDeathWorldId(World);
+		EventData.VictimPlayerId = ResolvePersistentIdForDeathActor(TargetCharacter, World);
+		EventData.VictimName = ResolveCombatDisplayName(TargetCharacter);
+		EventData.VictimLevel = 0;
+		EventData.TopDamage = TopDamage;
+		EventData.Fatal = Fatal;
+		EventData.DamageType = DamageTypeTag.IsValid() ? DamageTypeTag.ToString() : FString();
+		EventData.DeathLocation = TargetCharacter->GetActorLocation();
+		EventData.Message = BuildDeathMessage(EventData.TopDamage, EventData.Fatal);
+
+		Persistence->SaveDeathEvent(EventData);
+	}
 }
 
 UResourceAttributeSet::UResourceAttributeSet()
@@ -731,7 +954,8 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			CatalystScalar = FMath::Clamp(CatalystScalar, 0.f, 10.f);
 		}
 
-		SetHealth(FMath::Clamp(GetHealth() - TotalDamage, 0.f, GetMaxHealth()));
+		const float PreviousHealth = GetHealth();
+		SetHealth(FMath::Clamp(PreviousHealth - TotalDamage, 0.f, GetMaxHealth()));
 
 		AActor* InstigatorActor = nullptr;
 		if (UAbilitySystemComponent* SourceASC = Ctx.GetOriginalInstigatorAbilitySystemComponent())
@@ -773,7 +997,17 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		ASpellRiseCharacterBase* TargetCharacter = Cast<ASpellRiseCharacterBase>(TargetASC->GetAvatarActor());
 		ASpellRiseEnemyCharacterBase* TargetEnemy = TargetCharacter ? nullptr : Cast<ASpellRiseEnemyCharacterBase>(TargetASC->GetAvatarActor());
 		const FGameplayTag DamageTypeTag = ResolveDamageTypeTag(Data.EffectSpec);
-		const bool bTargetDied = (GetHealth() <= KINDA_SMALL_NUMBER);
+		const bool bTargetDied = PreviousHealth > KINDA_SMALL_NUMBER && GetHealth() <= KINDA_SMALL_NUMBER;
+		UWorld* World = TargetASC->GetAvatarActor() ? TargetASC->GetAvatarActor()->GetWorld() : nullptr;
+		const double WorldSeconds = World ? World->GetTimeSeconds() : 0.0;
+		AActor* DeathCauserActor = SourceCharacter ? Cast<AActor>(SourceCharacter) : (SourceEnemy ? Cast<AActor>(SourceEnemy) : InstigatorActor);
+		FSpellRiseDeathParticipantData FatalParticipant;
+		if (TargetCharacter)
+		{
+			const FString FatalName = ResolveCombatSourceName(DeathCauserActor, TargetCharacter, DamageTypeTag);
+			FatalParticipant = BuildDeathParticipant(DeathCauserActor, FatalName, DamageTypeTag, TotalDamage, World);
+			TrackDeathDamageContribution(TargetCharacter, DeathCauserActor, FatalParticipant, WorldSeconds);
+		}
 		++GResourceCombatRuntimeCounters.DamageApplied;
 		if (bTargetDied)
 		{
@@ -790,6 +1024,12 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			TargetEnemy->MultiPlayHitReactionMontage(1.0f);
 		}
 		SendCombatLogMessages(SourceCharacter, InstigatorActor, TargetCharacter, TargetASC->GetAvatarActor(), TotalDamage, DamageTypeTag, bTargetDied);
+		if (TargetCharacter && bTargetDied)
+		{
+			const FSpellRiseDeathParticipantData TopDamageParticipant = ResolveTopDamageParticipant(TargetCharacter, FatalParticipant);
+			PersistDeathEventIfNeeded(TargetCharacter, TopDamageParticipant, FatalParticipant, DamageTypeTag);
+			GDeathDamageContributorsByVictim.Remove(TObjectKey<ASpellRiseCharacterBase>(TargetCharacter));
+		}
 
 		const float CatalystChargeAmount = TotalDamage * CatalystScalar;
 		if (GE_Catalyst_AddCharge)

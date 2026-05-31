@@ -427,6 +427,7 @@ protected:
 	void ExecuteRespawn_Server();
 	void ScheduleCorpseDespawn_Server();
 	void ExecuteCorpseDespawn_Server();
+	void ProcessFullLootDrop_Server(const FVector& LootOrigin);
 	void RefreshCombatLockFromDamage_Server(float DamageDelta);
 	bool IsCombatLockActive_Server(double* OutSecondsRemaining = nullptr) const;
 	void StopAllCharacterAudio(bool bIncludeAttachedActors);

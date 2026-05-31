@@ -178,3 +178,57 @@ struct FSpellRiseWorldSaveData
 	UPROPERTY()
 	TArray<FSpellRiseWorldActorSaveData> BuildingActors;
 };
+
+USTRUCT()
+struct FSpellRiseDeathParticipantData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString PlayerId;
+
+	UPROPERTY()
+	FString DisplayName;
+
+	UPROPERTY()
+	FString CauseType;
+
+	UPROPERTY()
+	float DamageAmount = 0.0f;
+};
+
+USTRUCT()
+struct FSpellRiseDeathEventData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString OccurredAtUtcIso8601;
+
+	UPROPERTY()
+	FString WorldId;
+
+	UPROPERTY()
+	FString VictimPlayerId;
+
+	UPROPERTY()
+	FString VictimName;
+
+	UPROPERTY()
+	int32 VictimLevel = 0;
+
+	UPROPERTY()
+	FSpellRiseDeathParticipantData TopDamage;
+
+	UPROPERTY()
+	FSpellRiseDeathParticipantData Fatal;
+
+	UPROPERTY()
+	FString DamageType;
+
+	UPROPERTY()
+	FVector DeathLocation = FVector::ZeroVector;
+
+	UPROPERTY()
+	FString Message;
+};

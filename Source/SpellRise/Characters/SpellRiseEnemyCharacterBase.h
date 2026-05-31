@@ -24,7 +24,6 @@ class UGameplayEffect;
 class UAnimMontage;
 class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
-class USpellRiseEnemyEquipmentComponent;
 class UNarrativeInventoryComponent;
 
 UCLASS()
@@ -126,9 +125,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Enemy|Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCatalystComponent> CatalystComponent = nullptr;
-
-	UPROPERTY(Transient)
-	TObjectPtr<USpellRiseEnemyEquipmentComponent> EnemyEquipmentComponent = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS")
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Minimal;
