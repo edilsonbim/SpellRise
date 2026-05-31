@@ -615,18 +615,7 @@ int32 UNarrativeInventoryComponent::GetSpaceForItem(TSubclassOf<class UNarrative
 			ExistingStackSize = ExistingItem->GetQuantity();
 		}
 		
-		const int32 WeightSpace = FMath::IsNearlyZero(ItemCDO->Weight) ? INT_MAX : FMath::FloorToInt((WeightCapacity - GetCurrentWeight()) / ItemCDO->Weight);
 		const int32 CapacitySpace = ((Capacity - Items.Num()) * MaxStackSize) + (MaxStackSize - ExistingStackSize);
-
-		if (WeightSpace < CapacitySpace)
-		{
-			if (WeightSpace <= 0)
-			{
-				NoSpaceReason = LOCTEXT("NoSpaceReason_WeightFull", "You're carrying too much weight.");
-			}
-
-			return WeightSpace;
-		}
 
 		if (CapacitySpace <= 0)
 		{

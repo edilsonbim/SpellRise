@@ -38,7 +38,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
 namespace
 {
-	constexpr int32 PersistenceCharacterSchemaVersion = 5;
+	constexpr int32 PersistenceCharacterSchemaVersion = 6;
 	constexpr int32 PersistenceInventorySchemaVersion = 2;
 	constexpr int32 PersistenceWorldSchemaVersion = 1;
 	constexpr int32 LegacyPersistenceWorldSchemaVersion = 5;
@@ -95,6 +95,333 @@ namespace
 		ESpellRiseSaveOwnerScope OwnerScope = ESpellRiseSaveOwnerScope::Unknown;
 		ESpellRiseSaveContainerRole ContainerRole = ESpellRiseSaveContainerRole::Unknown;
 	};
+
+	bool IsTalentTreeComponent(const UActorComponent* Component)
+	{
+		if (!Component || !Component->GetClass())
+		{
+			return false;
+		}
+
+		const FString ComponentName = Component->GetName();
+		const FString ClassPath = Component->GetClass()->GetPathName();
+		return ComponentName.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase)
+			|| ClassPath.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase);
+	}
+
+	UActorComponent* FindTalentTreeComponent(AActor* Owner)
+	{
+		if (!Owner)
+		{
+			return nullptr;
+		}
+
+		TArray<UActorComponent*> Components;
+		Owner->GetComponents(Components);
+		for (UActorComponent* Component : Components)
+		{
+			if (IsTalentTreeComponent(Component))
+			{
+				return Component;
+			}
+		}
+
+		return nullptr;
+	}
+
+	UActorComponent* ResolveTalentTreeComponent(AController* Controller)
+	{
+		if (!Controller)
+		{
+			return nullptr;
+		}
+
+		if (UActorComponent* CharacterComponent = FindTalentTreeComponent(Controller->GetPawn()))
+		{
+			return CharacterComponent;
+		}
+
+		return FindTalentTreeComponent(Controller->PlayerState);
+	}
+
+	const FProperty* FindFirstStructPropertyByNames(const UScriptStruct* StructType, const TArray<FName>& PreferredNames)
+	{
+		if (!StructType)
+		{
+			return nullptr;
+		}
+
+		for (const FName& PreferredName : PreferredNames)
+		{
+			if (const FProperty* Property = StructType->FindPropertyByName(PreferredName))
+			{
+				return Property;
+			}
+		}
+
+		return nullptr;
+	}
+
+	int32 ReadTalentLevelFromStruct(const UScriptStruct* StructType, const void* StructMemory)
+	{
+		if (!StructType || !StructMemory)
+		{
+			return 0;
+		}
+
+		const FProperty* LevelProperty = FindFirstStructPropertyByNames(StructType, {
+			FName(TEXT("Level")),
+			FName(TEXT("TalentLevel")),
+			FName(TEXT("CurrentLevel")),
+			FName(TEXT("GrantedLevel"))
+		});
+
+		if (!LevelProperty)
+		{
+			for (TFieldIterator<FIntProperty> It(StructType); It; ++It)
+			{
+				if (It->GetName().Contains(TEXT("Level"), ESearchCase::IgnoreCase))
+				{
+					LevelProperty = *It;
+					break;
+				}
+			}
+		}
+
+		const void* ValuePtr = LevelProperty ? LevelProperty->ContainerPtrToValuePtr<void>(StructMemory) : nullptr;
+		if (const FIntProperty* IntProperty = CastField<FIntProperty>(LevelProperty))
+		{
+			return FMath::Max(0, IntProperty->GetPropertyValue(ValuePtr));
+		}
+
+		if (const FByteProperty* ByteProperty = CastField<FByteProperty>(LevelProperty))
+		{
+			return FMath::Max(0, static_cast<int32>(ByteProperty->GetPropertyValue(ValuePtr)));
+		}
+
+		return 0;
+	}
+
+	UObject* ReadTalentAssetFromStruct(const UScriptStruct* StructType, const void* StructMemory)
+	{
+		if (!StructType || !StructMemory)
+		{
+			return nullptr;
+		}
+
+		const FProperty* TalentProperty = FindFirstStructPropertyByNames(StructType, {
+			FName(TEXT("Talent")),
+			FName(TEXT("TalentData")),
+			FName(TEXT("TalentAsset"))
+		});
+
+		if (!TalentProperty)
+		{
+			for (TFieldIterator<FObjectPropertyBase> It(StructType); It; ++It)
+			{
+				if (It->GetName().Contains(TEXT("Talent"), ESearchCase::IgnoreCase))
+				{
+					TalentProperty = *It;
+					break;
+				}
+			}
+		}
+
+		if (const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(TalentProperty))
+		{
+			return ObjectProperty->GetObjectPropertyValue_InContainer(StructMemory);
+		}
+
+		return nullptr;
+	}
+
+	bool CollectTalentTreeData(UActorComponent* TalentComponent, int32& OutPointsAvailable, TArray<FSpellRiseSavedTalent>& OutTalents)
+	{
+		OutPointsAvailable = 0;
+		OutTalents.Reset();
+
+		if (!TalentComponent || !TalentComponent->GetClass())
+		{
+			return false;
+		}
+
+		if (const FIntProperty* PointsProperty = FindFProperty<FIntProperty>(TalentComponent->GetClass(), TEXT("PointsAvailable")))
+		{
+			OutPointsAvailable = FMath::Max(0, PointsProperty->GetPropertyValue_InContainer(TalentComponent));
+		}
+
+		FArrayProperty* GrantedTalentsProperty = FindFProperty<FArrayProperty>(TalentComponent->GetClass(), TEXT("GrantedTalents"));
+		const FStructProperty* GrantedTalentStructProperty = GrantedTalentsProperty ? CastField<FStructProperty>(GrantedTalentsProperty->Inner) : nullptr;
+		if (!GrantedTalentsProperty || !GrantedTalentStructProperty || !GrantedTalentStructProperty->Struct)
+		{
+			return true;
+		}
+
+		FScriptArrayHelper GrantedTalentsHelper(GrantedTalentsProperty, GrantedTalentsProperty->ContainerPtrToValuePtr<void>(TalentComponent));
+		for (int32 Index = 0; Index < GrantedTalentsHelper.Num(); ++Index)
+		{
+			const void* ElementMemory = GrantedTalentsHelper.GetRawPtr(Index);
+			UObject* TalentAsset = ReadTalentAssetFromStruct(GrantedTalentStructProperty->Struct, ElementMemory);
+			if (!TalentAsset)
+			{
+				continue;
+			}
+
+			FSpellRiseSavedTalent SavedTalent;
+			SavedTalent.TalentAssetPath = TalentAsset->GetPathName();
+			SavedTalent.Level = FMath::Max(1, ReadTalentLevelFromStruct(GrantedTalentStructProperty->Struct, ElementMemory));
+			OutTalents.Add(MoveTemp(SavedTalent));
+		}
+
+		return true;
+	}
+
+	void SetTalentPointsAvailable(UActorComponent* TalentComponent, const int32 PointsAvailable)
+	{
+		if (!TalentComponent || !TalentComponent->GetClass())
+		{
+			return;
+		}
+
+		if (FIntProperty* PointsProperty = FindFProperty<FIntProperty>(TalentComponent->GetClass(), TEXT("PointsAvailable")))
+		{
+			PointsProperty->SetPropertyValue_InContainer(TalentComponent, FMath::Clamp(PointsAvailable, 0, 1000000));
+			if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_PointsAvailable")))
+			{
+				TalentComponent->ProcessEvent(OnRepFunction, nullptr);
+			}
+		}
+	}
+
+	void ClearGrantedTalentArray(UActorComponent* TalentComponent)
+	{
+		if (!TalentComponent || !TalentComponent->GetClass())
+		{
+			return;
+		}
+
+		if (FArrayProperty* GrantedTalentsProperty = FindFProperty<FArrayProperty>(TalentComponent->GetClass(), TEXT("GrantedTalents")))
+		{
+			FScriptArrayHelper GrantedTalentsHelper(GrantedTalentsProperty, GrantedTalentsProperty->ContainerPtrToValuePtr<void>(TalentComponent));
+			GrantedTalentsHelper.EmptyValues();
+			if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_GrantedTalents")))
+			{
+				TalentComponent->ProcessEvent(OnRepFunction, nullptr);
+			}
+		}
+	}
+
+	void ResetTalentTreeDataForMissingPersistence(AController* Controller, const TCHAR* Context)
+	{
+		UActorComponent* TalentComponent = ResolveTalentTreeComponent(Controller);
+		if (!TalentComponent)
+		{
+			return;
+		}
+
+		ClearGrantedTalentArray(TalentComponent);
+		SetTalentPointsAvailable(TalentComponent, 0);
+		UE_LOG(LogSpellRisePersistence, Log,
+			TEXT("[Persistence][TalentsReset] Context=%s Component=%s"),
+			Context ? Context : TEXT("unknown"),
+			*GetNameSafe(TalentComponent));
+	}
+
+	bool InvokeGrantTalent(UActorComponent* TalentComponent, UObject* TalentAsset, const int32 Level)
+	{
+		if (!TalentComponent || !TalentAsset)
+		{
+			return false;
+		}
+
+		UFunction* GrantTalentFunction = TalentComponent->FindFunction(TEXT("GrantTalent"));
+		if (!GrantTalentFunction)
+		{
+			return false;
+		}
+
+		TArray<uint8> Params;
+		Params.SetNumZeroed(GrantTalentFunction->ParmsSize);
+
+		FBoolProperty* SuccessProperty = nullptr;
+		void* SuccessValuePtr = nullptr;
+		for (TFieldIterator<FProperty> It(GrantTalentFunction); It && It->HasAnyPropertyFlags(CPF_Parm); ++It)
+		{
+			FProperty* Property = *It;
+			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Params.GetData());
+
+			if (FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
+			{
+				if (Property->GetName().Contains(TEXT("Talent"), ESearchCase::IgnoreCase))
+				{
+					ObjectProperty->SetObjectPropertyValue(ValuePtr, TalentAsset);
+				}
+			}
+			else if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
+			{
+				if (Property->GetName().Contains(TEXT("Level"), ESearchCase::IgnoreCase))
+				{
+					IntProperty->SetPropertyValue(ValuePtr, FMath::Max(1, Level));
+				}
+			}
+			else if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
+			{
+				if (Property->GetName().Equals(TEXT("SkipPointsCheck"), ESearchCase::IgnoreCase))
+				{
+					BoolProperty->SetPropertyValue(ValuePtr, true);
+				}
+				else if (Property->HasAnyPropertyFlags(CPF_OutParm))
+				{
+					SuccessProperty = BoolProperty;
+					SuccessValuePtr = ValuePtr;
+				}
+			}
+		}
+
+		TalentComponent->ProcessEvent(GrantTalentFunction, Params.GetData());
+		return !SuccessProperty || SuccessProperty->GetPropertyValue(SuccessValuePtr);
+	}
+
+	void ApplyTalentTreeData(AController* Controller, const FSpellRiseCharacterSaveData& Data)
+	{
+		UActorComponent* TalentComponent = ResolveTalentTreeComponent(Controller);
+		if (!TalentComponent)
+		{
+			UE_LOG(LogSpellRisePersistence, Warning,
+				TEXT("[Persistence][TalentsApplyRejected] Reason=missing_component Controller=%s"),
+				*GetNameSafe(Controller));
+			return;
+		}
+
+		int32 AppliedTalents = 0;
+		int32 SkippedTalents = 0;
+		ClearGrantedTalentArray(TalentComponent);
+		for (const FSpellRiseSavedTalent& SavedTalent : Data.Talents)
+		{
+			if (SavedTalent.TalentAssetPath.IsEmpty() || SavedTalent.Level <= 0)
+			{
+				++SkippedTalents;
+				continue;
+			}
+
+			UObject* TalentAsset = LoadObject<UObject>(nullptr, *SavedTalent.TalentAssetPath);
+			if (!TalentAsset || !InvokeGrantTalent(TalentComponent, TalentAsset, SavedTalent.Level))
+			{
+				++SkippedTalents;
+				continue;
+			}
+
+			++AppliedTalents;
+		}
+
+		SetTalentPointsAvailable(TalentComponent, Data.TalentPointsAvailable);
+		UE_LOG(LogSpellRisePersistence, Log,
+			TEXT("[Persistence][TalentsApplied] Component=%s Applied=%d Skipped=%d PointsAvailable=%d"),
+			*GetNameSafe(TalentComponent),
+			AppliedTalents,
+			SkippedTalents,
+			FMath::Max(0, Data.TalentPointsAvailable));
+	}
 
 	bool IsValidPersistentId(const FString& PersistentId)
 	{
@@ -255,6 +582,21 @@ namespace
 			if (!FMath::IsFinite(NumericValue))
 			{
 				OutReason = TEXT("non_finite_attribute");
+				return false;
+			}
+		}
+
+		if (Data.TalentPointsAvailable < 0 || Data.TalentPointsAvailable > 1000000)
+		{
+			OutReason = TEXT("invalid_talent_points");
+			return false;
+		}
+
+		for (const FSpellRiseSavedTalent& Talent : Data.Talents)
+		{
+			if (Talent.TalentAssetPath.IsEmpty() || Talent.Level <= 0 || Talent.Level > 1000)
+			{
+				OutReason = TEXT("invalid_talent_state");
 				return false;
 			}
 		}
@@ -909,6 +1251,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	if (!CachedData)
 	{
 		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("no_cached_data"));
+		ResetTalentTreeDataForMissingPersistence(Controller, TEXT("no_cached_data"));
 		if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 		{
 			SRPlayerState->SetPersistenceProfileApplied(true);
@@ -1587,10 +1930,10 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	{
 	}
 
-	OutData.Strength = ASC->GetNumericAttribute(UCombatAttributeSet::GetStrengthAttribute());
-	OutData.Agility = ASC->GetNumericAttribute(UCombatAttributeSet::GetAgilityAttribute());
-	OutData.Intelligence = ASC->GetNumericAttribute(UCombatAttributeSet::GetIntelligenceAttribute());
-	OutData.Wisdom = ASC->GetNumericAttribute(UCombatAttributeSet::GetWisdomAttribute());
+	OutData.Strength = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute());
+	OutData.Agility = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute());
+	OutData.Intelligence = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute());
+	OutData.Wisdom = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute());
 
 	OutData.Health = ASC->GetNumericAttribute(UResourceAttributeSet::GetHealthAttribute());
 	OutData.Mana = ASC->GetNumericAttribute(UResourceAttributeSet::GetManaAttribute());
@@ -1599,6 +1942,11 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	OutData.CatalystCharge = ASC->GetNumericAttribute(UCatalystAttributeSet::GetCatalystChargeAttribute());
 	OutData.CatalystXP = ASC->GetNumericAttribute(UCatalystAttributeSet::GetCatalystXPAttribute());
 	OutData.CatalystLevel = ASC->GetNumericAttribute(UCatalystAttributeSet::GetCatalystLevelAttribute());
+
+	if (UActorComponent* TalentComponent = ResolveTalentTreeComponent(Controller))
+	{
+		CollectTalentTreeData(TalentComponent, OutData.TalentPointsAvailable, OutData.Talents);
+	}
 
 	if (!SRPlayerState->GetRespawnBedActorName().IsEmpty())
 	{
@@ -1706,6 +2054,8 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	ASC->SetNumericAttributeBase(UCatalystAttributeSet::GetCatalystXPAttribute(), Data.CatalystXP);
 	ASC->SetNumericAttributeBase(UCatalystAttributeSet::GetCatalystLevelAttribute(), Data.CatalystLevel);
 
+	ApplyTalentTreeData(Controller, Data);
+
 	if (!Data.RespawnBedActorName.IsEmpty() || !Data.RespawnBedClassPath.IsEmpty())
 	{
 		SRPlayerState->SetRespawnBedReferenceData(Data.RespawnBedActorName, Data.RespawnBedClassPath, Data.RespawnBedLocation);
@@ -1727,6 +2077,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	TArray<FNarrativeInventoryBinding> AvailableBindings;
 	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, AvailableBindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, AvailableBindings);
+	Character->SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("BeforePersistenceInventoryApply"));
 
 	for (const FNarrativeInventoryBinding& Binding : AvailableBindings)
 	{
@@ -1792,7 +2143,6 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 
 			UNarrativeInventoryComponent* Inventory = TargetBinding->Inventory.Get();
 			Inventory->SetCapacity(FMath::Max(1, SavedComponent.Capacity));
-			Inventory->SetWeightCapacity(FMath::Max(0.0f, SavedComponent.WeightCapacity));
 			Inventory->SetCurrency(FMath::Max(0, SavedComponent.Currency));
 			if (!SavedComponent.InventoryFriendlyName.IsEmpty())
 			{
@@ -1830,6 +2180,8 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 			++AppliedComponents;
 		}
 	}
+
+	Character->SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("AfterPersistenceInventoryApply"));
 
 	const bool bShouldEnsureDefaults =
 		(Data.InventoryComponents.Num() == 0) ||

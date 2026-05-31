@@ -16,6 +16,7 @@ void UNarrativeActivatableWidget::NativeDestruct()
 		}
 	}
 	BindingHandles.Empty();
+	BindingHandlesByActionName.Empty();
 
 	Super::NativeDestruct();
 }
@@ -32,6 +33,22 @@ void UNarrativeActivatableWidget::RegisterBinding(FDataTableRowHandle InputActio
 		return;
 	}
 
+	if (FUIActionBindingHandle* ExistingHandle = BindingHandlesByActionName.Find(InputAction.RowName))
+	{
+		if (ExistingHandle->IsValid())
+		{
+			ExistingHandle->Unregister();
+		}
+		BindingHandles.Remove(*ExistingHandle);
+		BindingHandlesByActionName.Remove(InputAction.RowName);
+	}
+
+	if (BindingHandle.Handle.IsValid())
+	{
+		BindingHandle.Handle.Unregister();
+		BindingHandles.Remove(BindingHandle.Handle);
+	}
+
 	FBindUIActionArgs BindArgs(InputAction, FSimpleDelegate::CreateLambda([InputAction, Callback]()
 		{
 			Callback.ExecuteIfBound(InputAction.RowName);
@@ -41,6 +58,7 @@ void UNarrativeActivatableWidget::RegisterBinding(FDataTableRowHandle InputActio
 
 	BindingHandle.Handle = RegisterUIActionBinding(BindArgs);
 	BindingHandles.Add(BindingHandle.Handle);
+	BindingHandlesByActionName.Add(InputAction.RowName, BindingHandle.Handle);
 }
 
 void UNarrativeActivatableWidget::UnregisterBinding(FInputActionBindingHandle BindingHandle)
@@ -51,6 +69,14 @@ void UNarrativeActivatableWidget::UnregisterBinding(FInputActionBindingHandle Bi
 	{
 		BindingHandle.Handle.Unregister();
 		BindingHandles.Remove(BindingHandle.Handle);
+		for (TMap<FName, FUIActionBindingHandle>::TIterator It(BindingHandlesByActionName); It; ++It)
+		{
+			if (It.Value() == BindingHandle.Handle)
+			{
+				It.RemoveCurrent();
+				break;
+			}
+		}
 	}
 }
 
@@ -61,6 +87,7 @@ void UNarrativeActivatableWidget::UnregisterAllBindings()
 		Handle.Unregister();
 	}
 	BindingHandles.Empty();
+	BindingHandlesByActionName.Empty();
 }
 
 void UNarrativeActivatableWidget::SetBindingDisplayName(FInputActionBindingHandle BindingHandle, FText NewDisplayName)

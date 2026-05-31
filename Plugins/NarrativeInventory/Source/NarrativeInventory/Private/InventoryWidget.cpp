@@ -2,6 +2,9 @@
 
 #include "InventoryWidget.h"
 #include "Framework/Application/SlateApplication.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Widgets/SWidget.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogNarrativeInventoryWidgetFocus, Log, All);
@@ -62,14 +65,27 @@ void UInventoryWidget::NativeOnFocusLost(const FFocusEvent& InFocusEvent)
 
 void UInventoryWidget::LogFocusState(const TCHAR* SourceLabel) const
 {
+	const APlayerController* OwningPlayer = GetOwningPlayer();
+	const ACharacter* ControlledCharacter = OwningPlayer ? Cast<ACharacter>(OwningPlayer->GetPawn()) : nullptr;
+	const UCharacterMovementComponent* Movement = ControlledCharacter ? ControlledCharacter->GetCharacterMovement() : nullptr;
+
 	UE_LOG(
 		LogNarrativeInventoryWidgetFocus,
 		Log,
-		TEXT("[InventoryWidget][Focus] Source=%s Widget=%s Class=%s Visibility=%d SlateFocus=%s"),
+		TEXT("[InventoryWidget][Focus] Source=%s Widget=%s Class=%s Visibility=%d SlateFocus=%s Controller=%s Pawn=%s Cursor=%d Click=%d MouseOver=%d MoveIgnored=%d LookIgnored=%d MovementMode=%d MaxWalkSpeed=%.2f"),
 		SourceLabel ? SourceLabel : TEXT("Unknown"),
 		*GetNameSafe(this),
 		*GetClass()->GetName(),
 		static_cast<int32>(GetVisibility()),
-		*DescribeSlateFocus());
+		*DescribeSlateFocus(),
+		*GetNameSafe(OwningPlayer),
+		*GetNameSafe(OwningPlayer ? OwningPlayer->GetPawn() : nullptr),
+		OwningPlayer && OwningPlayer->bShowMouseCursor ? 1 : 0,
+		OwningPlayer && OwningPlayer->bEnableClickEvents ? 1 : 0,
+		OwningPlayer && OwningPlayer->bEnableMouseOverEvents ? 1 : 0,
+		OwningPlayer && OwningPlayer->IsMoveInputIgnored() ? 1 : 0,
+		OwningPlayer && OwningPlayer->IsLookInputIgnored() ? 1 : 0,
+		Movement ? static_cast<int32>(Movement->MovementMode) : INDEX_NONE,
+		Movement ? Movement->MaxWalkSpeed : 0.0f);
 }
 

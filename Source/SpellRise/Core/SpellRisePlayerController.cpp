@@ -10,6 +10,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "InputAction.h"
@@ -884,6 +885,24 @@ void ASpellRisePlayerController::LogInputFocusSnapshot(const TCHAR* SourceLabel)
 	LastInputFocusSnapshotSignature = Signature;
 	LastInputFocusSnapshotTimeSeconds = NowSeconds;
 
+	const ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn());
+	const UCharacterMovementComponent* Movement = ControlledCharacter ? ControlledCharacter->GetCharacterMovement() : nullptr;
+
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+		TEXT("[InputFocus] Source=%s Controller=%s Pawn=%s Cursor=%d Click=%d MouseOver=%d UIContext=%d MoveIgnored=%d LookIgnored=%d Focus=%s|%s MovementMode=%d MaxWalkSpeed=%.2f"),
+		SourceLabel ? SourceLabel : TEXT("Unknown"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetPawn()),
+		bShowMouseCursor ? 1 : 0,
+		bEnableClickEvents ? 1 : 0,
+		bEnableMouseOverEvents ? 1 : 0,
+		ShouldEnableUIInputContext() ? 1 : 0,
+		IsMoveInputIgnored() ? 1 : 0,
+		IsLookInputIgnored() ? 1 : 0,
+		*FocusWidgetName,
+		*FocusWidgetClass,
+		Movement ? static_cast<int32>(Movement->MovementMode) : INDEX_NONE,
+		Movement ? Movement->MaxWalkSpeed : 0.0f);
 }
 
 void ASpellRisePlayerController::SendAbilityInputTagReleased(FGameplayTag InputTag)

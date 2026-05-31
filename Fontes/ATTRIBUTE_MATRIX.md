@@ -20,6 +20,8 @@
 - Progressão por talentos autoritativos: até `100`
 - Booster de escolha do jogador: até `+20` em um atributo primário
 - Cap final por primário após baseline/talentos + booster: `120`
+- Pontos de talento não são `AttributeSet`; são estado persistido de progressão do personagem.
+- Talentos aplicados por login devem vir da persistência, não de `Default Talents` em `BeginPlay`.
 
 ## Derivados
 ### STR

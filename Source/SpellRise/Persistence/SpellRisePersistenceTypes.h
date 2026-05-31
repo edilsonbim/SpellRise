@@ -69,12 +69,24 @@ struct FSpellRiseSavedInventoryComponent
 };
 
 USTRUCT()
+struct FSpellRiseSavedTalent
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString TalentAssetPath;
+
+	UPROPERTY()
+	int32 Level = 0;
+};
+
+USTRUCT()
 struct FSpellRiseCharacterSaveData
 {
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 SchemaVersion = 5;
+	int32 SchemaVersion = 6;
 
 	UPROPERTY()
 	FString SteamId64;
@@ -126,6 +138,12 @@ struct FSpellRiseCharacterSaveData
 
 	UPROPERTY()
 	float CatalystLevel = 1.0f;
+
+	UPROPERTY()
+	int32 TalentPointsAvailable = 0;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedTalent> Talents;
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedInventoryComponent> InventoryComponents;

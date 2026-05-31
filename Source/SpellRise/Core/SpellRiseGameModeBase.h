@@ -41,6 +41,9 @@ protected:
 	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
 	bool bEnableNoSteamTestingMode = false;
 
+	UPROPERTY(Config, EditDefaultsOnly, Category="SpellRise|Online")
+	bool bRejectPortalBannedPlayersOnDedicatedServer = true;
+
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Persistence", meta=(ClampMin="5.0"))
 	float PersistenceSnapshotIntervalSeconds = 30.0f;
 
@@ -68,6 +71,7 @@ private:
 	bool IsNoSteamTestingModeActive() const;
 	bool IsEditorPIETestingModeActive() const;
 	bool ShouldRequireSteamAuthentication() const;
+	bool IsPersistentIdPortalBanned(const FString& PersistentId, FString& OutReason, FString& OutBannedUntil) const;
 
 	FTimerHandle PersistenceSnapshotTimerHandle;
 	TMap<FString, TWeakObjectPtr<APlayerController>> ActiveSessionByPersistentId;

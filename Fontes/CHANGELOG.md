@@ -23,6 +23,7 @@
 
 ### Persistence / Observability
 - Persistence foundation v1 ativa com snapshots de personagem e inventário.
+- Snapshot de personagem evoluído para persistir talentos e pontos disponíveis; talentos deixam de depender de grant padrão em login.
 - Eventos de morte passam a ser persistidos em `spellrise_death_events`, com vítima, data/hora, maior causador de dano, golpe fatal, causa e mensagem auditável server-side.
 - Combat log durável owner-centric em `PlayerState`.
 - Gate local de smoke multiplayer com reconnect e lag/loss.

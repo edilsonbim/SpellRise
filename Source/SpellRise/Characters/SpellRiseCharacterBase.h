@@ -29,6 +29,7 @@ class UDerivedStatsAttributeSet;
 class UAbilitySystemComponent;
 class ASpellRisePlayerState;
 class USpellRiseEquipmentManagerComponent;
+class UNarrativeInventoryComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
 
@@ -99,6 +100,7 @@ public:
 	virtual void OnRep_Controller() override;
 	virtual void OnRep_PlayerState() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void AddMovementInput(FVector WorldDirection, float ScaleValue = 1.0f, bool bForce = false) override;
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 	virtual void Landed(const FHitResult& Hit) override;
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
@@ -139,6 +141,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
 	bool IsDead() const;
+
+	void SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context);
 
 	const UInputMappingContext* GetDefaultInputMappingContext() const { return IMC_Default; }
 
@@ -221,6 +225,12 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement")
 	float BaseWalkSpeed = 500.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement|Inventory", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float EncumberedWeightSpeedMultiplier = 0.2f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement|Inventory", meta=(ClampMin="1.0"))
+	float ImmobilizedWeightCapacityMultiplier = 2.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
@@ -403,6 +413,18 @@ public:
 	UPROPERTY(Transient)
 	TObjectPtr<USpellRiseAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UNarrativeInventoryComponent> CachedNarrativeInventoryForWeight = nullptr;
+
+	UPROPERTY(Transient)
+	int32 CachedInventoryEncumbranceMoveState = -1;
+
+	UPROPERTY(Transient)
+	bool bInventoryWeightMovementBlocked = false;
+
+	UPROPERTY(Transient)
+	float InventoryWeightMovementInputScale = 1.f;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
@@ -415,11 +437,19 @@ protected:
 	bool InitializeAbilitySystemFromPlayerState();
 	void ApplyStartupEffects();
 	void BindASCDelegates();
+	UNarrativeInventoryComponent* ResolveNarrativeInventoryComponent() const;
+	void BindNarrativeInventoryWeightDelegates(UNarrativeInventoryComponent* Inventory);
+	void UnbindNarrativeInventoryWeightDelegates();
+	void RefreshInventoryEncumbranceMovement(const TCHAR* Context);
 	void RecalculateDerivedStats();
 	void ApplyDerivedStatsInfinite();
 	void ResetDeathStateAndResources_Server();
 	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
+	void OnCarryWeightChanged(const FOnAttributeChangeData& Data);
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
+
+	UFUNCTION()
+	void OnNarrativeInventoryUpdatedForWeight();
 	void ApplyRegenStartupEffects();
 	void ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass);
 	void SetCharacterInputEnabled(bool bEnabled);

@@ -5,7 +5,11 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Crc.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -70,7 +74,7 @@ namespace
 		return Subsystem ? Subsystem->GetSubsystemName().ToString() : TEXT("NONE");
 	}
 
-	FString DescribeOnlineSubsystemState()
+	FString DescribeGameModeOnlineSubsystemState()
 	{
 		const IOnlineSubsystem* DefaultSubsystem = IOnlineSubsystem::Get();
 		const IOnlineSubsystem* SteamSubsystem = IOnlineSubsystem::Get(TEXT("STEAM"));
@@ -92,6 +96,13 @@ namespace
 
 		const TSharedPtr<const FUniqueNetId> NetId = UniqueIdRepl.GetUniqueNetId();
 		return NetId.IsValid() && NetId->GetType() == FName(TEXT("STEAM"));
+	}
+
+	FString EscapeSqlLiteral(const FString& InValue)
+	{
+		FString Escaped = InValue;
+		Escaped.ReplaceInline(TEXT("'"), TEXT("''"), ESearchCase::CaseSensitive);
+		return Escaped;
 	}
 }
 
@@ -155,7 +166,7 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 			UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][PreLoginReject] Reason=incompatible_unique_net_id Address=%s UniqueId=%s Subsystems=%s"),
 				*Address,
 				*DescribeUniqueId(UniqueId),
-				*DescribeOnlineSubsystemState());
+				*DescribeGameModeOnlineSubsystemState());
 		}
 		else
 		{
@@ -176,7 +187,7 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 			UE_LOG(LogSpellRiseLoginPersistence, Error, TEXT("[Auth][PreLoginReject] Reason=steam_subsystem_required Address=%s UniqueId=%s Subsystems=%s"),
 				*Address,
 				*DescribeUniqueId(UniqueId),
-				*DescribeOnlineSubsystemState());
+				*DescribeGameModeOnlineSubsystemState());
 			return;
 		}
 
@@ -185,7 +196,7 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 			ErrorMessage = TEXT("AUTH_STEAM_REQUIRED");
 			UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][PreLoginReject] Reason=missing_unique_id Address=%s Subsystems=%s"),
 				*Address,
-				*DescribeOnlineSubsystemState());
+				*DescribeGameModeOnlineSubsystemState());
 			return;
 		}
 
@@ -195,7 +206,7 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 			UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][PreLoginReject] Reason=non_steam_unique_id Address=%s UniqueId=%s Subsystems=%s"),
 				*Address,
 				*DescribeUniqueId(UniqueId),
-				*DescribeOnlineSubsystemState());
+				*DescribeGameModeOnlineSubsystemState());
 			return;
 		}
 	}
@@ -213,6 +224,20 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 			bOfflineFallbackAllowedInThisContext ? 1 : 0,
 			bNoSteamTestingActive ? 1 : 0,
 			bEditorPIETestingActive ? 1 : 0);
+		return;
+	}
+
+	FString BanReason;
+	FString BannedUntil;
+	if (IsPersistentIdPortalBanned(PersistentId, BanReason, BannedUntil))
+	{
+		ErrorMessage = TEXT("AUTH_BANNED");
+		UE_LOG(LogSpellRiseLoginPersistence, Warning,
+			TEXT("[Auth][PreLoginReject] Reason=portal_ban Address=%s PersistentId=%s BanReason=%s BannedUntil=%s"),
+			*Address,
+			*PersistentId,
+			*BanReason,
+			BannedUntil.IsEmpty() ? TEXT("permanent") : *BannedUntil);
 		return;
 	}
 
@@ -671,4 +696,77 @@ bool ASpellRiseGameModeBase::IsEditorPIETestingModeActive() const
 bool ASpellRiseGameModeBase::ShouldRequireSteamAuthentication() const
 {
 	return bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !IsNoSteamTestingModeActive() && !IsEditorPIETestingModeActive();
+}
+
+bool ASpellRiseGameModeBase::IsPersistentIdPortalBanned(const FString& PersistentId, FString& OutReason, FString& OutBannedUntil) const
+{
+	OutReason.Reset();
+	OutBannedUntil.Reset();
+
+	if (!bRejectPortalBannedPlayersOnDedicatedServer || !IsRunningDedicatedServer() || IsNoSteamTestingModeActive() || IsEditorPIETestingModeActive())
+	{
+		return false;
+	}
+
+	if (PersistentId.IsEmpty() || !PersistentId.IsNumeric())
+	{
+		return false;
+	}
+
+	const FString ConnectionString = FPlatformMisc::GetEnvironmentVariable(TEXT("SR_PG_CONN"));
+	if (ConnectionString.IsEmpty())
+	{
+		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][BanLookupSkipped] Reason=missing_connection_string PersistentId=%s"), *PersistentId);
+		return false;
+	}
+
+	FString CmdPsqlPath;
+	FParse::Value(FCommandLine::Get(), TEXT("SRPsqlPath="), CmdPsqlPath);
+	FString PsqlPath = CmdPsqlPath.IsEmpty() ? FPlatformMisc::GetEnvironmentVariable(TEXT("SR_PSQL_PATH")) : CmdPsqlPath;
+	if (PsqlPath.IsEmpty())
+	{
+		PsqlPath = TEXT("psql");
+	}
+
+	const FString Sql = FString::Printf(
+		TEXT("SELECT reason || E'\\t' || COALESCE(banned_until::text, 'permanent') FROM public.spellrise_portal_bans WHERE steam_id64 = '%s' AND (banned_until IS NULL OR banned_until > now()) LIMIT 1;"),
+		*EscapeSqlLiteral(PersistentId));
+
+	const FString TempSqlPath = FPaths::CreateTempFilename(*FPaths::ProjectSavedDir(), TEXT("SpellRiseBanLookup"), TEXT(".sql"));
+	if (!FFileHelper::SaveStringToFile(Sql, *TempSqlPath))
+	{
+		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][BanLookupSkipped] Reason=temp_sql_write_failed PersistentId=%s"), *PersistentId);
+		return false;
+	}
+
+	const FString Args = FString::Printf(TEXT("\"%s\" -X -A -t -q -v ON_ERROR_STOP=1 -f \"%s\""), *ConnectionString, *TempSqlPath);
+	int32 ReturnCode = 0;
+	FString StdOut;
+	FString StdErr;
+	FPlatformProcess::ExecProcess(*PsqlPath, *Args, &ReturnCode, &StdOut, &StdErr);
+	IFileManager::Get().Delete(*TempSqlPath, false, true, true);
+
+	if (ReturnCode != 0)
+	{
+		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][BanLookupSkipped] Reason=query_failed PersistentId=%s Stderr=%s"), *PersistentId, *StdErr);
+		return false;
+	}
+
+	StdOut.TrimStartAndEndInline();
+	if (StdOut.IsEmpty())
+	{
+		return false;
+	}
+
+	FString Right;
+	if (StdOut.Split(TEXT("\t"), &OutReason, &Right))
+	{
+		OutBannedUntil = Right;
+	}
+	else
+	{
+		OutReason = StdOut;
+	}
+
+	return true;
 }

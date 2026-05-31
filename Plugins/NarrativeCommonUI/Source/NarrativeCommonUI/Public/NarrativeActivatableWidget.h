@@ -43,4 +43,5 @@ protected:
 
 private:
 	TArray<struct FUIActionBindingHandle> BindingHandles;
+	TMap<FName, struct FUIActionBindingHandle> BindingHandlesByActionName;
 };

@@ -43,6 +43,8 @@
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
 #include "EquippableItem.h"
 #include "EquipmentComponent.h"
+#include "InventoryComponent.h"
+#include "InventoryFunctionLibrary.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDeathLoot, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseSecurity, Log, All);
@@ -282,6 +284,7 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		World->GetTimerManager().ClearTimer(ASCInitializationRetryTimerHandle);
 	}
+	UnbindNarrativeInventoryWeightDelegates();
 	ResetLocalDeathPresentation();
 	Super::EndPlay(EndPlayReason);
 }
@@ -332,6 +335,21 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 
 
 
+}
+
+void ASpellRiseCharacterBase::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
+{
+	if (!bForce)
+	{
+		if (bInventoryWeightMovementBlocked || InventoryWeightMovementInputScale <= KINDA_SMALL_NUMBER)
+		{
+			return;
+		}
+
+		ScaleValue *= InventoryWeightMovementInputScale;
+	}
+
+	Super::AddMovementInput(WorldDirection, ScaleValue, bForce);
 }
 
 void ASpellRiseCharacterBase::AbilityInputTagPressed(FGameplayTag InputTag)
@@ -1187,6 +1205,7 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetAgilityAttribute()).RemoveAll(this);
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetIntelligenceAttribute()).RemoveAll(this);
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetCarryWeightAttribute()).RemoveAll(this);
 
 		bASCDelegatesBound = false;
 		ASCDelegatesBoundSource = nullptr;
@@ -1392,6 +1411,9 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
 		.RemoveAll(this);
+	GetSpellRiseASC()
+		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetCarryWeightAttribute())
+		.RemoveAll(this);
 
 	bASCDelegatesBound = true;
 
@@ -1421,6 +1443,12 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
+
+	GetSpellRiseASC()
+		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetCarryWeightAttribute())
+		.AddUObject(this, &ASpellRiseCharacterBase::OnCarryWeightChanged);
+
+	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("BindASCDelegates"));
 }
 
 bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
@@ -1445,6 +1473,179 @@ bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
 	return true;
 }
 
+UNarrativeInventoryComponent* ASpellRiseCharacterBase::ResolveNarrativeInventoryComponent() const
+{
+	if (UNarrativeInventoryComponent* Inventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(const_cast<ASpellRiseCharacterBase*>(this)))
+	{
+		return Inventory;
+	}
+
+	if (APlayerState* OwningPlayerState = GetPlayerState())
+	{
+		return UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwningPlayerState);
+	}
+
+	return nullptr;
+}
+
+void ASpellRiseCharacterBase::SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context)
+{
+	if (!ResourceAttributeSet)
+	{
+		return;
+	}
+
+	const float CarryWeight = ResourceAttributeSet->GetCarryWeight();
+	if (!FMath::IsFinite(CarryWeight) || CarryWeight <= KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponent();
+	if (!Inventory)
+	{
+		return;
+	}
+	BindNarrativeInventoryWeightDelegates(Inventory);
+
+	const float DesiredWeightCapacity = FMath::Max(0.f, CarryWeight);
+	if (FMath::IsNearlyEqual(Inventory->GetWeightCapacity(), DesiredWeightCapacity, 0.01f))
+	{
+		RefreshInventoryEncumbranceMovement(Context);
+		return;
+	}
+
+	Inventory->SetWeightCapacity(DesiredWeightCapacity);
+	RefreshInventoryEncumbranceMovement(Context);
+
+	UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
+		TEXT("[InventoryWeight][Sync] Character=%s Inventory=%s Capacity=%.2f Context=%s Authority=%d Local=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(Inventory),
+		DesiredWeightCapacity,
+		Context ? Context : TEXT("unknown"),
+		HasAuthority() ? 1 : 0,
+		IsLocallyControlled() ? 1 : 0);
+}
+
+void ASpellRiseCharacterBase::BindNarrativeInventoryWeightDelegates(UNarrativeInventoryComponent* Inventory)
+{
+	if (CachedNarrativeInventoryForWeight == Inventory)
+	{
+		return;
+	}
+
+	UnbindNarrativeInventoryWeightDelegates();
+	CachedNarrativeInventoryForWeight = Inventory;
+
+	if (CachedNarrativeInventoryForWeight)
+	{
+		CachedNarrativeInventoryForWeight->OnInventoryUpdated.RemoveDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
+		CachedNarrativeInventoryForWeight->OnInventoryUpdated.AddUniqueDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
+	}
+}
+
+void ASpellRiseCharacterBase::UnbindNarrativeInventoryWeightDelegates()
+{
+	if (CachedNarrativeInventoryForWeight)
+	{
+		CachedNarrativeInventoryForWeight->OnInventoryUpdated.RemoveDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
+		CachedNarrativeInventoryForWeight = nullptr;
+	}
+}
+
+void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* Context)
+{
+	if (!HasAuthority() && !IsLocallyControlled())
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponent();
+	if (!Movement || !Inventory)
+	{
+		return;
+	}
+
+	BindNarrativeInventoryWeightDelegates(Inventory);
+
+	const float CurrentWeight = FMath::Max(0.f, Inventory->GetCurrentWeight());
+	const float WeightCapacity = FMath::Max(0.f, Inventory->GetWeightCapacity());
+
+	float SpeedMultiplier = 1.f;
+	int32 NewMoveState = 0;
+	if (WeightCapacity <= KINDA_SMALL_NUMBER)
+	{
+		if (CurrentWeight > KINDA_SMALL_NUMBER)
+		{
+			SpeedMultiplier = 0.f;
+			NewMoveState = 2;
+		}
+	}
+	else if (CurrentWeight > WeightCapacity * ImmobilizedWeightCapacityMultiplier)
+	{
+		SpeedMultiplier = 0.f;
+		NewMoveState = 2;
+	}
+	else if (CurrentWeight > WeightCapacity)
+	{
+		SpeedMultiplier = EncumberedWeightSpeedMultiplier;
+		NewMoveState = 1;
+	}
+
+	const float DesiredMaxWalkSpeed = FMath::Max(0.f, BaseWalkSpeed * SpeedMultiplier);
+	Movement->MaxWalkSpeed = DesiredMaxWalkSpeed;
+	InventoryWeightMovementInputScale = SpeedMultiplier;
+
+	const bool bShouldBlockMovement = NewMoveState == 2;
+	if (bShouldBlockMovement)
+	{
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+		bInventoryWeightMovementBlocked = true;
+
+		if (AController* OwningController = GetController())
+		{
+			OwningController->SetIgnoreMoveInput(true);
+		}
+	}
+	else if (bInventoryWeightMovementBlocked)
+	{
+		bInventoryWeightMovementBlocked = false;
+
+		if (!IsDead() && Movement->MovementMode == MOVE_None)
+		{
+			Movement->SetMovementMode(MOVE_Walking);
+		}
+
+		if (AController* OwningController = GetController())
+		{
+			OwningController->SetIgnoreMoveInput(IsDead());
+		}
+	}
+
+	if (CachedInventoryEncumbranceMoveState != NewMoveState)
+	{
+		CachedInventoryEncumbranceMoveState = NewMoveState;
+		UE_LOG(LogSpellRiseCharacterRuntime, Log,
+			TEXT("[InventoryWeight][Movement] Character=%s State=%d CurrentWeight=%.2f Capacity=%.2f MaxWalkSpeed=%.2f Context=%s Authority=%d Local=%d"),
+			*GetNameSafe(this),
+			NewMoveState,
+			CurrentWeight,
+			WeightCapacity,
+			DesiredMaxWalkSpeed,
+			Context ? Context : TEXT("unknown"),
+			HasAuthority() ? 1 : 0,
+			IsLocallyControlled() ? 1 : 0);
+	}
+}
+
+void ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight()
+{
+	RefreshInventoryEncumbranceMovement(TEXT("InventoryUpdated"));
+}
+
 void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Data)
 {
 	if (!HasAuthority() || !GetSpellRiseASC())
@@ -1454,6 +1655,11 @@ void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Dat
 
 	RecalculateDerivedStats();
 	ApplyDerivedStatsInfinite();
+}
+
+void ASpellRiseCharacterBase::OnCarryWeightChanged(const FOnAttributeChangeData& Data)
+{
+	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("CarryWeightChanged"));
 }
 
 void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data)
@@ -1556,6 +1762,7 @@ void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 	}
 
 	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("ApplyDerivedStatsInfinite"));
 }
 
 void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass)
@@ -1615,7 +1822,7 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 	{
 		ResetLocalDeathPresentation();
 		EnableInput(PC);
-		PC->SetIgnoreMoveInput(false);
+		PC->SetIgnoreMoveInput(bInventoryWeightMovementBlocked);
 		PC->SetIgnoreLookInput(false);
 		return;
 	}
