@@ -2,11 +2,14 @@
 #include "SpellRisePlayerState.h"
 
 #include "AbilitySystemComponent.h"
+#include "Components/ActorComponent.h"
 #include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
 #include "Engine/GameInstance.h"
 #include "Net/UnrealNetwork.h"
+#include "UObject/UnrealType.h"
 
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
@@ -20,6 +23,7 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCombatLog, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseProgression, Log, All);
 
 namespace
 {
@@ -77,6 +81,210 @@ namespace
 				}
 			}
 		}
+	}
+
+	bool SRPS_IsTalentTreeComponent(const UActorComponent* Component)
+	{
+		if (!Component || !Component->GetClass())
+		{
+			return false;
+		}
+
+		const FString ComponentName = Component->GetName();
+		const FString ClassPath = Component->GetClass()->GetPathName();
+		return ComponentName.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase)
+			|| ClassPath.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase);
+	}
+
+	UActorComponent* SRPS_FindTalentTreeComponent(AActor* Owner)
+	{
+		if (!Owner)
+		{
+			return nullptr;
+		}
+
+		TArray<UActorComponent*> Components;
+		Owner->GetComponents(Components);
+		for (UActorComponent* Component : Components)
+		{
+			if (SRPS_IsTalentTreeComponent(Component))
+			{
+				return Component;
+			}
+		}
+
+		return nullptr;
+	}
+
+	AController* SRPS_ResolveControllerForPlayerState(ASpellRisePlayerState* PlayerState)
+	{
+		if (!PlayerState)
+		{
+			return nullptr;
+		}
+
+		if (APawn* Pawn = Cast<APawn>(PlayerState->GetPawn()))
+		{
+			if (AController* Controller = Pawn->GetController())
+			{
+				return Controller;
+			}
+		}
+
+		UWorld* World = PlayerState->GetWorld();
+		if (!World)
+		{
+			return nullptr;
+		}
+
+		for (FConstControllerIterator It = World->GetControllerIterator(); It; ++It)
+		{
+			AController* Controller = It->Get();
+			if (Controller && Controller->PlayerState == PlayerState)
+			{
+				return Controller;
+			}
+		}
+
+		return nullptr;
+	}
+
+	UActorComponent* SRPS_ResolveTalentTreeComponent(ASpellRisePlayerState* PlayerState)
+	{
+		if (!PlayerState)
+		{
+			return nullptr;
+		}
+
+		if (AController* Controller = SRPS_ResolveControllerForPlayerState(PlayerState))
+		{
+			if (UActorComponent* CharacterComponent = SRPS_FindTalentTreeComponent(Controller->GetPawn()))
+			{
+				return CharacterComponent;
+			}
+		}
+
+		return SRPS_FindTalentTreeComponent(PlayerState);
+	}
+
+	FNumericProperty* SRPS_FindTalentPointsAvailableProperty(UClass* ComponentClass)
+	{
+		if (!ComponentClass)
+		{
+			return nullptr;
+		}
+
+		static const FName CandidateNames[] =
+		{
+			TEXT("PointsAvailable"),
+			TEXT("PointsAvaliable"),
+			TEXT("TalentPointsAvailable"),
+			TEXT("TalentPointsAvaliable"),
+			TEXT("AvailableTalentPoints"),
+			TEXT("AvailablePoints"),
+			TEXT("TalentPoints")
+		};
+
+		for (const FName& CandidateName : CandidateNames)
+		{
+			if (FNumericProperty* NumericProperty = FindFProperty<FNumericProperty>(ComponentClass, CandidateName))
+			{
+				return NumericProperty;
+			}
+		}
+
+		for (TFieldIterator<FProperty> It(ComponentClass, EFieldIterationFlags::IncludeSuper); It; ++It)
+		{
+			FNumericProperty* NumericProperty = CastField<FNumericProperty>(*It);
+			if (!NumericProperty)
+			{
+				continue;
+			}
+
+			const FString PropertyName = NumericProperty->GetName();
+			if (PropertyName.Contains(TEXT("Points"), ESearchCase::IgnoreCase)
+				&& PropertyName.Contains(TEXT("Available"), ESearchCase::IgnoreCase))
+			{
+				return NumericProperty;
+			}
+		}
+
+		return nullptr;
+	}
+
+	bool SRPS_AddTalentTreePointsAvailable(ASpellRisePlayerState* PlayerState, const int32 PointsToAdd, int32& OutNewPoints)
+	{
+		OutNewPoints = 0;
+		if (!PlayerState || PointsToAdd <= 0)
+		{
+			return false;
+		}
+
+		UActorComponent* TalentComponent = SRPS_ResolveTalentTreeComponent(PlayerState);
+		if (!TalentComponent || !TalentComponent->GetClass())
+		{
+			UE_LOG(LogSpellRiseProgression, Warning,
+				TEXT("[Progression][TalentPointsGrantRejected] Reason=missing_talent_component PlayerState=%s Amount=%d"),
+				*GetNameSafe(PlayerState),
+				PointsToAdd);
+			return false;
+		}
+
+		FNumericProperty* PointsProperty = SRPS_FindTalentPointsAvailableProperty(TalentComponent->GetClass());
+		if (!PointsProperty)
+		{
+			FString NumericProperties;
+			for (TFieldIterator<FProperty> It(TalentComponent->GetClass(), EFieldIterationFlags::IncludeSuper); It; ++It)
+			{
+				if (CastField<FNumericProperty>(*It))
+				{
+					if (!NumericProperties.IsEmpty())
+					{
+						NumericProperties += TEXT(",");
+					}
+					NumericProperties += It->GetName();
+				}
+			}
+
+			UE_LOG(LogSpellRiseProgression, Warning,
+				TEXT("[Progression][TalentPointsGrantRejected] Reason=missing_points_available Component=%s Class=%s Amount=%d NumericProperties=%s"),
+				*GetNameSafe(TalentComponent),
+				*GetNameSafe(TalentComponent->GetClass()),
+				PointsToAdd,
+				*NumericProperties.Left(512));
+			return false;
+		}
+
+		const int32 CurrentPoints = PointsProperty->IsInteger()
+			? FMath::Max(0, static_cast<int32>(PointsProperty->GetSignedIntPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent))))
+			: FMath::Max(0, FMath::RoundToInt(PointsProperty->GetFloatingPointPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent))));
+		OutNewPoints = FMath::Clamp(CurrentPoints + PointsToAdd, 0, 1000000);
+		if (PointsProperty->IsInteger())
+		{
+			PointsProperty->SetIntPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent), static_cast<int64>(OutNewPoints));
+		}
+		else
+		{
+			PointsProperty->SetFloatingPointPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent), static_cast<double>(OutNewPoints));
+		}
+
+		if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_PointsAvailable")))
+		{
+			TalentComponent->ProcessEvent(OnRepFunction, nullptr);
+		}
+
+		if (AActor* TalentOwner = TalentComponent->GetOwner())
+		{
+			TalentOwner->ForceNetUpdate();
+		}
+
+		UE_LOG(LogSpellRiseProgression, Log,
+			TEXT("[Progression][TalentPointsGranted] Component=%s Property=%s Added=%d Total=%d"),
+			*GetNameSafe(TalentComponent),
+			*PointsProperty->GetName(),
+			PointsToAdd,
+			OutNewPoints);
+		return true;
 	}
 }
 
@@ -244,6 +452,33 @@ void ASpellRisePlayerState::OnRep_PersistenceProfileApplied()
 	RecordOnRepTelemetry(TEXT("PersistenceProfileApplied"));
 }
 
+void ASpellRisePlayerState::OnRep_TalentPoints()
+{
+	RecordOnRepTelemetry(TEXT("TalentPoints"));
+	UE_LOG(LogSpellRiseProgression, Verbose, TEXT("TalentPoints replicado para o cliente. Novo valor: %f"), TalentPoints);
+}
+
+void ASpellRisePlayerState::AddTalentPoints_Server(float Amount)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogSpellRiseProgression, Warning, TEXT("Tentativa de adicionar Talent Points sem autoridade. PlayerState=%s"), *GetNameSafe(this));
+		return;
+	}
+
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+
+	const int32 PointsToAdd = FMath::Max(1, FMath::RoundToInt(Amount));
+	int32 TalentTreePoints = 0;
+	const bool bUpdatedTalentTree = SRPS_AddTalentTreePointsAvailable(this, PointsToAdd, TalentTreePoints);
+	TalentPoints = bUpdatedTalentTree ? static_cast<float>(TalentTreePoints) : TalentPoints + Amount;
+	ForceNetUpdate();
+	UE_LOG(LogSpellRiseProgression, Log, TEXT("Adicionado %f Talent Points para %s. Total: %f"), Amount, *GetNameSafe(this), TalentPoints);
+}
+
 void ASpellRisePlayerState::AppendCombatLogEvent_Server(
 	double ServerTimeSeconds,
 	const FString& InstigatorName,
@@ -398,6 +633,7 @@ void ASpellRisePlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, RespawnBedLocation, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, bPersistenceProfileApplied, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, CombatLog, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, TalentPoints, COND_OwnerOnly);
 }
 
 bool ASpellRisePlayerState::ValidateRespawnBedPayload(

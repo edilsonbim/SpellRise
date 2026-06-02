@@ -25,6 +25,7 @@
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
+#include "UObject/UnrealType.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 
 #include "SpellRise/Components/CatalystComponent.h"
@@ -287,6 +288,69 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	UnbindNarrativeInventoryWeightDelegates();
 	ResetLocalDeathPresentation();
 	Super::EndPlay(EndPlayReason);
+}
+
+namespace
+{
+	static bool IsTalentTreeComponentForDeathCleanup(const UActorComponent* Component)
+	{
+		if (!Component || !Component->GetClass())
+		{
+			return false;
+		}
+
+		const FString ComponentName = Component->GetName();
+		const FString ClassPath = Component->GetClass()->GetPathName();
+		return ComponentName.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase)
+			|| ClassPath.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase);
+	}
+
+	static bool HasGrantedTalentStateForDeathCleanup(const ASpellRiseCharacterBase* Character)
+	{
+		if (!Character)
+		{
+			return false;
+		}
+
+		TArray<const AActor*> Owners;
+		Owners.Add(Character);
+		if (const APlayerState* PlayerState = Character->GetPlayerState())
+		{
+			Owners.Add(PlayerState);
+		}
+
+		for (const AActor* Owner : Owners)
+		{
+			if (!Owner)
+			{
+				continue;
+			}
+
+			TArray<UActorComponent*> Components;
+			Owner->GetComponents(Components);
+			for (UActorComponent* Component : Components)
+			{
+				if (!IsTalentTreeComponentForDeathCleanup(Component))
+				{
+					continue;
+				}
+
+				const FArrayProperty* GrantedTalentsProperty = FindFProperty<FArrayProperty>(Component->GetClass(), TEXT("GrantedTalents"));
+				if (!GrantedTalentsProperty)
+				{
+					continue;
+				}
+
+				FScriptArrayHelper GrantedTalentsHelper(GrantedTalentsProperty, GrantedTalentsProperty->ContainerPtrToValuePtr<void>(Component));
+				if (GrantedTalentsHelper.Num() > 0)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
 }
 
 void ASpellRiseCharacterBase::Tick(float DeltaTime)
@@ -2800,6 +2864,18 @@ void ASpellRiseCharacterBase::ResetLocalDeathPresentation()
 		return;
 	}
 
+	UWorld* World = GetWorld();
+	if (!IsValid(World))
+	{
+		return;
+	}
+
+	APlayerController* LocalPC = Cast<APlayerController>(GetController());
+	if (!IsValid(LocalPC))
+	{
+		return;
+	}
+
 	TArray<UUserWidget*> ExistingDeathWidgets;
 	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(
 		this,
@@ -2820,18 +2896,15 @@ void ASpellRiseCharacterBase::ResetLocalDeathPresentation()
 		return;
 	}
 
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	if (APlayerCameraManager* CameraManager = LocalPC->PlayerCameraManager)
 	{
-		if (APlayerCameraManager* CameraManager = PC->PlayerCameraManager)
-		{
-			CameraManager->StartCameraFade(
-				1.f,
-				0.f,
-				FMath::Max(0.f, DeathCameraFadeInDurationOnSpawn),
-				FLinearColor::Black,
-				false,
-				true);
-		}
+		CameraManager->StartCameraFade(
+			1.f,
+			0.f,
+			FMath::Max(0.f, DeathCameraFadeInDurationOnSpawn),
+			FLinearColor::Black,
+			false,
+			true);
 	}
 }
 
@@ -2981,6 +3054,7 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 		return;
 	}
 
+	const bool bHasPersistentTalentGrants = HasGrantedTalentStateForDeathCleanup(this);
 	TArray<FGameplayAbilitySpecHandle> HandlesToRemove;
 	for (const FGameplayAbilitySpec& Spec : GetSpellRiseASC()->GetActivatableAbilities())
 	{
@@ -2996,6 +3070,15 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 
 		if (Spec.SourceObject.Get() != this)
 		{
+			continue;
+		}
+
+		if (bHasPersistentTalentGrants)
+		{
+			UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
+				TEXT("[Progression][DeathAbilityCleanupSkipped] Reason=preserve_talent_grants Character=%s Ability=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(Spec.Ability));
 			continue;
 		}
 

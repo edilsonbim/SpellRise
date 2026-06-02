@@ -201,6 +201,39 @@ namespace
 		return InputTag.ToString().StartsWith(TEXT("InputTag.Ability."));
 	}
 
+	bool SR_IsTalentTreeComponentForUI(const UActorComponent* Component)
+	{
+		if (!Component || !Component->GetClass())
+		{
+			return false;
+		}
+
+		const FString ComponentName = Component->GetName();
+		const FString ClassPath = Component->GetClass()->GetPathName();
+		return ComponentName.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase)
+			|| ClassPath.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase);
+	}
+
+	UActorComponent* SR_FindTalentTreeComponentForUI(AActor* Owner)
+	{
+		if (!Owner)
+		{
+			return nullptr;
+		}
+
+		TArray<UActorComponent*> Components;
+		Owner->GetComponents(Components);
+		for (UActorComponent* Component : Components)
+		{
+			if (SR_IsTalentTreeComponentForUI(Component))
+			{
+				return Component;
+			}
+		}
+
+		return nullptr;
+	}
+
 	bool SR_CanSendPawnOwnedInputRpc(const APlayerController* PlayerController, const APawn* Pawn, FString* OutReason = nullptr)
 	{
 		if (!PlayerController)
@@ -508,6 +541,38 @@ void ASpellRisePlayerController::RefreshEnhancedInputContexts()
 	UpdateEnhancedInputContext(Subsystem, IMC_System.Get(), IMC_SystemPriority, true, TEXT("System"));
 }
 
+void ASpellRisePlayerController::RestoreGameplayInputAfterUI(const FName Source)
+{
+	if (!IsLocalController() || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	bShowMouseCursor = false;
+	bEnableClickEvents = false;
+	bEnableMouseOverEvents = false;
+
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
+
+	if (APawn* ControlledPawn = GetPawn())
+	{
+		ControlledPawn->EnableInput(this);
+	}
+
+	SetupEnhancedInput();
+	RefreshEnhancedInputContexts();
+
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+		TEXT("[InputFocus][RestoreGameplay] Source=%s Controller=%s Pawn=%s"),
+		*Source.ToString(),
+		*GetNameSafe(this),
+		*GetNameSafe(GetPawn()));
+	LogInputFocusSnapshot(TEXT("RestoreGameplayInputAfterUI"));
+}
+
 void ASpellRisePlayerController::InventorySplitSlotSERVER_Implementation(UObject* FromContainer, int32 Slot, int32 Amount)
 {
 	if (!FromContainer || Slot < 0 || Amount <= 0)
@@ -689,7 +754,6 @@ void ASpellRisePlayerController::SetupInputComponent()
 void ASpellRisePlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
-	LastSpellRiseControlledPawn = InPawn;
 	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
 		TEXT("[Control][PCOnPossess] Controller=%s Pawn=%s PlayerState=%s Local=%d Authority=%d"),
 		*GetNameSafe(this),
@@ -703,6 +767,16 @@ void ASpellRisePlayerController::OnPossess(APawn* InPawn)
 APawn* ASpellRisePlayerController::GetLastSpellRiseControlledPawn() const
 {
 	return LastSpellRiseControlledPawn.Get();
+}
+
+UActorComponent* ASpellRisePlayerController::ResolveTalentTreeComponentForUI() const
+{
+	if (UActorComponent* PlayerStateComponent = SR_FindTalentTreeComponentForUI(PlayerState.Get()))
+	{
+		return PlayerStateComponent;
+	}
+
+	return SR_FindTalentTreeComponentForUI(GetPawn());
 }
 
 void ASpellRisePlayerController::OnUnPossess()
@@ -735,6 +809,7 @@ void ASpellRisePlayerController::AcknowledgePossession(APawn* InPawn)
 
 void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const TCHAR* SourceLabel)
 {
+	APawn* PreviousPawn = LastSpellRiseControlledPawn.Get();
 	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
 		TEXT("[Control][PawnChanged] Source=%s Controller=%s Pawn=%s CurrentPawn=%s ViewTarget=%s Local=%d Authority=%d"),
 		SourceLabel ? SourceLabel : TEXT("Unknown"),
@@ -764,6 +839,19 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 		else
 		{
 		}
+	}
+
+	if (IsLocalController())
+	{
+		BP_OnLocalHUDContextChanged(
+			NewPawn,
+			PreviousPawn,
+			SourceLabel ? FName(SourceLabel) : NAME_None);
+	}
+
+	if (NewPawn)
+	{
+		LastSpellRiseControlledPawn = NewPawn;
 	}
 }
 

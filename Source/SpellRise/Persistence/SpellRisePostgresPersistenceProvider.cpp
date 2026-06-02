@@ -229,8 +229,12 @@ bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 		"cause_type TEXT NOT NULL DEFAULT 'unknown', damage_type TEXT NOT NULL DEFAULT '', "
 		"location_x REAL NULL, location_y REAL NULL, location_z REAL NULL, "
 		"message TEXT NOT NULL DEFAULT '', event_json JSONB NOT NULL DEFAULT '{}'::jsonb);"
+		"CREATE TABLE IF NOT EXISTS spellrise_portal_ip_bans ("
+		"ip_address TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', banned_until TIMESTAMPTZ NULL, "
+		"created_by_steam_id64 TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());"
 		"CREATE INDEX IF NOT EXISTS idx_spellrise_death_events_occurred_at ON spellrise_death_events (occurred_at DESC);"
-		"CREATE INDEX IF NOT EXISTS idx_spellrise_death_events_victim ON spellrise_death_events (victim_player_id, occurred_at DESC);");
+		"CREATE INDEX IF NOT EXISTS idx_spellrise_death_events_victim ON spellrise_death_events (victim_player_id, occurred_at DESC);"
+		"CREATE INDEX IF NOT EXISTS idx_spellrise_portal_ip_bans_active ON spellrise_portal_ip_bans (ip_address, banned_until);");
 
 	FString StdOut;
 	FString StdErr;

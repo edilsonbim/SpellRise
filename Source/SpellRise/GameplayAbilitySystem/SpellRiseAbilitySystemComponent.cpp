@@ -417,9 +417,16 @@ bool USpellRiseAbilitySystemComponent::SR_TryActivateAbilityByInputTag(FGameplay
 			{
 				FGameplayTagContainer FailureTags;
 				const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
-				if (!Spec.Ability->CanActivateAbility(Spec.Handle, ActorInfo, nullptr, nullptr, &FailureTags))
+				const bool bCanSafelyEvaluateCanActivate = ActorInfo != nullptr
+					&& Spec.Ability->GetInstancingPolicy() != EGameplayAbilityInstancingPolicy::NonInstanced;
+				if (bCanSafelyEvaluateCanActivate
+					&& !Spec.Ability->CanActivateAbility(Spec.Handle, ActorInfo, nullptr, nullptr, &FailureTags))
 				{
 					RecordAbilityActivationFailure(Spec, FailureTags, TEXT("SR_TryActivateAbilityByInputTag"));
+				}
+				else if (!bCanSafelyEvaluateCanActivate)
+				{
+					RecordAbilityActivationFailure(Spec, FailureTags, TEXT("SR_TryActivateAbilityByInputTag.SafeSkipCanActivate"));
 				}
 			}
 			return bActivated;
@@ -534,13 +541,15 @@ void USpellRiseAbilitySystemComponent::SR_ProcessAbilityInput(float DeltaTime, b
 
 		FGameplayTagContainer FailureTags;
 		const FGameplayAbilityActorInfo* ActorInfo = AbilityActorInfo.Get();
-		const bool bCanActivate = Spec->Ability->CanActivateAbility(
-			Spec->Handle,
-			ActorInfo,
-			nullptr,
-			nullptr,
-			&FailureTags);
-		if (bCanActivate)
+		const bool bCanSafelyEvaluateCanActivate = ActorInfo != nullptr
+			&& Spec->Ability->GetInstancingPolicy() != EGameplayAbilityInstancingPolicy::NonInstanced;
+		if (!bCanSafelyEvaluateCanActivate)
+		{
+			RecordAbilityActivationFailure(*Spec, FailureTags, TEXT("SR_ProcessAbilityInput.SafeSkipCanActivate"));
+			return;
+		}
+
+		if (Spec->Ability->CanActivateAbility(Spec->Handle, ActorInfo, nullptr, nullptr, &FailureTags))
 		{
 			return;
 		}

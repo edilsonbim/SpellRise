@@ -178,6 +178,19 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 		return;
 	}
 
+	FString AddressBanReason;
+	FString AddressBannedUntil;
+	if (IsAddressPortalBanned(Address, AddressBanReason, AddressBannedUntil))
+	{
+		ErrorMessage = TEXT("AUTH_BANNED");
+		UE_LOG(LogSpellRiseLoginPersistence, Warning,
+			TEXT("[Auth][PreLoginReject] Reason=portal_ip_ban Address=%s BanReason=%s BannedUntil=%s"),
+			*Address,
+			*AddressBanReason,
+			AddressBannedUntil.IsEmpty() ? TEXT("permanent") : *AddressBannedUntil);
+		return;
+	}
+
 	if (bRequireSteamInThisContext)
 	{
 		const IOnlineSubsystem* OSS = IOnlineSubsystem::Get();
@@ -749,6 +762,80 @@ bool ASpellRiseGameModeBase::IsPersistentIdPortalBanned(const FString& Persisten
 	if (ReturnCode != 0)
 	{
 		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][BanLookupSkipped] Reason=query_failed PersistentId=%s Stderr=%s"), *PersistentId, *StdErr);
+		return false;
+	}
+
+	StdOut.TrimStartAndEndInline();
+	if (StdOut.IsEmpty())
+	{
+		return false;
+	}
+
+	FString Right;
+	if (StdOut.Split(TEXT("\t"), &OutReason, &Right))
+	{
+		OutBannedUntil = Right;
+	}
+	else
+	{
+		OutReason = StdOut;
+	}
+
+	return true;
+}
+
+bool ASpellRiseGameModeBase::IsAddressPortalBanned(const FString& Address, FString& OutReason, FString& OutBannedUntil) const
+{
+	OutReason.Reset();
+	OutBannedUntil.Reset();
+
+	if (!bRejectPortalBannedPlayersOnDedicatedServer || !IsRunningDedicatedServer() || IsNoSteamTestingModeActive() || IsEditorPIETestingModeActive())
+	{
+		return false;
+	}
+
+	const FString AddressKey = NormalizeAddressKey(Address);
+	if (AddressKey.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString ConnectionString = FPlatformMisc::GetEnvironmentVariable(TEXT("SR_PG_CONN"));
+	if (ConnectionString.IsEmpty())
+	{
+		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][IpBanLookupSkipped] Reason=missing_connection_string Address=%s"), *Address);
+		return false;
+	}
+
+	FString CmdPsqlPath;
+	FParse::Value(FCommandLine::Get(), TEXT("SRPsqlPath="), CmdPsqlPath);
+	FString PsqlPath = CmdPsqlPath.IsEmpty() ? FPlatformMisc::GetEnvironmentVariable(TEXT("SR_PSQL_PATH")) : CmdPsqlPath;
+	if (PsqlPath.IsEmpty())
+	{
+		PsqlPath = TEXT("psql");
+	}
+
+	const FString Sql = FString::Printf(
+		TEXT("SELECT reason || E'\\t' || COALESCE(banned_until::text, 'permanent') FROM public.spellrise_portal_ip_bans WHERE ip_address = '%s' AND (banned_until IS NULL OR banned_until > now()) LIMIT 1;"),
+		*EscapeSqlLiteral(AddressKey));
+
+	const FString TempSqlPath = FPaths::CreateTempFilename(*FPaths::ProjectSavedDir(), TEXT("SpellRiseIpBanLookup"), TEXT(".sql"));
+	if (!FFileHelper::SaveStringToFile(Sql, *TempSqlPath))
+	{
+		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][IpBanLookupSkipped] Reason=temp_sql_write_failed Address=%s"), *Address);
+		return false;
+	}
+
+	const FString Args = FString::Printf(TEXT("\"%s\" -X -A -t -q -v ON_ERROR_STOP=1 -f \"%s\""), *ConnectionString, *TempSqlPath);
+	int32 ReturnCode = 0;
+	FString StdOut;
+	FString StdErr;
+	FPlatformProcess::ExecProcess(*PsqlPath, *Args, &ReturnCode, &StdOut, &StdErr);
+	IFileManager::Get().Delete(*TempSqlPath, false, true, true);
+
+	if (ReturnCode != 0)
+	{
+		UE_LOG(LogSpellRiseLoginPersistence, Warning, TEXT("[Auth][IpBanLookupSkipped] Reason=query_failed Address=%s AddressKey=%s Stderr=%s"), *Address, *AddressKey, *StdErr);
 		return false;
 	}
 

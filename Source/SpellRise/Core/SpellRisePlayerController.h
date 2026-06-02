@@ -15,6 +15,7 @@ class UGameplayAbility;
 class USpellRiseNumberPopComponent_NiagaraText;
 class USpellRiseAbilitySystemComponent;
 class UNarrativeInteractionComponent;
+class UActorComponent;
 
 UCLASS()
 class SPELLRISE_API ASpellRisePlayerController : public APlayerController
@@ -57,6 +58,15 @@ public:
 
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Inventory")
 	void Route_InventorySortBy_SERVER(UObject* InventoryRef, int32 SortBy);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
+	void RestoreGameplayInputAfterUI(const FName Source);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Talents")
+	UActorComponent* ResolveTalentTreeComponentForUI() const;
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|HUD")
+	void BP_OnLocalHUDContextChanged(APawn* NewPawn, APawn* PreviousPawn, FName Source);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
 	void BP_OnCombatLogMessage(const FString& MessageText);

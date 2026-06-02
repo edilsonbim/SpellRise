@@ -101,10 +101,12 @@
 
 ### BUG-2026-03-28-031
 - Severity: High
-- Status: Open
+- Status: In Progress
 - Area: Online / Steam Auth Gating
 - Issue: flows sensíveis ainda precisam separar bootstrap offline seguro de auth Steam obrigatória.
 - Reproduction: iniciar DS com identidade degradada e validar se paths sensíveis ainda aceitam fallback indevido.
+- Fix: persistência de personagem/inventário endurecida para aceitar apenas SteamID64 real; `DEV_`/`NULL` não gravam snapshot em DB. `PreLogin` passa a consultar ban por IP em tabela separada `spellrise_portal_ip_bans`; ban por MAC não é implementado porque o DS não recebe MAC confiável do cliente em ambiente Steam/Internet.
+- Tested On: pendente de build/link e validação Steam real.
 - Owner: Backend/Online
 
 ### BUG-2026-03-28-029

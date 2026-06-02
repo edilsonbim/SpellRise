@@ -42,6 +42,10 @@ namespace
 	constexpr int32 PersistenceInventorySchemaVersion = 2;
 	constexpr int32 PersistenceWorldSchemaVersion = 1;
 	constexpr int32 LegacyPersistenceWorldSchemaVersion = 5;
+	constexpr float PersistentPrimaryAttributeMin = 0.0f;
+	constexpr float PersistentPrimaryAttributeMax = 120.0f;
+	constexpr int32 PersistentTalentLevelMin = 1;
+	constexpr int32 PersistentTalentLevelMax = 100;
 	constexpr uint8 SlotEncodingLegacyRawBase64 = 0;
 	constexpr uint8 SlotEncodingStructJson = 1;
 	constexpr double RespawnBedLocationToleranceSq = 300.0 * 300.0;
@@ -107,6 +111,21 @@ namespace
 		const FString ClassPath = Component->GetClass()->GetPathName();
 		return ComponentName.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase)
 			|| ClassPath.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase);
+	}
+
+	float ClampPersistentPrimaryAttribute(const float Value)
+	{
+		if (!FMath::IsFinite(Value))
+		{
+			return PersistentPrimaryAttributeMin;
+		}
+
+		return FMath::Clamp(Value, PersistentPrimaryAttributeMin, PersistentPrimaryAttributeMax);
+	}
+
+	int32 ClampPersistentTalentLevel(const int32 Level)
+	{
+		return FMath::Clamp(Level, PersistentTalentLevelMin, PersistentTalentLevelMax);
 	}
 
 	UActorComponent* FindTalentTreeComponent(AActor* Owner)
@@ -269,7 +288,7 @@ namespace
 
 			FSpellRiseSavedTalent SavedTalent;
 			SavedTalent.TalentAssetPath = TalentAsset->GetPathName();
-			SavedTalent.Level = FMath::Max(1, ReadTalentLevelFromStruct(GrantedTalentStructProperty->Struct, ElementMemory));
+			SavedTalent.Level = ClampPersistentTalentLevel(ReadTalentLevelFromStruct(GrantedTalentStructProperty->Struct, ElementMemory));
 			OutTalents.Add(MoveTemp(SavedTalent));
 		}
 
@@ -361,7 +380,7 @@ namespace
 			{
 				if (Property->GetName().Contains(TEXT("Level"), ESearchCase::IgnoreCase))
 				{
-					IntProperty->SetPropertyValue(ValuePtr, FMath::Max(1, Level));
+					IntProperty->SetPropertyValue(ValuePtr, ClampPersistentTalentLevel(Level));
 				}
 			}
 			else if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
@@ -433,6 +452,22 @@ namespace
 		FString TrimmedPersistentId = PersistentId;
 		TrimmedPersistentId.TrimStartAndEndInline();
 		return !TrimmedPersistentId.IsEmpty() && TrimmedPersistentId == PersistentId;
+	}
+
+	bool IsValidSteamId64(const FString& PersistentId)
+	{
+		if (!IsValidPersistentId(PersistentId))
+		{
+			return false;
+		}
+
+		if (PersistentId.StartsWith(TEXT("DEV_"), ESearchCase::IgnoreCase) ||
+			PersistentId.StartsWith(TEXT("NULL:"), ESearchCase::IgnoreCase))
+		{
+			return false;
+		}
+
+		return PersistentId.Len() == 17 && PersistentId.IsNumeric();
 	}
 
 	bool IsFiniteTransform(const FTransform& Transform)
@@ -547,9 +582,9 @@ namespace
 			return false;
 		}
 
-		if (!IsValidPersistentId(Data.SteamId64))
+		if (!IsValidSteamId64(Data.SteamId64))
 		{
-			OutReason = TEXT("invalid_persistent_id");
+			OutReason = TEXT("invalid_or_non_steam_persistent_id");
 			return false;
 		}
 
@@ -594,7 +629,7 @@ namespace
 
 		for (const FSpellRiseSavedTalent& Talent : Data.Talents)
 		{
-			if (Talent.TalentAssetPath.IsEmpty() || Talent.Level <= 0 || Talent.Level > 1000)
+			if (Talent.TalentAssetPath.IsEmpty() || Talent.Level < PersistentTalentLevelMin || Talent.Level > PersistentTalentLevelMax)
 			{
 				OutReason = TEXT("invalid_talent_state");
 				return false;
@@ -620,9 +655,9 @@ namespace
 			return false;
 		}
 
-		if (!IsValidPersistentId(Data.SteamId64))
+		if (!IsValidSteamId64(Data.SteamId64))
 		{
-			OutReason = TEXT("invalid_persistent_id");
+			OutReason = TEXT("invalid_or_non_steam_persistent_id");
 			return false;
 		}
 
@@ -1160,9 +1195,9 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (SteamId64.IsEmpty())
+	if (!IsValidSteamId64(SteamId64))
 	{
-		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("missing_persistent_id"));
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("invalid_or_non_steam_persistent_id"));
 		return false;
 	}
 
@@ -1241,9 +1276,15 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (SteamId64.IsEmpty())
+	if (!IsValidSteamId64(SteamId64))
 	{
-		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("missing_persistent_id"));
+		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("invalid_or_non_steam_persistent_id"));
+		ResetTalentTreeDataForMissingPersistence(Controller, TEXT("invalid_or_non_steam_persistent_id"));
+		if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
+		{
+			SRPlayerState->SetPersistenceProfileApplied(true);
+		}
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("invalid_or_non_steam_persistent_id"));
 		return false;
 	}
 
@@ -1292,9 +1333,9 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (SteamId64.IsEmpty())
+	if (!IsValidSteamId64(SteamId64))
 	{
-		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("missing_persistent_id"));
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("invalid_or_non_steam_persistent_id"));
 		return false;
 	}
 
@@ -1522,7 +1563,7 @@ bool USpellRisePersistenceSubsystem::BuildRespawnTransformForController(AControl
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (!IsValidPersistentId(SteamId64))
+	if (!IsValidSteamId64(SteamId64))
 	{
 		return false;
 	}
@@ -1562,7 +1603,7 @@ void USpellRisePersistenceSubsystem::MarkWorldDirty()
 
 void USpellRisePersistenceSubsystem::MarkPlayerDirtyBySteamId(const FString& SteamId64)
 {
-	if (IsValidPersistentId(SteamId64))
+	if (IsValidSteamId64(SteamId64))
 	{
 		DirtyCharacterIds.Add(SteamId64);
 		return;
@@ -1572,9 +1613,9 @@ void USpellRisePersistenceSubsystem::MarkPlayerDirtyBySteamId(const FString& Ste
 
 void USpellRisePersistenceSubsystem::SetControllerPersistentId(const AController* Controller, const FString& PersistentId)
 {
-	if (!Controller || !IsValidPersistentId(PersistentId))
+	if (!Controller || !IsValidSteamId64(PersistentId))
 	{
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_input Controller=%s PersistentId=%s"),
+		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_or_non_steam_persistent_id Controller=%s PersistentId=%s"),
 			*GetNameSafe(Controller),
 			*PersistentId);
 		return;
@@ -1620,7 +1661,7 @@ bool USpellRisePersistenceSubsystem::GetSteamIdFromPlayerState(const APlayerStat
 	}
 
 	OutSteamId64 = UniqueId->ToString();
-	return IsValidPersistentId(OutSteamId64);
+	return IsValidSteamId64(OutSteamId64);
 }
 
 FString USpellRisePersistenceSubsystem::ResolveSteamIdFromController(const AController* Controller) const
@@ -1632,7 +1673,7 @@ FString USpellRisePersistenceSubsystem::ResolveSteamIdFromController(const ACont
 
 	if (const FString* RegisteredId = PersistentIdByController.Find(TWeakObjectPtr<const AController>(Controller)))
 	{
-		if (IsValidPersistentId(*RegisteredId))
+		if (IsValidSteamId64(*RegisteredId))
 		{
 			return *RegisteredId;
 		}
@@ -1930,10 +1971,10 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	{
 	}
 
-	OutData.Strength = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute());
-	OutData.Agility = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute());
-	OutData.Intelligence = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute());
-	OutData.Wisdom = ASC->GetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute());
+	OutData.Strength = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute()));
+	OutData.Agility = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute()));
+	OutData.Intelligence = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute()));
+	OutData.Wisdom = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute()));
 
 	OutData.Health = ASC->GetNumericAttribute(UResourceAttributeSet::GetHealthAttribute());
 	OutData.Mana = ASC->GetNumericAttribute(UResourceAttributeSet::GetManaAttribute());
@@ -2041,10 +2082,10 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 
 	Character->Archetype = static_cast<ESpellRiseArchetype>(Data.ArchetypeValue);
 
-	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), Data.Strength);
-	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), Data.Agility);
-	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), Data.Intelligence);
-	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(), Data.Wisdom);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), ClampPersistentPrimaryAttribute(Data.Strength));
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), ClampPersistentPrimaryAttribute(Data.Agility));
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), ClampPersistentPrimaryAttribute(Data.Intelligence));
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(), ClampPersistentPrimaryAttribute(Data.Wisdom));
 
 	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), Data.Health);
 	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), Data.Mana);

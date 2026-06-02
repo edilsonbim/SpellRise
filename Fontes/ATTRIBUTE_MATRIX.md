@@ -9,14 +9,14 @@
 ## Faixa efetiva
 - Baseline: `20`
 - Clamp de runtime: `0..120`
+- Talentos persistidos: nivel `1..100`
 - Normalização derivada: bonus acima de `20`, limitado a `100` pontos efetivos
 
 ## Normalização
 `T = clamp((Primary - 20) / 100, 0, 1)`
 
 ## Progressão autoritativa
-- Valor inicial do `AttributeSet`: `0`
-- Baseline de `20`: aplicado fora do `AttributeSet` por BP/GE autoritativo
+- Valor inicial do `AttributeSet`: `20`
 - Progressão por talentos autoritativos: até `100`
 - Booster de escolha do jogador: até `+20` em um atributo primário
 - Cap final por primário após baseline/talentos + booster: `120`

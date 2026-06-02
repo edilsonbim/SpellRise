@@ -8,14 +8,15 @@ namespace SpellRiseBasic
 {
 	constexpr float PRIMARY_MIN = 0.f;
 	constexpr float PRIMARY_MAX = 120.f;
+	constexpr float PRIMARY_INITIAL = 20.f;
 }
 
 UBasicAttributeSet::UBasicAttributeSet()
 {
-	InitStrength(SpellRiseBasic::PRIMARY_MIN);
-	InitAgility(SpellRiseBasic::PRIMARY_MIN);
-	InitIntelligence(SpellRiseBasic::PRIMARY_MIN);
-	InitWisdom(SpellRiseBasic::PRIMARY_MIN);
+	InitStrength(SpellRiseBasic::PRIMARY_INITIAL);
+	InitAgility(SpellRiseBasic::PRIMARY_INITIAL);
+	InitIntelligence(SpellRiseBasic::PRIMARY_INITIAL);
+	InitWisdom(SpellRiseBasic::PRIMARY_INITIAL);
 }
 
 void UBasicAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

@@ -17,10 +17,12 @@
 #include "BrainComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/SoftObjectPath.h"
+#include "UObject/UnrealType.h"
 
 #include "InventoryFunctionLibrary.h"
 #include "SpellRise/Components/CatalystComponent.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
@@ -30,6 +32,7 @@
 #include "SpellRise/Inventory/SpellRiseFullLootSubsystem.h"
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 #include "SpellRise/Inventory/SpellRiseLootBagNameComponent.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEnemyRuntime, Log, All);
 
@@ -112,6 +115,179 @@ namespace
 		if (LootBagNameComponent)
 		{
 			LootBagNameComponent->SetDeadPlayerDisplayName_Server(DisplayName);
+		}
+	}
+
+	static ASpellRisePlayerState* ResolveKillerPlayerStateFromContext(const FGameplayEffectContextHandle& EffectContextHandle)
+	{
+		if (!EffectContextHandle.IsValid())
+		{
+			return nullptr;
+		}
+
+		const FGameplayEffectContext* Context = EffectContextHandle.Get();
+		if (!Context)
+		{
+			return nullptr;
+		}
+
+		auto ResolveFromActor = [](AActor* CandidateActor) -> ASpellRisePlayerState*
+		{
+			if (!CandidateActor)
+			{
+				return nullptr;
+			}
+
+			if (ASpellRisePlayerState* DirectPS = Cast<ASpellRisePlayerState>(CandidateActor))
+			{
+				return DirectPS;
+			}
+
+			if (const APawn* Pawn = Cast<APawn>(CandidateActor))
+			{
+				return Cast<ASpellRisePlayerState>(Pawn->GetPlayerState());
+			}
+
+			if (const AController* Controller = Cast<AController>(CandidateActor))
+			{
+				return Cast<ASpellRisePlayerState>(Controller->PlayerState);
+			}
+
+			if (AActor* Instigator = CandidateActor->GetInstigator())
+			{
+				if (const APawn* InstigatorPawn = Cast<APawn>(Instigator))
+				{
+					return Cast<ASpellRisePlayerState>(InstigatorPawn->GetPlayerState());
+				}
+			}
+
+			return nullptr;
+		};
+
+		if (UAbilitySystemComponent* SourceASC = EffectContextHandle.GetOriginalInstigatorAbilitySystemComponent())
+		{
+			if (ASpellRisePlayerState* PS = ResolveFromActor(SourceASC->GetOwnerActor()))
+			{
+				return PS;
+			}
+			if (ASpellRisePlayerState* PS = ResolveFromActor(SourceASC->GetAvatarActor()))
+			{
+				return PS;
+			}
+		}
+
+		if (ASpellRisePlayerState* PS = ResolveFromActor(Context->GetEffectCauser()))
+		{
+			return PS;
+		}
+		if (ASpellRisePlayerState* PS = ResolveFromActor(Context->GetInstigator()))
+		{
+			return PS;
+		}
+		if (ASpellRisePlayerState* PS = ResolveFromActor(Context->GetOriginalInstigator()))
+		{
+			return PS;
+		}
+		if (ASpellRisePlayerState* PS = ResolveFromActor(Cast<AActor>(Context->GetSourceObject())))
+		{
+			return PS;
+		}
+
+		return nullptr;
+	}
+
+	static bool IsTalentTreeComponent(const UActorComponent* Component)
+	{
+		if (!Component || !Component->GetClass())
+		{
+			return false;
+		}
+
+		const FString ComponentName = Component->GetName();
+		const FString ClassPath = Component->GetClass()->GetPathName();
+		return ComponentName.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase)
+			|| ClassPath.Contains(TEXT("TalentTreeComponent"), ESearchCase::IgnoreCase);
+	}
+
+	static UActorComponent* FindTalentTreeComponent(AActor* Owner)
+	{
+		if (!Owner)
+		{
+			return nullptr;
+		}
+
+		TArray<UActorComponent*> Components;
+		Owner->GetComponents(Components);
+		for (UActorComponent* Component : Components)
+		{
+			if (IsTalentTreeComponent(Component))
+			{
+				return Component;
+			}
+		}
+
+		return nullptr;
+	}
+
+	static AController* ResolveControllerForPlayerState(ASpellRisePlayerState* PlayerState)
+	{
+		if (!PlayerState)
+		{
+			return nullptr;
+		}
+
+		if (APawn* Pawn = Cast<APawn>(PlayerState->GetPawn()))
+		{
+			if (AController* Controller = Pawn->GetController())
+			{
+				return Controller;
+			}
+		}
+
+		UWorld* World = PlayerState->GetWorld();
+		if (!World)
+		{
+			return nullptr;
+		}
+
+		for (FConstControllerIterator It = World->GetControllerIterator(); It; ++It)
+		{
+			AController* Controller = It->Get();
+			if (Controller && Controller->PlayerState == PlayerState)
+			{
+				return Controller;
+			}
+		}
+
+		return nullptr;
+	}
+
+	static UActorComponent* ResolveTalentTreeComponent(ASpellRisePlayerState* PlayerState)
+	{
+		if (!PlayerState)
+		{
+			return nullptr;
+		}
+
+		if (AController* Controller = ResolveControllerForPlayerState(PlayerState))
+		{
+			if (UActorComponent* CharacterComponent = FindTalentTreeComponent(Controller->GetPawn()))
+			{
+				return CharacterComponent;
+			}
+		}
+
+		return FindTalentTreeComponent(PlayerState);
+	}
+
+	static void SaveTalentProgressionSnapshot(ASpellRisePlayerState* PlayerState)
+	{
+		AController* Controller = ResolveControllerForPlayerState(PlayerState);
+		UGameInstance* GameInstance = PlayerState ? PlayerState->GetGameInstance() : nullptr;
+		USpellRisePersistenceSubsystem* Persistence = GameInstance ? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>() : nullptr;
+		if (Controller && Persistence)
+		{
+			Persistence->SaveCharacterForController(Controller);
 		}
 	}
 }
@@ -442,10 +618,29 @@ void ASpellRiseEnemyCharacterBase::OnHealthChanged(const FOnAttributeChangeData&
 		return;
 	}
 
-	ApplyEnemyDeathState_Server();
+	ASpellRisePlayerState* KillerPlayerState = nullptr;
+	if (Data.GEModData)
+	{
+		const FGameplayEffectSpec& EffectSpec = Data.GEModData->EffectSpec;
+		KillerPlayerState = ResolveKillerPlayerStateFromContext(EffectSpec.GetContext());
+	}
+
+	const float FatalDamageAmount = FMath::Max(0.0f, Data.OldValue - Data.NewValue);
+	UE_LOG(LogSpellRiseEnemyRuntime, Warning,
+		TEXT("[Progression][EnemyDeathRewardEval] Enemy=%s KillerPS=%s OldHealth=%.2f NewHealth=%.2f FatalDamage=%.2f Contributors=%d GrantEnabled=%d PointsOnKill=%.2f MinContribution=%.2f"),
+		*GetNameSafe(this),
+		*GetNameSafe(KillerPlayerState),
+		Data.OldValue,
+		Data.NewValue,
+		FatalDamageAmount,
+		TalentDamageContributions.Num(),
+		bGrantTalentPointsOnDeath ? 1 : 0,
+		TalentPointsOnKill,
+		MinDamageContributionForTalentReward);
+	ApplyEnemyDeathState_Server(KillerPlayerState, FatalDamageAmount);
 }
 
-void ASpellRiseEnemyCharacterBase::ApplyEnemyDeathState_Server()
+void ASpellRiseEnemyCharacterBase::ApplyEnemyDeathState_Server(ASpellRisePlayerState* KillerPlayerState, float FatalDamageAmount)
 {
 	if (!HasAuthority() || !AbilitySystemComponent || IsEnemyDead())
 	{
@@ -480,9 +675,130 @@ void ASpellRiseEnemyCharacterBase::ApplyEnemyDeathState_Server()
 	SpawnEnemyLootBag_Server();
 	ScheduleCorpseDespawn_Server();
 
+	// Lógica de concessão de Talent Points
+	if (bGrantTalentPointsOnDeath && TalentPointsOnKill > 0.0f)
+	{
+		GrantTalentPointsFromDamageContributions_Server(KillerPlayerState, FatalDamageAmount);
+	}
+
+	TalentDamageContributions.Reset();
+
 	if (!DeadStateTag.IsValid())
 	{
 		MultiHandleDeath();
+	}
+}
+
+void ASpellRiseEnemyCharacterBase::RecordTalentDamageContribution_Server(ASpellRisePlayerState* ContributorPlayerState, float DamageAmount)
+{
+	if (!HasAuthority() || !ContributorPlayerState || DamageAmount <= 0.0f)
+	{
+		return;
+	}
+
+	float& AccumulatedDamage = TalentDamageContributions.FindOrAdd(ContributorPlayerState);
+	AccumulatedDamage += DamageAmount;
+}
+
+void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Server(ASpellRisePlayerState* FallbackKillerPlayerState, float FatalDamageAmount)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	TArray<FSpellRiseEnemyTalentDamageContribution> EligibleContributors;
+	EligibleContributors.Reserve(TalentDamageContributions.Num());
+
+	for (const TPair<TWeakObjectPtr<ASpellRisePlayerState>, float>& Entry : TalentDamageContributions)
+	{
+		ASpellRisePlayerState* ContributorPlayerState = Entry.Key.Get();
+		const float Damage = Entry.Value;
+		if (!ContributorPlayerState || Damage <= 0.0f)
+		{
+			continue;
+		}
+
+		if (MinDamageContributionForTalentReward > 0.0f && Damage < MinDamageContributionForTalentReward)
+		{
+			continue;
+		}
+
+		FSpellRiseEnemyTalentDamageContribution& Contribution = EligibleContributors.AddDefaulted_GetRef();
+		Contribution.PlayerState = ContributorPlayerState;
+		Contribution.Damage = Damage;
+	}
+
+	if (EligibleContributors.IsEmpty() && FallbackKillerPlayerState)
+	{
+		const bool bMeetsFallbackContribution = MinDamageContributionForTalentReward <= 0.0f
+			|| FatalDamageAmount >= MinDamageContributionForTalentReward;
+		if (bMeetsFallbackContribution)
+		{
+			FSpellRiseEnemyTalentDamageContribution& Contribution = EligibleContributors.AddDefaulted_GetRef();
+			Contribution.PlayerState = FallbackKillerPlayerState;
+			Contribution.Damage = FMath::Max(FatalDamageAmount, 1.0f);
+		}
+	}
+
+	EligibleContributors.Sort([](const FSpellRiseEnemyTalentDamageContribution& Left, const FSpellRiseEnemyTalentDamageContribution& Right)
+	{
+		return Left.Damage > Right.Damage;
+	});
+
+	if (EligibleContributors.Num() > 4)
+	{
+		EligibleContributors.SetNum(4);
+	}
+
+	float TotalEligibleDamage = 0.0f;
+	for (const FSpellRiseEnemyTalentDamageContribution& Contribution : EligibleContributors)
+	{
+		TotalEligibleDamage += FMath::Max(0.0f, Contribution.Damage);
+	}
+
+	if (EligibleContributors.IsEmpty() || TotalEligibleDamage <= 0.0f)
+	{
+		UE_LOG(LogSpellRiseEnemyRuntime, Warning,
+			TEXT("[Progression][EnemyDeathRewardRejected] Enemy=%s Reason=no_eligible_damage_contributors KillerPS=%s FatalDamage=%.2f MinContribution=%.2f GrantEnabled=%d PointsOnKill=%.2f RawContributors=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(FallbackKillerPlayerState),
+			FatalDamageAmount,
+			MinDamageContributionForTalentReward,
+			bGrantTalentPointsOnDeath ? 1 : 0,
+			TalentPointsOnKill,
+			TalentDamageContributions.Num());
+		return;
+	}
+
+	const int32 ContributorCount = EligibleContributors.Num();
+	const float BonusMultiplier = 1.0f + (0.25f * static_cast<float>(FMath::Max(0, ContributorCount - 1)));
+	const float RewardPool = TalentPointsOnKill * BonusMultiplier;
+
+	for (const FSpellRiseEnemyTalentDamageContribution& Contribution : EligibleContributors)
+	{
+		ASpellRisePlayerState* ContributorPlayerState = Contribution.PlayerState.Get();
+		if (!ContributorPlayerState)
+		{
+			continue;
+		}
+
+		const float DamageShare = Contribution.Damage / TotalEligibleDamage;
+		const float PointsToGrant = RewardPool * DamageShare;
+		ContributorPlayerState->AddTalentPoints_Server(PointsToGrant);
+		SaveTalentProgressionSnapshot(ContributorPlayerState);
+
+		UE_LOG(LogSpellRiseEnemyRuntime, Log,
+			TEXT("[Progression][EnemyDeathRewardGranted] Enemy=%s PlayerState=%s Damage=%.2f TotalDamage=%.2f Share=%.3f Points=%.2f RewardPool=%.2f Contributors=%d BonusMultiplier=%.2f"),
+			*GetNameSafe(this),
+			*GetNameSafe(ContributorPlayerState),
+			Contribution.Damage,
+			TotalEligibleDamage,
+			DamageShare,
+			PointsToGrant,
+			RewardPool,
+			ContributorCount,
+			BonusMultiplier);
 	}
 }
 
@@ -625,8 +941,8 @@ void ASpellRiseEnemyCharacterBase::SpawnEnemyLootBag_Server()
 
 FVector ASpellRiseEnemyCharacterBase::ResolveEnemyLootBagSpawnLocation_Server() const
 {
-	UWorld* World = GetWorld();
 	const FVector FallbackLocation = GetActorLocation() + FVector(0.0f, 0.0f, 12.0f);
+	UWorld* World = GetWorld();
 	if (!World)
 	{
 		return FallbackLocation;

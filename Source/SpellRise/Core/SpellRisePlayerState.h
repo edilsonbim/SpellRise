@@ -62,6 +62,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|CombatLog")
 	const TArray<FSpellRiseCombatLogEntry>& GetCombatLogEntries() const { return CombatLog.Entries; }
 
+	// --- Talent Points ---
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
+	float GetTalentPoints() const { return TalentPoints; }
+
+	void AddTalentPoints_Server(float Amount);
+
 protected:
 	UFUNCTION(Server, Reliable)
 	void ServerSetRespawnBedReferenceData(const FString& InActorName, const FString& InClassPath, const FVector_NetQuantize& InLocation);
@@ -71,6 +77,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_PersistenceProfileApplied();
+
+	UFUNCTION()
+	void OnRep_TalentPoints();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
@@ -105,6 +114,10 @@ protected:
 
 	UPROPERTY(Replicated)
 	FSpellRiseCombatLogArray CombatLog;
+
+	UPROPERTY(ReplicatedUsing=OnRep_TalentPoints, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")
+	float TalentPoints = 0.0f;
+	// --- Fim Talent Points ---
 
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveCombatLogSnapshot(const TArray<FSpellRiseCombatLogEntry>& Snapshot, int64 SnapshotSequence);

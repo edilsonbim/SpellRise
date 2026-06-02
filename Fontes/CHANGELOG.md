@@ -13,7 +13,7 @@
 - Validação server-side para target data de projétil.
 - Removido `ManaCostReduction` dos atributos derivados; redução/custo de mana passa a ser responsabilidade de GE/ability level.
 - Removido `CastTimeReduction` dos atributos derivados; duração/cast time passa a ser responsabilidade de GE/ability level.
-- Clamp dos primários ajustado para `0..120`; `AttributeSet` inicia em `0`, e o baseline de `20` passa a ser aplicado fora dele por BP/GE autoritativo.
+- Clamp dos primários ajustado para `0..120`; `AttributeSet` inicia em `20`, talentos persistidos podem evoluir até `100` e o teto restante é reservado para boosters.
 - Contrato de grant GAS ajustado: `FSpellRiseGrantedAbility` não carrega mais level; o level editável fica no Blueprint callable do `CharacterBase`, enquanto grants por source/inimigo usam default server-side seguro.
 - Fluxo de death -> full loot -> respawn fechado no recorte atual.
 - Full loot da morte ajustado para spawn com delay de 3s e verificação de piso no servidor (evita bag presa no ar).
@@ -23,7 +23,10 @@
 
 ### Persistence / Observability
 - Persistence foundation v1 ativa com snapshots de personagem e inventário.
+- Snapshots de personagem/inventário agora exigem SteamID64 real; IDs `DEV_`/`NULL` ficam sem gravação em DB e recebem defaults runtime.
+- `PreLogin` passa a consultar denylist opcional por IP em `spellrise_portal_ip_bans`, além do ban existente por `steam_id64`.
 - Snapshot de personagem evoluído para persistir talentos e pontos disponíveis; talentos deixam de depender de grant padrão em login.
+- Persistência de talentos endurecida por conta SteamId, com nível de talento salvo/reaplicado clampado em `1..100`.
 - Eventos de morte passam a ser persistidos em `spellrise_death_events`, com vítima, data/hora, maior causador de dano, golpe fatal, causa e mensagem auditável server-side.
 - Combat log durável owner-centric em `PlayerState`.
 - Gate local de smoke multiplayer com reconnect e lag/loss.

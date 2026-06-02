@@ -767,20 +767,20 @@ UResourceAttributeSet::UResourceAttributeSet()
 void UResourceAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, CarryWeight, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, CarryWeight, COND_None, REPNOTIFY_Always);
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Mana, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxMana, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Mana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Stamina, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxStamina, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, Stamina, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, MaxStamina, COND_None, REPNOTIFY_Always);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, HealthRegen, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, ManaRegen, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, StaminaRegen, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, HealthRegen, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, ManaRegen, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UResourceAttributeSet, StaminaRegen, COND_None, REPNOTIFY_Always);
 }
 
 void UResourceAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -955,6 +955,52 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		}
 
 		const float PreviousHealth = GetHealth();
+		ASpellRiseEnemyCharacterBase* PreDamageTargetEnemy = Cast<ASpellRiseEnemyCharacterBase>(TargetASC->GetAvatarActor());
+		if (PreDamageTargetEnemy)
+		{
+			ASpellRisePlayerState* ContributorPlayerState = nullptr;
+			if (UAbilitySystemComponent* SourceASC = Ctx.GetOriginalInstigatorAbilitySystemComponent())
+			{
+				if (AActor* SourceOwner = SourceASC->GetOwnerActor())
+				{
+					ContributorPlayerState = Cast<ASpellRisePlayerState>(SourceOwner);
+					if (!ContributorPlayerState)
+					{
+						if (const APawn* SourcePawn = Cast<APawn>(SourceOwner))
+						{
+							ContributorPlayerState = Cast<ASpellRisePlayerState>(SourcePawn->GetPlayerState());
+						}
+					}
+				}
+
+				if (!ContributorPlayerState)
+				{
+					if (const APawn* SourcePawn = Cast<APawn>(SourceASC->GetAvatarActor()))
+					{
+						ContributorPlayerState = Cast<ASpellRisePlayerState>(SourcePawn->GetPlayerState());
+					}
+				}
+			}
+
+			if (!ContributorPlayerState)
+			{
+				if (const APawn* SourcePawn = Cast<APawn>(Ctx.GetOriginalInstigator()))
+				{
+					ContributorPlayerState = Cast<ASpellRisePlayerState>(SourcePawn->GetPlayerState());
+				}
+			}
+
+			if (!ContributorPlayerState)
+			{
+				if (const APawn* SourcePawn = Cast<APawn>(Ctx.GetEffectCauser() ? Ctx.GetEffectCauser()->GetInstigator() : nullptr))
+				{
+					ContributorPlayerState = Cast<ASpellRisePlayerState>(SourcePawn->GetPlayerState());
+				}
+			}
+
+			PreDamageTargetEnemy->RecordTalentDamageContribution_Server(ContributorPlayerState, TotalDamage);
+		}
+
 		SetHealth(FMath::Clamp(PreviousHealth - TotalDamage, 0.f, GetMaxHealth()));
 
 		AActor* InstigatorActor = nullptr;

@@ -72,6 +72,7 @@ private:
 	bool IsEditorPIETestingModeActive() const;
 	bool ShouldRequireSteamAuthentication() const;
 	bool IsPersistentIdPortalBanned(const FString& PersistentId, FString& OutReason, FString& OutBannedUntil) const;
+	bool IsAddressPortalBanned(const FString& Address, FString& OutReason, FString& OutBannedUntil) const;
 
 	FTimerHandle PersistenceSnapshotTimerHandle;
 	TMap<FString, TWeakObjectPtr<APlayerController>> ActiveSessionByPersistentId;

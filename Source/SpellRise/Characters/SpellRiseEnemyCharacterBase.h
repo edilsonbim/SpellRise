@@ -25,6 +25,13 @@ class UAnimMontage;
 class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
 class UNarrativeInventoryComponent;
+class ASpellRisePlayerState;
+
+struct FSpellRiseEnemyTalentDamageContribution
+{
+	TWeakObjectPtr<ASpellRisePlayerState> PlayerState;
+	float Damage = 0.0f;
+};
 
 UCLASS()
 class SPELLRISE_API ASpellRiseEnemyCharacterBase
@@ -52,9 +59,6 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|GAS")
 	UResourceAttributeSet* GetResourceAttributeSet() const { return ResourceAttributeSet; }
-
-	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|GAS")
-	UCatalystAttributeSet* GetCatalystAttributeSet() const { return CatalystAttributeSet; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|Catalyst")
 	UCatalystComponent* GetCatalystComponent() const { return CatalystComponent; }
@@ -103,6 +107,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|Loot")
 	const TArray<FLootTableRoll>& GetEnemyLootTables() const { return EnemyLootTables; }
+
+	void RecordTalentDamageContribution_Server(ASpellRisePlayerState* ContributorPlayerState, float DamageAmount);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Enemy|GAS", meta=(AllowPrivateAccess="true"))
@@ -183,6 +189,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Fallback", meta=(ClampMin="0.0"))
 	float InitialMaxStamina = 180.0f;
 
+	// --- Propriedades de Progressão (Talent Points) ---
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression", meta=(ClampMin="0.0"))
+	float TalentPointsOnKill = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression")
+	bool bGrantTalentPointsOnDeath = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression", meta=(ClampMin="0.0"))
+	float MinDamageContributionForTalentReward = 0.0f;
+	// --- Fim das Propriedades de Progressão ---
+
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpecHandle> StartupGrantedAbilityHandles;
 
@@ -195,13 +212,16 @@ protected:
 	UPROPERTY(Transient)
 	bool bEnemyLootProcessedForCurrentDeath = false;
 
+	TMap<TWeakObjectPtr<ASpellRisePlayerState>, float> TalentDamageContributions;
+
 	FTimerHandle CorpseDespawnTimerHandle;
 
 	virtual void InitializeAbilitySystem();
 	virtual void BindASCDelegates();
 	virtual void ApplyEnemyAttributeFallbacks_Server();
 	virtual void ApplyGameplayEffectToSelf_Server(TSubclassOf<UGameplayEffect> EffectClass);
-	virtual void ApplyEnemyDeathState_Server();
+	virtual void ApplyEnemyDeathState_Server(ASpellRisePlayerState* KillerPlayerState, float FatalDamageAmount);
+	virtual void GrantTalentPointsFromDamageContributions_Server(ASpellRisePlayerState* FallbackKillerPlayerState, float FatalDamageAmount);
 	virtual void SpawnEnemyLootBag_Server();
 	virtual FVector ResolveEnemyLootBagSpawnLocation_Server() const;
 	virtual void ScheduleCorpseDespawn_Server();
