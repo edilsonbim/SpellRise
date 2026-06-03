@@ -158,10 +158,16 @@ private:
 	void MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR* Reason);
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|CombatLog", meta=(ClampMin="1", UIMin="1"))
-	int32 MaxCombatLogEntries = 150;
+	int32 MaxCombatLogEntries = 50;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|CombatLog", meta=(ClampMin="1", UIMin="1"))
+	int32 MaxCombatLogSnapshotEntries = 30;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|CombatLog", meta=(ClampMin="0.1", UIMin="0.1"))
 	float CombatLogSnapshotRateLimitSeconds = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|CombatLog", meta=(ClampMin="0.02", UIMin="0.02"))
+	float CombatLogNetUpdateRateLimitSeconds = 0.10f;
 
 	UPROPERTY(Transient)
 	int64 NextCombatLogSequence = 1;
@@ -171,4 +177,10 @@ private:
 
 	UPROPERTY(Transient)
 	double LastCombatLogSnapshotSentServerSeconds = -1.0;
+
+	UPROPERTY(Transient)
+	double LastCombatLogNetUpdateServerSeconds = -1.0;
+
+	UPROPERTY(Transient)
+	double LastCombatLogOverflowWarningServerSeconds = -1.0;
 };

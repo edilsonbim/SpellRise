@@ -503,8 +503,14 @@ void ASpellRisePlayerState::AppendCombatLogEvent_Server(
 		CombatLog.MarkArrayDirty();
 	}
 
-	if (CombatLogTruncatedCount > 0 && (CombatLogTruncatedCount % 10) == 0)
+	UWorld* World = GetWorld();
+	const double NowSeconds = World ? static_cast<double>(World->GetTimeSeconds()) : 0.0;
+	constexpr double CombatLogOverflowWarningIntervalSeconds = 60.0;
+	if (CombatLogTruncatedCount > 0
+		&& (LastCombatLogOverflowWarningServerSeconds < 0.0
+			|| (NowSeconds - LastCombatLogOverflowWarningServerSeconds) >= CombatLogOverflowWarningIntervalSeconds))
 	{
+		LastCombatLogOverflowWarningServerSeconds = NowSeconds;
 		UE_LOG(LogSpellRiseCombatLog, Warning,
 			TEXT("[Net][CombatLogOverflow] PlayerState=%s TruncatedCount=%lld MaxEntries=%d CurrentEntries=%d"),
 			*GetNameSafe(this),
@@ -513,7 +519,15 @@ void ASpellRisePlayerState::AppendCombatLogEvent_Server(
 			CombatLog.Entries.Num());
 	}
 
-	ForceNetUpdate();
+	const bool bTargetDied = EnumHasAnyFlags(Flags, ESpellRiseCombatLogFlags::TargetDied);
+	const double NetUpdateRateLimit = static_cast<double>(FMath::Max(0.02f, CombatLogNetUpdateRateLimitSeconds));
+	if (bTargetDied
+		|| LastCombatLogNetUpdateServerSeconds < 0.0
+		|| (NowSeconds - LastCombatLogNetUpdateServerSeconds) >= NetUpdateRateLimit)
+	{
+		LastCombatLogNetUpdateServerSeconds = NowSeconds;
+		ForceNetUpdate();
+	}
 }
 
 void ASpellRisePlayerState::AuditRejectedRespawnBedRpc(
@@ -580,13 +594,24 @@ void ASpellRisePlayerState::MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR
 	}
 
 	LastCombatLogSnapshotSentServerSeconds = NowSeconds;
+	TArray<FSpellRiseCombatLogEntry> Snapshot;
 	int64 SnapshotSequence = 0;
-	if (CombatLog.Entries.Num() > 0)
+	const int32 EntryCount = CombatLog.Entries.Num();
+	if (EntryCount > 0)
 	{
+		const int32 MaxSnapshotEntries = FMath::Clamp(MaxCombatLogSnapshotEntries, 1, FMath::Max(1, MaxCombatLogEntries));
+		const int32 SnapshotCount = FMath::Min(EntryCount, MaxSnapshotEntries);
+		const int32 StartIndex = EntryCount - SnapshotCount;
+		Snapshot.Reserve(SnapshotCount);
+		for (int32 Index = StartIndex; Index < EntryCount; ++Index)
+		{
+			Snapshot.Add(CombatLog.Entries[Index]);
+		}
+
 		SnapshotSequence = CombatLog.Entries.Last().Sequence;
 	}
 
-	ClientReceiveCombatLogSnapshot(CombatLog.Entries, SnapshotSequence);
+	ClientReceiveCombatLogSnapshot(Snapshot, SnapshotSequence);
 }
 
 void ASpellRisePlayerState::ClientReceiveCombatLogSnapshot_Implementation(const TArray<FSpellRiseCombatLogEntry>& Snapshot, int64 SnapshotSequence)

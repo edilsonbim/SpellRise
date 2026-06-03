@@ -1019,6 +1019,8 @@ void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
 		return;
 	}
 
+	const FVector PreDeathVelocity = Movement->Velocity;
+
 	if (HasAuthority())
 	{
 		for (const FGameplayAbilitySpecHandle& Handle : StartupGrantedAbilityHandles)
@@ -1033,12 +1035,39 @@ void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
 
 	Movement->DisableMovement();
 	Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Capsule->SetGenerateOverlapEvents(false);
 
 	if (!VisualMesh->IsSimulatingPhysics())
 	{
+		if (UAnimInstance* AnimInstance = VisualMesh->GetAnimInstance())
+		{
+			AnimInstance->StopAllMontages(0.08f);
+		}
+
+		VisualMesh->SetVisibility(true, true);
+		VisualMesh->SetEnableGravity(true);
 		VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		VisualMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		VisualMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+		VisualMesh->SetAllBodiesSimulatePhysics(true);
 		VisualMesh->SetSimulatePhysics(true);
+		VisualMesh->SetAllBodiesPhysicsBlendWeight(1.0f);
+		VisualMesh->WakeAllRigidBodies();
+
+		const FVector DeathImpulse = (-GetActorForwardVector() * 6000.0f)
+			+ (FVector::UpVector * 3000.0f)
+			+ (PreDeathVelocity * 25.0f);
+		if (!DeathImpulse.IsNearlyZero())
+		{
+			VisualMesh->AddImpulseAtLocation(DeathImpulse, VisualMesh->Bounds.Origin);
+		}
 	}
+
+	VisualMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+	VisualMesh->SetGenerateOverlapEvents(false);
+	VisualMesh->SetNotifyRigidBodyCollision(false);
 }
 
 void ASpellRiseEnemyCharacterBase::MultiPlayHitReactionMontage_Implementation(float PlayRate)

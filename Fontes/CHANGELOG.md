@@ -8,6 +8,7 @@
 
 ### Gameplay / Networking
 - Combat log autoritativo com transporte nativo em C++.
+- Combat log owner-only limitado para reduzir burst de replicação: buffer replicado padrão reduzido para 50 entradas, snapshot inicial limitado às 30 últimas e `ForceNetUpdate` rate-limitado em spam de dano.
 - Hardening de RPCs críticos de gameplay e respawn.
 - Bootstrap/auth de Dedicated Server agora registra estado do OnlineSubsystem e falha cedo quando Steam e obrigatorio mas o processo degradou para `NULL`.
 - Validação server-side para target data de projétil.
