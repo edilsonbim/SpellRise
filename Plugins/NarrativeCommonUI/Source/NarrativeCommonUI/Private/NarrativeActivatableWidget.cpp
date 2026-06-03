@@ -28,8 +28,10 @@ void UNarrativeActivatableWidget::RegisterBinding(FDataTableRowHandle InputActio
 		UE_LOG(
 			LogNarrativeActivatableWidget,
 			Warning,
-			TEXT("Ignoring UI input binding with invalid data table row handle on widget '%s'."),
-			*GetNameSafe(this));
+			TEXT("Ignoring UI input binding with invalid data table row handle on widget '%s' Class='%s' Path='%s'."),
+			*GetNameSafe(this),
+			*GetNameSafe(GetClass()),
+			*GetPathName());
 		return;
 	}
 

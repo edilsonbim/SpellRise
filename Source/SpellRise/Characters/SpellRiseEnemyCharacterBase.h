@@ -26,6 +26,7 @@ class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
 class UNarrativeInventoryComponent;
 class ASpellRisePlayerState;
+class USpellRiseWeaponComponent;
 
 struct FSpellRiseEnemyTalentDamageContribution
 {
@@ -102,6 +103,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|Combat")
 	FVector GetDamageNumberWorldLocation() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|Weapon")
+	USpellRiseWeaponComponent* GetSpellRiseWeaponComponent() const { return WeaponComponent; }
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Enemy|Identity")
 	FText GetEnemyDisplayName() const { return EnemyDisplayName; }
 
@@ -131,6 +135,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Enemy|Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCatalystComponent> CatalystComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Enemy|Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseWeaponComponent> WeaponComponent = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS")
 	EGameplayEffectReplicationMode AscReplicationMode = EGameplayEffectReplicationMode::Minimal;

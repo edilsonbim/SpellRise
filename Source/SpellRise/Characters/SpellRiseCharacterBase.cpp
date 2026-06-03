@@ -32,6 +32,7 @@
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
@@ -192,6 +193,7 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	}
 
 	FallDamageComponent = CreateDefaultSubobject<UFallDamageComponent>(TEXT("FallDamageComponent"));
+	WeaponComponent = CreateDefaultSubobject<USpellRiseWeaponComponent>(TEXT("WeaponComponent"));
 
 	DeadStateTag = SpellRiseTags::State_Dead();
 
@@ -271,12 +273,6 @@ void ASpellRiseCharacterBase::BeginPlay()
 		Marker->RefreshMarker();
 	}
 
-	if (HasAuthority())
-	{
-		USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent();
-		UCameraComponent* AimCamera = GetActiveAimCameraComponent();
-
-	}
 }
 
 void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -805,6 +801,11 @@ USpellRiseEquipmentManagerComponent* ASpellRiseCharacterBase::GetSpellRiseEquipm
 	return FindComponentByClass<USpellRiseEquipmentManagerComponent>();
 }
 
+USpellRiseWeaponComponent* ASpellRiseCharacterBase::GetSpellRiseWeaponComponent() const
+{
+	return WeaponComponent ? WeaponComponent.Get() : FindComponentByClass<USpellRiseWeaponComponent>();
+}
+
 void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -825,13 +826,11 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 	}
 
 	UEquippableItem* EquippableItem = Cast<UEquippableItem>(ItemObject);
-	USpellRiseEquipmentManagerComponent* ResolvedEquipmentManager = GetSpellRiseEquipmentManager();
-	if (!EquippableItem || !ResolvedEquipmentManager)
+	if (!EquippableItem)
 	{
 		UE_LOG(LogSpellRiseEquipTrace, Warning,
-			TEXT("Character.HandleItemActivation abortado. Item=%s EquipmentManager=%s ShouldEquip=%s"),
+			TEXT("Character.HandleItemActivation abortado. Item=%s ShouldEquip=%s"),
 			*GetNameSafe(ItemObject),
-			ResolvedEquipmentManager ? TEXT("yes") : TEXT("no"),
 			bShouldEquip ? TEXT("true") : TEXT("false"));
 		return;
 	}
@@ -862,6 +861,30 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 		*GetNameSafe(EquippableItem),
 		bShouldEquip ? TEXT("true") : TEXT("false"),
 		HasAuthority() ? TEXT("true") : TEXT("false"));
+
+	if (USpellRiseWeaponComponent* ResolvedWeaponComponent = GetSpellRiseWeaponComponent())
+	{
+		if (ResolvedWeaponComponent->IsWeaponItem(EquippableItem))
+		{
+			const bool bHandledByWeaponComponent = bShouldEquip
+				? ResolvedWeaponComponent->EquipWeapon(EquippableItem)
+				: ResolvedWeaponComponent->UnequipWeaponItem(EquippableItem);
+			if (bHandledByWeaponComponent)
+			{
+				return;
+			}
+		}
+	}
+
+	USpellRiseEquipmentManagerComponent* ResolvedEquipmentManager = GetSpellRiseEquipmentManager();
+	if (!ResolvedEquipmentManager)
+	{
+		UE_LOG(LogSpellRiseEquipTrace, Warning,
+			TEXT("Character.HandleItemActivation abortado: EquipmentManager ausente para item nao-weapon. Item=%s ShouldEquip=%s"),
+			*GetNameSafe(EquippableItem),
+			bShouldEquip ? TEXT("true") : TEXT("false"));
+		return;
+	}
 
 	const bool bHandledBySpellRise = bShouldEquip
 		? ResolvedEquipmentManager->RequestEquipItem(EquippableItem)
@@ -1002,6 +1025,10 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		break;
 	case ESpellRiseArchetype::None:
 	default:
+		dSTR = 10.f;
+		dAGI = 10.f;
+		dINT = 10.f;
+		dWIS = 10.f;
 		break;
 	}
 
@@ -1940,8 +1967,6 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 
 	if (DeadStateTag.IsValid())
 	{
-		GetSpellRiseASC()->RemoveLooseGameplayTag(DeadStateTag);
-
 		FGameplayTagContainer DeadTags;
 		DeadTags.AddTag(DeadStateTag);
 		GetSpellRiseASC()->RemoveActiveEffectsWithGrantedTags(DeadTags);
@@ -1950,6 +1975,11 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 	if (GE_Death)
 	{
 		GetSpellRiseASC()->RemoveActiveGameplayEffectBySourceEffect(GE_Death, GetSpellRiseASC());
+	}
+
+	if (DeadStateTag.IsValid() && GetSpellRiseASC()->HasMatchingGameplayTag(DeadStateTag))
+	{
+		GetSpellRiseASC()->RemoveLooseGameplayTag(DeadStateTag);
 	}
 
 	bIsDead = false;

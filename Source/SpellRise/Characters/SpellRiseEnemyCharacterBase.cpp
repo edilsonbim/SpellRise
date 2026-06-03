@@ -22,6 +22,7 @@
 #include "InventoryFunctionLibrary.h"
 #include "SpellRise/Components/CatalystComponent.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
@@ -310,6 +311,7 @@ ASpellRiseEnemyCharacterBase::ASpellRiseEnemyCharacterBase()
 	CatalystAttributeSet = CreateDefaultSubobject<UCatalystAttributeSet>(TEXT("CatalystAttributeSet"));
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
 	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
+	WeaponComponent = CreateDefaultSubobject<USpellRiseWeaponComponent>(TEXT("WeaponComponent"));
 
 	DeadStateTag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"), false);
 	EnemyDisplayName = FText::FromString(TEXT("Enemy"));

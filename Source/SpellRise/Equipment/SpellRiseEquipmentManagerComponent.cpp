@@ -20,6 +20,7 @@
 #include "TimerManager.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentInstance.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
@@ -560,6 +561,11 @@ bool USpellRiseEquipmentManagerComponent::RequestEquipItem(UEquippableItem* Item
 
 	if (IsWeaponItem(Item))
 	{
+		if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+		{
+			return WeaponComponent->EquipWeapon(Item);
+		}
+
 		if (IsOffHandWeaponItem(Item))
 		{
 			if (OwnerActor->HasAuthority())
@@ -628,6 +634,11 @@ bool USpellRiseEquipmentManagerComponent::RequestUnequipItem(UEquippableItem* It
 
 	if (IsWeaponItem(Item))
 	{
+		if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+		{
+			return WeaponComponent->UnequipWeaponItem(Item);
+		}
+
 		if (Item == ActiveOffHandItem)
 		{
 			if (OwnerActor->HasAuthority())
@@ -695,6 +706,15 @@ void USpellRiseEquipmentManagerComponent::ServerRequestEquipItem_Implementation(
 
 	if (IsWeaponItem(Item))
 	{
+		if (AActor* OwnerActor = GetOwner())
+		{
+			if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+			{
+				WeaponComponent->EquipWeapon(Item);
+				return;
+			}
+		}
+
 		if (IsOffHandWeaponItem(Item))
 		{
 			const bool bHandled = HandleOffHandEquipIntent(Item);
@@ -735,6 +755,15 @@ void USpellRiseEquipmentManagerComponent::ServerRequestUnequipItem_Implementatio
 
 	if (IsWeaponItem(Item))
 	{
+		if (AActor* OwnerActor = GetOwner())
+		{
+			if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+			{
+				WeaponComponent->UnequipWeaponItem(Item);
+				return;
+			}
+		}
+
 		if (Item == ActiveOffHandItem)
 		{
 			RemoveOffHandWeapon_Server(false);
@@ -772,6 +801,11 @@ bool USpellRiseEquipmentManagerComponent::RequestActivateQuickWeaponSlot(int32 Q
 		return false;
 	}
 
+	if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+	{
+		return WeaponComponent->ActivateQuickSlot(QuickSlotIndex);
+	}
+
 	if (OwnerActor->HasAuthority())
 	{
 		return ActivateQuickWeaponSlot_Server(QuickSlotIndex);
@@ -787,6 +821,11 @@ bool USpellRiseEquipmentManagerComponent::RequestAssignQuickWeaponSlot(UEquippab
 	if (!OwnerActor)
 	{
 		return false;
+	}
+
+	if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+	{
+		return WeaponComponent->AssignQuickSlot(Item, QuickSlotIndex);
 	}
 
 	if (OwnerActor->HasAuthority())
@@ -824,6 +863,15 @@ void USpellRiseEquipmentManagerComponent::ServerRequestActivateQuickWeaponSlot_I
 		return;
 	}
 
+	if (AActor* OwnerActor = GetOwner())
+	{
+		if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+		{
+			WeaponComponent->ActivateQuickSlot(QuickSlotIndex);
+			return;
+		}
+	}
+
 	ActivateQuickWeaponSlot_Server(QuickSlotIndex);
 }
 
@@ -834,6 +882,15 @@ void USpellRiseEquipmentManagerComponent::ServerRequestAssignQuickWeaponSlot_Imp
 	{
 		AuditRejectedEquipmentRpc(TEXT("ServerRequestAssignQuickWeaponSlot"), RejectReason);
 		return;
+	}
+
+	if (AActor* OwnerActor = GetOwner())
+	{
+		if (USpellRiseWeaponComponent* WeaponComponent = OwnerActor->FindComponentByClass<USpellRiseWeaponComponent>())
+		{
+			WeaponComponent->AssignQuickSlot(Item, QuickSlotIndex);
+			return;
+		}
 	}
 
 	AssignQuickWeaponSlot_Server(Item, QuickSlotIndex);
@@ -916,6 +973,11 @@ USpellRiseEquipmentInstance* USpellRiseEquipmentManagerComponent::GetEquippedIns
 
 AActor* USpellRiseEquipmentManagerComponent::GetActiveEquippedWeaponActor() const
 {
+	if (const USpellRiseWeaponComponent* WeaponComponent = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseWeaponComponent>() : nullptr)
+	{
+		return WeaponComponent->bWeaponDrawn ? WeaponComponent->EquippedWeapon : nullptr;
+	}
+
 	if (!QuickWeaponSlots.IsValidIndex(ActiveQuickWeaponSlotIndex))
 	{
 		return nullptr;
@@ -948,6 +1010,17 @@ AActor* USpellRiseEquipmentManagerComponent::GetActiveEquippedWeaponActor() cons
 
 AActor* USpellRiseEquipmentManagerComponent::GetEquippedWeapon(TSubclassOf<AActor> ExpectedClass) const
 {
+	if (const USpellRiseWeaponComponent* WeaponComponent = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseWeaponComponent>() : nullptr)
+	{
+		AActor* ActiveWeapon = WeaponComponent->bWeaponDrawn ? WeaponComponent->EquippedWeapon.Get() : nullptr;
+		UClass* ExpectedWeaponClass = ExpectedClass.Get();
+		if (!ActiveWeapon || ExpectedWeaponClass && !ActiveWeapon->IsA(ExpectedWeaponClass))
+		{
+			return nullptr;
+		}
+		return ActiveWeapon;
+	}
+
 	if (!EquippedWeapon)
 	{
 		return nullptr;
@@ -966,6 +1039,43 @@ TArray<FSpellRiseWeaponLoadoutSlotView> USpellRiseEquipmentManagerComponent::Get
 {
 	TArray<FSpellRiseWeaponLoadoutSlotView> Views;
 	Views.Reserve(3);
+
+	if (const USpellRiseWeaponComponent* WeaponComponent = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseWeaponComponent>() : nullptr)
+	{
+		for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
+		{
+			FSpellRiseWeaponLoadoutSlotView& View = Views.AddDefaulted_GetRef();
+			View.Slot = SlotIndex == 0 ? ESpellRiseWeaponLoadoutSlot::WeaponSlot1 : ESpellRiseWeaponLoadoutSlot::WeaponSlot2;
+			if (WeaponComponent->QuickWeaponSlots.IsValidIndex(SlotIndex))
+			{
+				const FSpellRiseWeaponSlotState& SlotState = WeaponComponent->QuickWeaponSlots[SlotIndex];
+				View.Item = SlotState.Item;
+				View.WeaponActor = SlotState.WeaponActor;
+				View.WeaponDefinition = SlotState.WeaponDefinition ? SlotState.WeaponDefinition.Get() : GetWeaponDefinitionForItem(View.Item);
+				View.bIsActive = View.Item && WeaponComponent->ActiveQuickSlotIndex == SlotIndex && WeaponComponent->bWeaponDrawn;
+			}
+			if (View.WeaponDefinition)
+			{
+				View.WeaponTag = View.WeaponDefinition->WeaponTag;
+				View.HandPolicy = View.WeaponDefinition->HandPolicy;
+			}
+		}
+
+		FSpellRiseWeaponLoadoutSlotView& OffHandView = Views.AddDefaulted_GetRef();
+		OffHandView.Slot = ESpellRiseWeaponLoadoutSlot::OffHand;
+		OffHandView.Item = WeaponComponent->OffHandWeapon.Item;
+		OffHandView.WeaponActor = WeaponComponent->OffHandWeapon.WeaponActor;
+		OffHandView.WeaponDefinition = WeaponComponent->OffHandWeapon.WeaponDefinition ? WeaponComponent->OffHandWeapon.WeaponDefinition.Get() : GetWeaponDefinitionForItem(OffHandView.Item);
+		if (OffHandView.WeaponDefinition)
+		{
+			OffHandView.WeaponTag = OffHandView.WeaponDefinition->WeaponTag;
+			OffHandView.HandPolicy = OffHandView.WeaponDefinition->HandPolicy;
+		}
+		OffHandView.bIsActive = OffHandView.Item && !WeaponComponent->OffHandWeapon.bIsSuppressed;
+		OffHandView.bIsSuppressed = WeaponComponent->OffHandWeapon.bIsSuppressed;
+
+		return Views;
+	}
 
 	for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
 	{
@@ -1105,6 +1215,48 @@ FSpellRiseHUDEquipmentSlotView USpellRiseEquipmentManagerComponent::GetHUDEquipm
 	FSpellRiseHUDEquipmentSlotView View;
 	View.Slot = Slot;
 	View.SlotName = GetHUDEquipmentSlotName(Slot);
+
+	if (const USpellRiseWeaponComponent* WeaponComponent = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseWeaponComponent>() : nullptr)
+	{
+		const auto FillWeaponSlotView = [this, WeaponComponent, &View](const int32 SlotIndex)
+		{
+			if (WeaponComponent->QuickWeaponSlots.IsValidIndex(SlotIndex))
+			{
+				const FSpellRiseWeaponSlotState& SlotState = WeaponComponent->QuickWeaponSlots[SlotIndex];
+				View.Item = SlotState.Item;
+				View.bIsActive = View.Item && WeaponComponent->ActiveQuickSlotIndex == SlotIndex && WeaponComponent->bWeaponDrawn;
+				View.bIsStowed = View.Item && !View.bIsActive;
+				View.bIsTwoHandedWeapon = View.Item && WeaponComponent->IsTwoHandedWeaponItem(View.Item);
+			}
+		};
+
+		switch (Slot)
+		{
+		case ESpellRiseHUDEquipmentSlot::WeaponSlot1:
+			FillWeaponSlotView(0);
+			break;
+		case ESpellRiseHUDEquipmentSlot::WeaponSlot2:
+			FillWeaponSlotView(1);
+			break;
+		case ESpellRiseHUDEquipmentSlot::OffHand:
+			View.Item = WeaponComponent->OffHandWeapon.Item;
+			View.bIsBlockedByTwoHandedWeapon = View.Item && WeaponComponent->OffHandWeapon.bIsSuppressed;
+			View.bIsActive = View.Item && !View.bIsBlockedByTwoHandedWeapon;
+			View.bIsStowed = View.Item && View.bIsBlockedByTwoHandedWeapon;
+			View.bIsTwoHandedWeapon = false;
+			break;
+		default:
+			break;
+		}
+
+		if (Slot == ESpellRiseHUDEquipmentSlot::WeaponSlot1 ||
+			Slot == ESpellRiseHUDEquipmentSlot::WeaponSlot2 ||
+			Slot == ESpellRiseHUDEquipmentSlot::OffHand)
+		{
+			View.bHasItem = View.Item != nullptr;
+			return View;
+		}
+	}
 
 	switch (Slot)
 	{

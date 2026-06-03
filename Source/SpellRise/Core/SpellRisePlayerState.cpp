@@ -156,6 +156,11 @@ namespace
 			return nullptr;
 		}
 
+		if (UActorComponent* PlayerStateComponent = SRPS_FindTalentTreeComponent(PlayerState))
+		{
+			return PlayerStateComponent;
+		}
+
 		if (AController* Controller = SRPS_ResolveControllerForPlayerState(PlayerState))
 		{
 			if (UActorComponent* CharacterComponent = SRPS_FindTalentTreeComponent(Controller->GetPawn()))
@@ -164,55 +169,38 @@ namespace
 			}
 		}
 
-		return SRPS_FindTalentTreeComponent(PlayerState);
+		return nullptr;
 	}
 
-	FNumericProperty* SRPS_FindTalentPointsAvailableProperty(UClass* ComponentClass)
+	void SRPS_NotifyTalentTreeTalentPointsChanged(UActorComponent* TalentComponent)
+	{
+		if (!TalentComponent)
+		{
+			return;
+		}
+
+		if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_TalentPoints")))
+		{
+			TalentComponent->ProcessEvent(OnRepFunction, nullptr);
+		}
+
+		if (UFunction* PointsChangedFunction = TalentComponent->FindFunction(TEXT("OnPointsChanged")))
+		{
+			TalentComponent->ProcessEvent(PointsChangedFunction, nullptr);
+		}
+	}
+
+	FNumericProperty* SRPS_FindTalentTreeTalentPointsProperty(UClass* ComponentClass)
 	{
 		if (!ComponentClass)
 		{
 			return nullptr;
 		}
 
-		static const FName CandidateNames[] =
-		{
-			TEXT("PointsAvailable"),
-			TEXT("PointsAvaliable"),
-			TEXT("TalentPointsAvailable"),
-			TEXT("TalentPointsAvaliable"),
-			TEXT("AvailableTalentPoints"),
-			TEXT("AvailablePoints"),
-			TEXT("TalentPoints")
-		};
-
-		for (const FName& CandidateName : CandidateNames)
-		{
-			if (FNumericProperty* NumericProperty = FindFProperty<FNumericProperty>(ComponentClass, CandidateName))
-			{
-				return NumericProperty;
-			}
-		}
-
-		for (TFieldIterator<FProperty> It(ComponentClass, EFieldIterationFlags::IncludeSuper); It; ++It)
-		{
-			FNumericProperty* NumericProperty = CastField<FNumericProperty>(*It);
-			if (!NumericProperty)
-			{
-				continue;
-			}
-
-			const FString PropertyName = NumericProperty->GetName();
-			if (PropertyName.Contains(TEXT("Points"), ESearchCase::IgnoreCase)
-				&& PropertyName.Contains(TEXT("Available"), ESearchCase::IgnoreCase))
-			{
-				return NumericProperty;
-			}
-		}
-
-		return nullptr;
+		return FindFProperty<FNumericProperty>(ComponentClass, TEXT("TalentPoints"));
 	}
 
-	bool SRPS_AddTalentTreePointsAvailable(ASpellRisePlayerState* PlayerState, const int32 PointsToAdd, int32& OutNewPoints)
+	bool SRPS_AddTalentTreeTalentPoints(ASpellRisePlayerState* PlayerState, const int32 PointsToAdd, int32& OutNewPoints)
 	{
 		OutNewPoints = 0;
 		if (!PlayerState || PointsToAdd <= 0)
@@ -230,7 +218,7 @@ namespace
 			return false;
 		}
 
-		FNumericProperty* PointsProperty = SRPS_FindTalentPointsAvailableProperty(TalentComponent->GetClass());
+		FNumericProperty* PointsProperty = SRPS_FindTalentTreeTalentPointsProperty(TalentComponent->GetClass());
 		if (!PointsProperty)
 		{
 			FString NumericProperties;
@@ -247,7 +235,7 @@ namespace
 			}
 
 			UE_LOG(LogSpellRiseProgression, Warning,
-				TEXT("[Progression][TalentPointsGrantRejected] Reason=missing_points_available Component=%s Class=%s Amount=%d NumericProperties=%s"),
+				TEXT("[Progression][TalentPointsGrantRejected] Reason=missing_talent_points Component=%s Class=%s Amount=%d NumericProperties=%s"),
 				*GetNameSafe(TalentComponent),
 				*GetNameSafe(TalentComponent->GetClass()),
 				PointsToAdd,
@@ -268,10 +256,7 @@ namespace
 			PointsProperty->SetFloatingPointPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent), static_cast<double>(OutNewPoints));
 		}
 
-		if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_PointsAvailable")))
-		{
-			TalentComponent->ProcessEvent(OnRepFunction, nullptr);
-		}
+		SRPS_NotifyTalentTreeTalentPointsChanged(TalentComponent);
 
 		if (AActor* TalentOwner = TalentComponent->GetOwner())
 		{
@@ -473,7 +458,7 @@ void ASpellRisePlayerState::AddTalentPoints_Server(float Amount)
 
 	const int32 PointsToAdd = FMath::Max(1, FMath::RoundToInt(Amount));
 	int32 TalentTreePoints = 0;
-	const bool bUpdatedTalentTree = SRPS_AddTalentTreePointsAvailable(this, PointsToAdd, TalentTreePoints);
+	const bool bUpdatedTalentTree = SRPS_AddTalentTreeTalentPoints(this, PointsToAdd, TalentTreePoints);
 	TalentPoints = bUpdatedTalentTree ? static_cast<float>(TalentTreePoints) : TalentPoints + Amount;
 	ForceNetUpdate();
 	UE_LOG(LogSpellRiseProgression, Log, TEXT("Adicionado %f Talent Points para %s. Total: %f"), Amount, *GetNameSafe(this), TalentPoints);

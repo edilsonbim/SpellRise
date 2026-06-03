@@ -29,6 +29,7 @@ class UDerivedStatsAttributeSet;
 class UAbilitySystemComponent;
 class ASpellRisePlayerState;
 class USpellRiseEquipmentManagerComponent;
+class USpellRiseWeaponComponent;
 class UNarrativeInventoryComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
@@ -173,6 +174,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	USpellRiseEquipmentManagerComponent* GetSpellRiseEquipmentManager() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Weapon")
+	USpellRiseWeaponComponent* GetSpellRiseWeaponComponent() const;
+
 	UFUNCTION(Server, Reliable)
 	void ServerHandleNarrativeItemActivationForEquipment(UObject* ItemObject, bool bShouldEquip);
 
@@ -222,6 +226,9 @@ public:
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<UFallDamageComponent> FallDamageComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseWeaponComponent> WeaponComponent = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement")
 	float BaseWalkSpeed = 500.f;

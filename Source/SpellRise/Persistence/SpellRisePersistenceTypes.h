@@ -140,7 +140,7 @@ struct FSpellRiseCharacterSaveData
 	float CatalystLevel = 1.0f;
 
 	UPROPERTY()
-	int32 TalentPointsAvailable = 0;
+	int32 TalentPoints = 0;
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedTalent> Talents;

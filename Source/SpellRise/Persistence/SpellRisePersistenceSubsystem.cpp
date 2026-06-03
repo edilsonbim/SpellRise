@@ -254,9 +254,9 @@ namespace
 		return nullptr;
 	}
 
-	bool CollectTalentTreeData(UActorComponent* TalentComponent, int32& OutPointsAvailable, TArray<FSpellRiseSavedTalent>& OutTalents)
+	bool CollectTalentTreeData(UActorComponent* TalentComponent, int32& OutTalentPoints, TArray<FSpellRiseSavedTalent>& OutTalents)
 	{
-		OutPointsAvailable = 0;
+		OutTalentPoints = 0;
 		OutTalents.Reset();
 
 		if (!TalentComponent || !TalentComponent->GetClass())
@@ -264,9 +264,9 @@ namespace
 			return false;
 		}
 
-		if (const FIntProperty* PointsProperty = FindFProperty<FIntProperty>(TalentComponent->GetClass(), TEXT("PointsAvailable")))
+		if (const FIntProperty* PointsProperty = FindFProperty<FIntProperty>(TalentComponent->GetClass(), TEXT("TalentPoints")))
 		{
-			OutPointsAvailable = FMath::Max(0, PointsProperty->GetPropertyValue_InContainer(TalentComponent));
+			OutTalentPoints = FMath::Max(0, PointsProperty->GetPropertyValue_InContainer(TalentComponent));
 		}
 
 		FArrayProperty* GrantedTalentsProperty = FindFProperty<FArrayProperty>(TalentComponent->GetClass(), TEXT("GrantedTalents"));
@@ -295,19 +295,23 @@ namespace
 		return true;
 	}
 
-	void SetTalentPointsAvailable(UActorComponent* TalentComponent, const int32 PointsAvailable)
+	void SetTalentTreeTalentPoints(UActorComponent* TalentComponent, const int32 TalentPoints)
 	{
 		if (!TalentComponent || !TalentComponent->GetClass())
 		{
 			return;
 		}
 
-		if (FIntProperty* PointsProperty = FindFProperty<FIntProperty>(TalentComponent->GetClass(), TEXT("PointsAvailable")))
+		if (FIntProperty* PointsProperty = FindFProperty<FIntProperty>(TalentComponent->GetClass(), TEXT("TalentPoints")))
 		{
-			PointsProperty->SetPropertyValue_InContainer(TalentComponent, FMath::Clamp(PointsAvailable, 0, 1000000));
-			if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_PointsAvailable")))
+			PointsProperty->SetPropertyValue_InContainer(TalentComponent, FMath::Clamp(TalentPoints, 0, 1000000));
+			if (UFunction* OnRepFunction = TalentComponent->FindFunction(TEXT("OnRep_TalentPoints")))
 			{
 				TalentComponent->ProcessEvent(OnRepFunction, nullptr);
+			}
+			if (UFunction* PointsChangedFunction = TalentComponent->FindFunction(TEXT("OnPointsChanged")))
+			{
+				TalentComponent->ProcessEvent(PointsChangedFunction, nullptr);
 			}
 		}
 	}
@@ -339,7 +343,6 @@ namespace
 		}
 
 		ClearGrantedTalentArray(TalentComponent);
-		SetTalentPointsAvailable(TalentComponent, 0);
 		UE_LOG(LogSpellRisePersistence, Log,
 			TEXT("[Persistence][TalentsReset] Context=%s Component=%s"),
 			Context ? Context : TEXT("unknown"),
@@ -433,13 +436,13 @@ namespace
 			++AppliedTalents;
 		}
 
-		SetTalentPointsAvailable(TalentComponent, Data.TalentPointsAvailable);
+		SetTalentTreeTalentPoints(TalentComponent, Data.TalentPoints);
 		UE_LOG(LogSpellRisePersistence, Log,
-			TEXT("[Persistence][TalentsApplied] Component=%s Applied=%d Skipped=%d PointsAvailable=%d"),
+			TEXT("[Persistence][TalentsApplied] Component=%s Applied=%d Skipped=%d TalentPoints=%d"),
 			*GetNameSafe(TalentComponent),
 			AppliedTalents,
 			SkippedTalents,
-			FMath::Max(0, Data.TalentPointsAvailable));
+			FMath::Max(0, Data.TalentPoints));
 	}
 
 	bool IsValidPersistentId(const FString& PersistentId)
@@ -621,7 +624,7 @@ namespace
 			}
 		}
 
-		if (Data.TalentPointsAvailable < 0 || Data.TalentPointsAvailable > 1000000)
+		if (Data.TalentPoints < 0 || Data.TalentPoints > 1000000)
 		{
 			OutReason = TEXT("invalid_talent_points");
 			return false;
@@ -1986,7 +1989,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 
 	if (UActorComponent* TalentComponent = ResolveTalentTreeComponent(Controller))
 	{
-		CollectTalentTreeData(TalentComponent, OutData.TalentPointsAvailable, OutData.Talents);
+		CollectTalentTreeData(TalentComponent, OutData.TalentPoints, OutData.Talents);
 	}
 
 	if (!SRPlayerState->GetRespawnBedActorName().IsEmpty())
