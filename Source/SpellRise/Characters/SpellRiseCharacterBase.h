@@ -239,6 +239,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement|Inventory", meta=(ClampMin="1.0"))
 	float ImmobilizedWeightCapacityMultiplier = 2.0f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Movement|Status", meta=(ClampMin="0.1", ClampMax="1.0"))
+	float FrozenStatusSpeedMultiplier = 0.35f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;
 
@@ -432,6 +435,9 @@ public:
 	UPROPERTY(Transient)
 	float InventoryWeightMovementInputScale = 1.f;
 
+	UPROPERTY(Transient)
+	float GameplayMovementInputScale = 1.f;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input")
 	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
@@ -448,11 +454,14 @@ protected:
 	void BindNarrativeInventoryWeightDelegates(UNarrativeInventoryComponent* Inventory);
 	void UnbindNarrativeInventoryWeightDelegates();
 	void RefreshInventoryEncumbranceMovement(const TCHAR* Context);
+	void RefreshMovementSpeedFromAttributes(const TCHAR* Context);
 	void RecalculateDerivedStats();
 	void ApplyDerivedStatsInfinite();
 	void ResetDeathStateAndResources_Server();
 	void OnPrimaryChanged(const FOnAttributeChangeData& Data);
 	void OnCarryWeightChanged(const FOnAttributeChangeData& Data);
+	void OnMoveSpeedChanged(const FOnAttributeChangeData& Data);
+	void OnFrozenStatusChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
 
 	UFUNCTION()

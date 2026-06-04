@@ -45,6 +45,14 @@ Usando bônus sobre baseline:
 - `MaxMana = 180 + 2 * INT_bonus + 1 * WIS_bonus`
 - `MaxStamina = 180 + 1 * STR_bonus + 2 * AGI_bonus`
 
+## Movimento
+- `MoveSpeed`: override opcional de velocidade base. Valor `0` usa `BaseWalkSpeed` do Character.
+- `MoveSpeedMultiplier`: multiplicador autoritativo para buffs/debuffs de movimento, incluindo congelamento.
+- Velocidade efetiva do Character: `BaseOrMoveSpeed * MoveSpeedMultiplier * InventoryWeightMultiplier`.
+- `Status.Frozen` ou `Debuff.Ice` aplica fallback autoritativo de slow usando `FrozenStatusSpeedMultiplier` quando o GE/cue de congelamento nao modifica diretamente `MoveSpeedMultiplier`.
+- O servidor aplica o valor final em `CharacterMovement->MaxWalkSpeed`; cliente usa replicação/reconciliação para UX.
+- Novo slow/freeze deve usar GameplayEffect/tag GAS, nao RPC direto nem decisao client-side.
+
 ## Regras de uso
 - Novo código e novos assets devem usar apenas `STR/AGI/INT/WIS`.
 - Aliases legados só podem existir como compatibilidade passiva durante migração.

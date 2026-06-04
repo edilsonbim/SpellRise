@@ -67,6 +67,18 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
+	static const FGameplayTag& Status_Frozen()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Status.Frozen"));
+		return Tag;
+	}
+
+	static const FGameplayTag& Debuff_Ice()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Debuff.Ice"));
+		return Tag;
+	}
+
 	static const FGameplayTag& Event_Abilities_Changed()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Event.Abilities.Changed"));
@@ -401,12 +413,14 @@ void ASpellRiseCharacterBase::AddMovementInput(FVector WorldDirection, float Sca
 {
 	if (!bForce)
 	{
-		if (bInventoryWeightMovementBlocked || InventoryWeightMovementInputScale <= KINDA_SMALL_NUMBER)
+		if (bInventoryWeightMovementBlocked
+			|| InventoryWeightMovementInputScale <= KINDA_SMALL_NUMBER
+			|| GameplayMovementInputScale <= KINDA_SMALL_NUMBER)
 		{
 			return;
 		}
 
-		ScaleValue *= InventoryWeightMovementInputScale;
+		ScaleValue *= InventoryWeightMovementInputScale * GameplayMovementInputScale;
 	}
 
 	Super::AddMovementInput(WorldDirection, ScaleValue, bForce);
@@ -1296,7 +1310,11 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetAgilityAttribute()).RemoveAll(this);
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetIntelligenceAttribute()).RemoveAll(this);
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetMoveSpeedAttribute()).RemoveAll(this);
+		PreviousASC->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetMoveSpeedMultiplierAttribute()).RemoveAll(this);
 		PreviousASC->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetCarryWeightAttribute()).RemoveAll(this);
+		PreviousASC->RegisterGameplayTagEvent(SpellRiseTags::Status_Frozen(), EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
+		PreviousASC->RegisterGameplayTagEvent(SpellRiseTags::Debuff_Ice(), EGameplayTagEventType::NewOrRemoved).RemoveAll(this);
 
 		bASCDelegatesBound = false;
 		ASCDelegatesBoundSource = nullptr;
@@ -1311,6 +1329,7 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 	GetSpellRiseASC()->SetReplicationMode(AscReplicationMode);
 	GetSpellRiseASC()->InitAbilityActorInfo(OwnerActor, this);
 	GetSpellRiseASC()->RefreshAbilityActorInfo();
+	RefreshMovementSpeedFromAttributes(TEXT("InitASCActorInfo"));
 
 	if (UWorld* World = GetWorld())
 	{
@@ -1503,7 +1522,19 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetWisdomAttribute())
 		.RemoveAll(this);
 	GetSpellRiseASC()
+		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetMoveSpeedAttribute())
+		.RemoveAll(this);
+	GetSpellRiseASC()
+		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetMoveSpeedMultiplierAttribute())
+		.RemoveAll(this);
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetCarryWeightAttribute())
+		.RemoveAll(this);
+	GetSpellRiseASC()
+		->RegisterGameplayTagEvent(SpellRiseTags::Status_Frozen(), EGameplayTagEventType::NewOrRemoved)
+		.RemoveAll(this);
+	GetSpellRiseASC()
+		->RegisterGameplayTagEvent(SpellRiseTags::Debuff_Ice(), EGameplayTagEventType::NewOrRemoved)
 		.RemoveAll(this);
 
 	bASCDelegatesBound = true;
@@ -1536,10 +1567,26 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 		.AddUObject(this, &ASpellRiseCharacterBase::OnPrimaryChanged);
 
 	GetSpellRiseASC()
+		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetMoveSpeedAttribute())
+		.AddUObject(this, &ASpellRiseCharacterBase::OnMoveSpeedChanged);
+
+	GetSpellRiseASC()
+		->GetGameplayAttributeValueChangeDelegate(UCombatAttributeSet::GetMoveSpeedMultiplierAttribute())
+		.AddUObject(this, &ASpellRiseCharacterBase::OnMoveSpeedChanged);
+
+	GetSpellRiseASC()
 		->GetGameplayAttributeValueChangeDelegate(UResourceAttributeSet::GetCarryWeightAttribute())
 		.AddUObject(this, &ASpellRiseCharacterBase::OnCarryWeightChanged);
 
+	GetSpellRiseASC()
+		->RegisterGameplayTagEvent(SpellRiseTags::Status_Frozen(), EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ASpellRiseCharacterBase::OnFrozenStatusChanged);
+	GetSpellRiseASC()
+		->RegisterGameplayTagEvent(SpellRiseTags::Debuff_Ice(), EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ASpellRiseCharacterBase::OnFrozenStatusChanged);
+
 	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("BindASCDelegates"));
+	RefreshMovementSpeedFromAttributes(TEXT("BindASCDelegates"));
 }
 
 bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
@@ -1645,6 +1692,58 @@ void ASpellRiseCharacterBase::UnbindNarrativeInventoryWeightDelegates()
 	}
 }
 
+void ASpellRiseCharacterBase::RefreshMovementSpeedFromAttributes(const TCHAR* Context)
+{
+	if (!HasAuthority() && !IsLocallyControlled())
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	const USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC();
+	const float AttributeMoveSpeed = ASC
+		? ASC->GetNumericAttribute(UCombatAttributeSet::GetMoveSpeedAttribute())
+		: 0.f;
+	const float AttributeMoveSpeedMultiplier = ASC
+		? ASC->GetNumericAttribute(UCombatAttributeSet::GetMoveSpeedMultiplierAttribute())
+		: 1.f;
+
+	const float SpeedBase = AttributeMoveSpeed > KINDA_SMALL_NUMBER ? AttributeMoveSpeed : BaseWalkSpeed;
+	float SafeAttributeMultiplier = FMath::Clamp(AttributeMoveSpeedMultiplier, 0.1f, 3.0f);
+	const bool bFrozen = ASC
+		&& (ASC->HasMatchingGameplayTag(SpellRiseTags::Status_Frozen())
+			|| ASC->HasMatchingGameplayTag(SpellRiseTags::Debuff_Ice()));
+	if (bFrozen)
+	{
+		SafeAttributeMultiplier = FMath::Min(SafeAttributeMultiplier, FMath::Clamp(FrozenStatusSpeedMultiplier, 0.1f, 1.0f));
+	}
+	const float SafeInventoryMultiplier = FMath::Max(0.f, InventoryWeightMovementInputScale);
+	const float DesiredMaxWalkSpeed = FMath::Clamp(SpeedBase * SafeAttributeMultiplier * SafeInventoryMultiplier, 0.f, 1800.f);
+	const float BaseSpeedForInput = FMath::Max(BaseWalkSpeed, KINDA_SMALL_NUMBER);
+	GameplayMovementInputScale = FMath::Clamp((SpeedBase * SafeAttributeMultiplier) / BaseSpeedForInput, 0.f, 3.f);
+
+	Movement->MaxWalkSpeed = DesiredMaxWalkSpeed;
+
+	UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
+		TEXT("[MovementSpeed][Refresh] Character=%s Context=%s Base=%.2f AttrMoveSpeed=%.2f AttrMultiplier=%.2f Frozen=%d InventoryMultiplier=%.2f GameplayInputScale=%.2f MaxWalkSpeed=%.2f Authority=%d Local=%d"),
+		*GetNameSafe(this),
+		Context ? Context : TEXT("unknown"),
+		BaseWalkSpeed,
+		AttributeMoveSpeed,
+		SafeAttributeMultiplier,
+		bFrozen ? 1 : 0,
+		SafeInventoryMultiplier,
+		GameplayMovementInputScale,
+		DesiredMaxWalkSpeed,
+		HasAuthority() ? 1 : 0,
+		IsLocallyControlled() ? 1 : 0);
+}
+
 void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* Context)
 {
 	if (!HasAuthority() && !IsLocallyControlled())
@@ -1685,9 +1784,8 @@ void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* C
 		NewMoveState = 1;
 	}
 
-	const float DesiredMaxWalkSpeed = FMath::Max(0.f, BaseWalkSpeed * SpeedMultiplier);
-	Movement->MaxWalkSpeed = DesiredMaxWalkSpeed;
 	InventoryWeightMovementInputScale = SpeedMultiplier;
+	RefreshMovementSpeedFromAttributes(Context);
 
 	const bool bShouldBlockMovement = NewMoveState == 2;
 	if (bShouldBlockMovement)
@@ -1725,7 +1823,7 @@ void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* C
 			NewMoveState,
 			CurrentWeight,
 			WeightCapacity,
-			DesiredMaxWalkSpeed,
+			Movement->MaxWalkSpeed,
 			Context ? Context : TEXT("unknown"),
 			HasAuthority() ? 1 : 0,
 			IsLocallyControlled() ? 1 : 0);
@@ -1751,6 +1849,16 @@ void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Dat
 void ASpellRiseCharacterBase::OnCarryWeightChanged(const FOnAttributeChangeData& Data)
 {
 	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("CarryWeightChanged"));
+}
+
+void ASpellRiseCharacterBase::OnMoveSpeedChanged(const FOnAttributeChangeData& Data)
+{
+	RefreshMovementSpeedFromAttributes(TEXT("MoveSpeedChanged"));
+}
+
+void ASpellRiseCharacterBase::OnFrozenStatusChanged(const FGameplayTag CallbackTag, int32 NewCount)
+{
+	RefreshMovementSpeedFromAttributes(NewCount > 0 ? TEXT("FrozenApplied") : TEXT("FrozenRemoved"));
 }
 
 void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data)
