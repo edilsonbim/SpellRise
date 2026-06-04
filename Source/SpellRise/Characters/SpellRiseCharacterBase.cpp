@@ -565,7 +565,9 @@ void ASpellRiseCharacterBase::ValidateAnimationPresentationPolicy() const
 			static_cast<int32>(AnimationRuntimeStandard));
 	}
 
-	if (!IsDead() && VisualMesh->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Ignore)
+	if (!IsDead()
+		&& VisualMesh->GetCollisionEnabled() != ECollisionEnabled::NoCollision
+		&& VisualMesh->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Ignore)
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
 			TEXT("[AnimationPolicy] Alive visual mesh should not block/overlap Pawn. Character=%s Mesh=%s Profile=%s"),
@@ -574,7 +576,9 @@ void ASpellRiseCharacterBase::ValidateAnimationPresentationPolicy() const
 			*VisualMesh->GetCollisionProfileName().ToString());
 	}
 
-	if (!IsDead() && VisualMesh->GetCollisionResponseToChannel(ECC_Visibility) != ECR_Ignore)
+	if (!IsDead()
+		&& VisualMesh->GetCollisionEnabled() != ECollisionEnabled::NoCollision
+		&& VisualMesh->GetCollisionResponseToChannel(ECC_Visibility) != ECR_Ignore)
 	{
 		UE_LOG(LogSpellRiseCharacterRuntime, Warning,
 			TEXT("[AnimationPolicy] Alive visual mesh should ignore Visibility; use Pawn/object traces for targeting. Character=%s Mesh=%s Profile=%s"),
@@ -1726,22 +1730,28 @@ void ASpellRiseCharacterBase::RefreshMovementSpeedFromAttributes(const TCHAR* Co
 	const float DesiredMaxWalkSpeed = FMath::Clamp(SpeedBase * SafeAttributeMultiplier * SafeInventoryMultiplier, 0.f, 1800.f);
 	const float BaseSpeedForInput = FMath::Max(BaseWalkSpeed, KINDA_SMALL_NUMBER);
 	GameplayMovementInputScale = FMath::Clamp((SpeedBase * SafeAttributeMultiplier) / BaseSpeedForInput, 0.f, 3.f);
+	const float PreviousMaxWalkSpeed = Movement->MaxWalkSpeed;
 
 	Movement->MaxWalkSpeed = DesiredMaxWalkSpeed;
 
-	UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
-		TEXT("[MovementSpeed][Refresh] Character=%s Context=%s Base=%.2f AttrMoveSpeed=%.2f AttrMultiplier=%.2f Frozen=%d InventoryMultiplier=%.2f GameplayInputScale=%.2f MaxWalkSpeed=%.2f Authority=%d Local=%d"),
-		*GetNameSafe(this),
-		Context ? Context : TEXT("unknown"),
-		BaseWalkSpeed,
-		AttributeMoveSpeed,
-		SafeAttributeMultiplier,
-		bFrozen ? 1 : 0,
-		SafeInventoryMultiplier,
-		GameplayMovementInputScale,
-		DesiredMaxWalkSpeed,
-		HasAuthority() ? 1 : 0,
-		IsLocallyControlled() ? 1 : 0);
+	if (bFrozen || !FMath::IsNearlyEqual(PreviousMaxWalkSpeed, DesiredMaxWalkSpeed, 1.0f))
+	{
+		UE_LOG(LogSpellRiseCharacterRuntime, Log,
+			TEXT("[MovementSpeed][Refresh] Character=%s Context=%s Base=%.2f AttrMoveSpeed=%.2f AttrMultiplier=%.2f Frozen=%d InventoryMultiplier=%.2f GameplayInputScale=%.2f OldMaxWalkSpeed=%.2f NewMaxWalkSpeed=%.2f Velocity2D=%.2f Authority=%d Local=%d"),
+			*GetNameSafe(this),
+			Context ? Context : TEXT("unknown"),
+			BaseWalkSpeed,
+			AttributeMoveSpeed,
+			SafeAttributeMultiplier,
+			bFrozen ? 1 : 0,
+			SafeInventoryMultiplier,
+			GameplayMovementInputScale,
+			PreviousMaxWalkSpeed,
+			DesiredMaxWalkSpeed,
+			Movement->Velocity.Size2D(),
+			HasAuthority() ? 1 : 0,
+			IsLocallyControlled() ? 1 : 0);
+	}
 }
 
 void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* Context)

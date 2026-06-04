@@ -627,8 +627,23 @@ void ASpellRiseEnemyCharacterBase::OnHealthChanged(const FOnAttributeChangeData&
 		KillerPlayerState = ResolveKillerPlayerStateFromContext(EffectSpec.GetContext());
 	}
 
+	if (!KillerPlayerState)
+	{
+		float BestContributionDamage = 0.0f;
+		for (const TPair<TWeakObjectPtr<ASpellRisePlayerState>, float>& Entry : TalentDamageContributions)
+		{
+			ASpellRisePlayerState* ContributorPlayerState = Entry.Key.Get();
+			const float ContributionDamage = Entry.Value;
+			if (ContributorPlayerState && ContributionDamage > BestContributionDamage)
+			{
+				KillerPlayerState = ContributorPlayerState;
+				BestContributionDamage = ContributionDamage;
+			}
+		}
+	}
+
 	const float FatalDamageAmount = FMath::Max(0.0f, Data.OldValue - Data.NewValue);
-	UE_LOG(LogSpellRiseEnemyRuntime, Warning,
+	UE_LOG(LogSpellRiseEnemyRuntime, Log,
 		TEXT("[Progression][EnemyDeathRewardEval] Enemy=%s KillerPS=%s OldHealth=%.2f NewHealth=%.2f FatalDamage=%.2f Contributors=%d GrantEnabled=%d PointsOnKill=%.2f MinContribution=%.2f"),
 		*GetNameSafe(this),
 		*GetNameSafe(KillerPlayerState),

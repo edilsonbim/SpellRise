@@ -79,6 +79,20 @@ namespace
 		return FParse::Param(FCommandLine::Get(), TEXT("nosteam"));
 	}
 
+	bool IsPIEWorld(const UWorld* World)
+	{
+#if WITH_EDITOR
+		return World && World->WorldType == EWorldType::PIE;
+#else
+		return false;
+#endif
+	}
+
+	bool IsDevFallbackPersistenceReason(const TCHAR* Reason)
+	{
+		return Reason && FCString::Stricmp(Reason, TEXT("invalid_or_non_steam_persistent_id")) == 0;
+	}
+
 	bool IsFilePersistenceFallbackAllowed()
 	{
 		return FParse::Param(FCommandLine::Get(), TEXT("SRPersistenceAllowFileFallback"));
@@ -1166,6 +1180,20 @@ void USpellRisePersistenceSubsystem::RecordPersistenceTelemetry(const TCHAR* Ope
 		++FailureCountByOperation.FindOrAdd(OperationName);
 	}
 
+	if (!bSuccess && IsPIEWorld(GetWorld()) && IsDevFallbackPersistenceReason(Reason))
+	{
+		UE_LOG(LogSpellRisePersistence, Verbose,
+			TEXT("[Persistence][%s] Result=%s Reason=%s Provider=%s Mode=%s LatencyMs=%.2f FailureCount=%d"),
+			*OperationName,
+			TEXT("Rejected"),
+			*ReasonText,
+			*ProviderText,
+			*ModeText,
+			FMath::Max(0.0, LatencyMs),
+			FailureCountByOperation.FindRef(OperationName));
+		return;
+	}
+
 	UE_LOG(LogSpellRisePersistence, Log,
 		TEXT("[Persistence][%s] Result=%s Reason=%s Provider=%s Mode=%s LatencyMs=%.2f FailureCount=%d"),
 		*OperationName,
@@ -1618,6 +1646,14 @@ void USpellRisePersistenceSubsystem::SetControllerPersistentId(const AController
 {
 	if (!Controller || !IsValidSteamId64(PersistentId))
 	{
+		if (Controller && IsPIEWorld(Controller->GetWorld()))
+		{
+			UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_or_non_steam_persistent_id Controller=%s PersistentId=%s"),
+				*GetNameSafe(Controller),
+				*PersistentId);
+			return;
+		}
+
 		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_or_non_steam_persistent_id Controller=%s PersistentId=%s"),
 			*GetNameSafe(Controller),
 			*PersistentId);
