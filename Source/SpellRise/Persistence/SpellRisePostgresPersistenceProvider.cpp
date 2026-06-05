@@ -15,6 +15,7 @@
 namespace
 {
 	DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistencePostgres, Log, All);
+	constexpr int32 MaxVisualConfigurationJsonLength = 64 * 1024;
 
 	bool ParseRevisionAndSnapshot(const FString& JsonLine, int64& OutRevision, FString& OutSnapshotJson)
 	{
@@ -37,6 +38,23 @@ namespace
 
 		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutSnapshotJson);
 		return FJsonSerializer::Serialize((*SnapshotObject).ToSharedRef(), Writer);
+	}
+
+	bool IsValidOptionalJsonObjectString(const FString& JsonText)
+	{
+		if (JsonText.IsEmpty())
+		{
+			return true;
+		}
+
+		if (JsonText.Len() > MaxVisualConfigurationJsonLength)
+		{
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> JsonObject;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		return FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid();
 	}
 }
 
@@ -85,7 +103,16 @@ bool FSpellRisePostgresPersistenceProvider::LoadCharacterState(const FString& St
 		return false;
 	}
 
-	return FJsonObjectConverter::JsonObjectStringToUStruct(SnapshotJson, &OutData, 0, 0);
+	if (!FJsonObjectConverter::JsonObjectStringToUStruct(SnapshotJson, &OutData, 0, 0))
+	{
+		return false;
+	}
+
+	if (OutData.SchemaVersion < 7)
+	{
+		OutData.bCharacterCreated = true;
+	}
+	return true;
 }
 
 bool FSpellRisePostgresPersistenceProvider::SaveCharacterState(const FString& SteamId64, const FSpellRiseCharacterSaveData& Data, int64 ExpectedRevision, int64 TargetRevision)
@@ -96,7 +123,15 @@ bool FSpellRisePostgresPersistenceProvider::SaveCharacterState(const FString& St
 		return false;
 	}
 
-	return SaveRevisionedSnapshot(TEXT("spellrise_character_state"), TEXT("player_id"), SteamId64, SnapshotJson, ExpectedRevision, TargetRevision);
+	if (!IsValidOptionalJsonObjectString(Data.VisualConfigurationJson))
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=invalid_visual_configuration Player=%s"),
+			*SteamId64);
+		return false;
+	}
+
+	return SaveCharacterRevisionedSnapshot(SteamId64, Data.bCharacterCreated, Data.VisualConfigurationJson, SnapshotJson, ExpectedRevision, TargetRevision);
 }
 
 bool FSpellRisePostgresPersistenceProvider::LoadInventoryState(const FString& SteamId64, FSpellRiseInventorySaveData& OutData, int64& OutRevision)
@@ -216,7 +251,12 @@ bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 {
 	const FString SchemaSql = TEXT(
 		"CREATE TABLE IF NOT EXISTS spellrise_character_state ("
-		"player_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), snapshot_json JSONB NOT NULL);"
+		"player_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+		"character_created BOOLEAN NOT NULL DEFAULT FALSE, visual_configuration JSONB NULL, snapshot_json JSONB NOT NULL);"
+		"ALTER TABLE spellrise_character_state ADD COLUMN IF NOT EXISTS character_created BOOLEAN NOT NULL DEFAULT FALSE;"
+		"ALTER TABLE spellrise_character_state ADD COLUMN IF NOT EXISTS visual_configuration JSONB NULL;"
+		"UPDATE spellrise_character_state SET character_created=TRUE WHERE NOT (snapshot_json ? 'bCharacterCreated');"
+		"UPDATE spellrise_character_state SET character_created=(snapshot_json->>'bCharacterCreated')::BOOLEAN WHERE snapshot_json ? 'bCharacterCreated';"
 		"CREATE TABLE IF NOT EXISTS spellrise_inventory_state ("
 		"player_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), snapshot_json JSONB NOT NULL);"
 		"CREATE TABLE IF NOT EXISTS spellrise_world_state ("
@@ -401,6 +441,64 @@ bool FSpellRisePostgresPersistenceProvider::SaveRevisionedSnapshot(const FString
 		UE_LOG(LogSpellRisePersistencePostgres, Warning,
 			TEXT("[Persistence][PostgresSaveRejected] Reason=revision_conflict Table=%s ExpectedRevision=%lld TargetRevision=%lld Result=%s"),
 			*TableName,
+			ExpectedRevision,
+			TargetRevision,
+			*Result.Left(64));
+	}
+	return bSaved;
+}
+
+bool FSpellRisePostgresPersistenceProvider::SaveCharacterRevisionedSnapshot(const FString& SteamId64, bool bCharacterCreated, const FString& VisualConfigurationJson, const FString& SnapshotJson, int64 ExpectedRevision, int64 TargetRevision) const
+{
+	if (SteamId64.IsEmpty() || SnapshotJson.IsEmpty() || TargetRevision <= 0)
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=invalid_character_save_args TargetRevision=%lld"),
+			TargetRevision);
+		return false;
+	}
+
+	const FString EscapedKey = EscapeSqlLiteral(SteamId64);
+	const FString EscapedJson = EscapeSqlLiteral(SnapshotJson);
+	const FString EscapedVisualJson = EscapeSqlLiteral(VisualConfigurationJson);
+	const TCHAR* CharacterCreatedSql = bCharacterCreated ? TEXT("TRUE") : TEXT("FALSE");
+	const FString VisualConfigurationSql = VisualConfigurationJson.IsEmpty()
+		? TEXT("NULL")
+		: FString::Printf(TEXT("'%s'::jsonb"), *EscapedVisualJson);
+
+	const FString UpdateSql = FString::Printf(
+		TEXT("WITH upsert AS (")
+		TEXT("INSERT INTO spellrise_character_state (player_id, revision, character_created, visual_configuration, snapshot_json, updated_at) ")
+		TEXT("VALUES ('%s', %lld, %s, %s, '%s'::jsonb, NOW()) ")
+		TEXT("ON CONFLICT (player_id) DO UPDATE SET ")
+		TEXT("revision=EXCLUDED.revision, character_created=EXCLUDED.character_created, visual_configuration=EXCLUDED.visual_configuration, ")
+		TEXT("snapshot_json=EXCLUDED.snapshot_json, updated_at=NOW() ")
+		TEXT("WHERE spellrise_character_state.revision = %lld ")
+		TEXT("RETURNING 1) ")
+		TEXT("SELECT COALESCE(MAX(1),0) FROM upsert;"),
+		*EscapedKey,
+		TargetRevision,
+		CharacterCreatedSql,
+		*VisualConfigurationSql,
+		*EscapedJson,
+		ExpectedRevision);
+
+	FString StdOut;
+	FString StdErr;
+	if (!ExecSql(UpdateSql, StdOut, StdErr))
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Error,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=query_failed Table=spellrise_character_state Stderr=%s"),
+			*StdErr.Left(512));
+		return false;
+	}
+
+	const FString Result = StdOut.TrimStartAndEnd();
+	const bool bSaved = Result == TEXT("1");
+	if (!bSaved)
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Persistence][PostgresSaveRejected] Reason=revision_conflict Table=spellrise_character_state ExpectedRevision=%lld TargetRevision=%lld Result=%s"),
 			ExpectedRevision,
 			TargetRevision,
 			*Result.Left(64));

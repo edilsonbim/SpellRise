@@ -56,11 +56,11 @@ namespace SpellRiseWeaponComponentPrivate
 			}
 
 			const FString InternalName = Property->GetName();
-			const FString DisplayName = Property->GetDisplayNameText().ToString();
+			const FString AuthoredFieldName = Struct->GetAuthoredNameForField(Property);
 			for (const FName PropertyName : PropertyNames)
 			{
 				const FString AuthoredName = PropertyName.ToString();
-				if (InternalName == AuthoredName || DisplayName == AuthoredName || InternalName.StartsWith(AuthoredName + TEXT("_")))
+				if (InternalName == AuthoredName || AuthoredFieldName == AuthoredName || InternalName.StartsWith(AuthoredName + TEXT("_")))
 				{
 					return Property;
 				}

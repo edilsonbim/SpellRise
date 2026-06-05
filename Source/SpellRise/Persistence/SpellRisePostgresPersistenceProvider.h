@@ -29,6 +29,7 @@ private:
 	bool ExecMutatingSql(const FString& Sql, const TCHAR* Context) const;
 	bool LoadRevisionedSnapshot(const FString& TableName, const FString& KeyColumn, const FString& KeyValue, FString& OutSnapshotJson, int64& OutRevision) const;
 	bool SaveRevisionedSnapshot(const FString& TableName, const FString& KeyColumn, const FString& KeyValue, const FString& SnapshotJson, int64 ExpectedRevision, int64 TargetRevision) const;
+	bool SaveCharacterRevisionedSnapshot(const FString& SteamId64, bool bCharacterCreated, const FString& VisualConfigurationJson, const FString& SnapshotJson, int64 ExpectedRevision, int64 TargetRevision) const;
 
 	static FString EscapeSqlLiteral(const FString& InValue);
 

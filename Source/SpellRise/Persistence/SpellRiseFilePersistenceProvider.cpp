@@ -199,7 +199,16 @@ bool FSpellRiseFilePersistenceProvider::LoadCharacterState(const FString& SteamI
 		return false;
 	}
 
-	return LoadRevisionedSnapshot(BuildCharacterPath(SteamId64), OutData, OutRevision);
+	if (!LoadRevisionedSnapshot(BuildCharacterPath(SteamId64), OutData, OutRevision))
+	{
+		return false;
+	}
+
+	if (OutData.SchemaVersion < 7)
+	{
+		OutData.bCharacterCreated = true;
+	}
+	return true;
 }
 
 bool FSpellRiseFilePersistenceProvider::SaveCharacterState(const FString& SteamId64, const FSpellRiseCharacterSaveData& Data, int64 ExpectedRevision, int64 TargetRevision)

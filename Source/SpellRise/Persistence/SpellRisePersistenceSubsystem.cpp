@@ -38,10 +38,11 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
 namespace
 {
-	constexpr int32 PersistenceCharacterSchemaVersion = 6;
+	constexpr int32 PersistenceCharacterSchemaVersion = 7;
 	constexpr int32 PersistenceInventorySchemaVersion = 2;
 	constexpr int32 PersistenceWorldSchemaVersion = 1;
 	constexpr int32 LegacyPersistenceWorldSchemaVersion = 5;
+	constexpr int32 MaxVisualConfigurationJsonLength = 64 * 1024;
 	constexpr float PersistentPrimaryAttributeMin = 0.0f;
 	constexpr float PersistentPrimaryAttributeMax = 120.0f;
 	constexpr int32 PersistentTalentLevelMin = 1;
@@ -104,6 +105,194 @@ namespace
 		int32 ItemStackCount = 0;
 		int32 ItemQuantity = 0;
 	};
+
+	bool IsValidOptionalJsonObjectString(const FString& JsonText)
+	{
+		if (JsonText.IsEmpty())
+		{
+			return true;
+		}
+
+		if (JsonText.Len() > MaxVisualConfigurationJsonLength)
+		{
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> JsonObject;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		return FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid();
+	}
+
+	UObject* ResolveGameInstanceObject(const AController* Controller)
+	{
+		const UWorld* World = Controller ? Controller->GetWorld() : nullptr;
+		return World ? World->GetGameInstance() : nullptr;
+	}
+
+	bool ReadBoolPropertyByName(const UObject* Object, const FName PropertyName, bool& OutValue)
+	{
+		if (!Object || PropertyName.IsNone())
+		{
+			return false;
+		}
+
+		if (const FBoolProperty* BoolProperty = FindFProperty<FBoolProperty>(Object->GetClass(), PropertyName))
+		{
+			OutValue = BoolProperty->GetPropertyValue_InContainer(Object);
+			return true;
+		}
+
+		return false;
+	}
+
+	void WriteBoolPropertyByName(UObject* Object, const FName PropertyName, const bool Value)
+	{
+		if (Object && !PropertyName.IsNone())
+		{
+			if (FBoolProperty* BoolProperty = FindFProperty<FBoolProperty>(Object->GetClass(), PropertyName))
+			{
+				BoolProperty->SetPropertyValue_InContainer(Object, Value);
+			}
+		}
+	}
+
+	bool ReadVisualConfigurationJson(const UObject* Object, FString& OutJson)
+	{
+		OutJson.Reset();
+		if (!Object)
+		{
+			return false;
+		}
+
+		const FName PropertyName(TEXT("VisualConfiguration"));
+		const FProperty* Property = Object->GetClass()->FindPropertyByName(PropertyName);
+		if (!Property)
+		{
+			return false;
+		}
+
+		const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Object);
+		if (!ValuePtr)
+		{
+			return false;
+		}
+
+		if (const FStrProperty* StringProperty = CastField<FStrProperty>(Property))
+		{
+			OutJson = StringProperty->GetPropertyValue(ValuePtr);
+			if (!OutJson.IsEmpty() && !IsValidOptionalJsonObjectString(OutJson))
+			{
+				OutJson = FString::Printf(TEXT("{\"value\":\"%s\"}"), *OutJson.ReplaceCharWithEscapedChar());
+			}
+			return !OutJson.IsEmpty();
+		}
+
+		if (const FNameProperty* NameProperty = CastField<FNameProperty>(Property))
+		{
+			const FName NameValue = NameProperty->GetPropertyValue(ValuePtr);
+			if (!NameValue.IsNone())
+			{
+				OutJson = FString::Printf(TEXT("{\"value\":\"%s\"}"), *NameValue.ToString());
+				return true;
+			}
+			return false;
+		}
+
+		if (const FTextProperty* TextProperty = CastField<FTextProperty>(Property))
+		{
+			const FString TextValue = TextProperty->GetPropertyValue(ValuePtr).ToString();
+			if (!TextValue.IsEmpty())
+			{
+				OutJson = FString::Printf(TEXT("{\"value\":\"%s\"}"), *TextValue.ReplaceCharWithEscapedChar());
+				return true;
+			}
+			return false;
+		}
+
+		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			return FJsonObjectConverter::UStructToJsonObjectString(StructProperty->Struct, ValuePtr, OutJson, 0, 0) && !OutJson.IsEmpty();
+		}
+
+		return false;
+	}
+
+	void WriteVisualConfigurationJson(UObject* Object, const FString& JsonText)
+	{
+		if (!Object || JsonText.IsEmpty())
+		{
+			return;
+		}
+
+		const FName PropertyName(TEXT("VisualConfiguration"));
+		FProperty* Property = Object->GetClass()->FindPropertyByName(PropertyName);
+		if (!Property)
+		{
+			return;
+		}
+
+		void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Object);
+		if (!ValuePtr)
+		{
+			return;
+		}
+
+		if (FStrProperty* StringProperty = CastField<FStrProperty>(Property))
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+			FString Value;
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid() && JsonObject->TryGetStringField(TEXT("value"), Value))
+			{
+				StringProperty->SetPropertyValue(ValuePtr, Value);
+			}
+			else
+			{
+				StringProperty->SetPropertyValue(ValuePtr, JsonText);
+			}
+			return;
+		}
+
+		if (FNameProperty* NameProperty = CastField<FNameProperty>(Property))
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FString Value;
+				if (JsonObject->TryGetStringField(TEXT("value"), Value))
+				{
+					NameProperty->SetPropertyValue(ValuePtr, FName(*Value));
+				}
+			}
+			return;
+		}
+
+		if (FTextProperty* TextProperty = CastField<FTextProperty>(Property))
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FString Value;
+				if (JsonObject->TryGetStringField(TEXT("value"), Value))
+				{
+					TextProperty->SetPropertyValue(ValuePtr, FText::FromString(Value));
+				}
+			}
+			return;
+		}
+
+		if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FJsonObjectConverter::JsonObjectToUStruct(JsonObject.ToSharedRef(), StructProperty->Struct, ValuePtr, 0, 0);
+			}
+		}
+	}
 
 	struct FInventoryComponentBinding
 	{
@@ -614,6 +803,12 @@ namespace
 		if (!IsFiniteTransform(Data.CharacterTransform))
 		{
 			OutReason = TEXT("invalid_transform");
+			return false;
+		}
+
+		if (!IsValidOptionalJsonObjectString(Data.VisualConfigurationJson))
+		{
+			OutReason = TEXT("invalid_visual_configuration");
 			return false;
 		}
 
@@ -1455,6 +1650,40 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 	return true;
 }
 
+bool USpellRisePersistenceSubsystem::HasCachedCharacterCreatedForController(AController* Controller) const
+{
+	bool bCharacterCreated = false;
+	FString IgnoredVisualConfigurationJson;
+	return TryGetCachedCharacterCreationState(Controller, bCharacterCreated, IgnoredVisualConfigurationJson) && bCharacterCreated;
+}
+
+bool USpellRisePersistenceSubsystem::TryGetCachedCharacterCreationState(AController* Controller, bool& bOutCharacterCreated, FString& OutVisualConfigurationJson) const
+{
+	bOutCharacterCreated = false;
+	OutVisualConfigurationJson.Reset();
+
+	if (!Controller)
+	{
+		return false;
+	}
+
+	const FString SteamId64 = ResolveSteamIdFromController(Controller);
+	if (!IsValidSteamId64(SteamId64))
+	{
+		return false;
+	}
+
+	const FSpellRiseCharacterSaveData* CachedData = CachedCharacterDataBySteamId.Find(SteamId64);
+	if (!CachedData)
+	{
+		return false;
+	}
+
+	bOutCharacterCreated = CachedData->bCharacterCreated;
+	OutVisualConfigurationJson = CachedData->VisualConfigurationJson;
+	return true;
+}
+
 bool USpellRisePersistenceSubsystem::SaveWorld(UWorld* World)
 {
 	const double SaveStartSeconds = FPlatformTime::Seconds();
@@ -1998,8 +2227,24 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	OutData.SchemaVersion = PersistenceCharacterSchemaVersion;
 	OutData.SteamId64 = SteamId64;
 	OutData.PlayerDisplayName = Controller->PlayerState->GetPlayerName();
+	OutData.bCharacterCreated = true;
 	OutData.CharacterTransform = Character->GetActorTransform();
 	OutData.ArchetypeValue = static_cast<uint8>(Character->Archetype);
+
+	if (const UObject* GameInstanceObject = ResolveGameInstanceObject(Controller))
+	{
+		bool bCharacterCreatedFromGameInstance = false;
+		if (ReadBoolPropertyByName(GameInstanceObject, TEXT("CharacterCreated"), bCharacterCreatedFromGameInstance))
+		{
+			OutData.bCharacterCreated = bCharacterCreatedFromGameInstance || OutData.bCharacterCreated;
+		}
+
+		FString VisualConfigurationJson;
+		if (ReadVisualConfigurationJson(GameInstanceObject, VisualConfigurationJson) && IsValidOptionalJsonObjectString(VisualConfigurationJson))
+		{
+			OutData.VisualConfigurationJson = MoveTemp(VisualConfigurationJson);
+		}
+	}
 
 	if (!IsFiniteTransform(OutData.CharacterTransform))
 	{
@@ -2117,6 +2362,15 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	if (!Data.PlayerDisplayName.IsEmpty())
 	{
 		Controller->PlayerState->SetPlayerName(Data.PlayerDisplayName);
+	}
+
+	if (!IsRunningDedicatedServer())
+	{
+		if (UObject* GameInstanceObject = ResolveGameInstanceObject(Controller))
+		{
+			WriteBoolPropertyByName(GameInstanceObject, TEXT("CharacterCreated"), Data.bCharacterCreated);
+			WriteVisualConfigurationJson(GameInstanceObject, Data.VisualConfigurationJson);
+		}
 	}
 
 	Character->Archetype = static_cast<ESpellRiseArchetype>(Data.ArchetypeValue);

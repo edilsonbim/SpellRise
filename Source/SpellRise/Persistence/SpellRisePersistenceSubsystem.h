@@ -26,6 +26,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Persistence")
 	bool SaveCharacterForController(AController* Controller);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Persistence")
+	bool HasCachedCharacterCreatedForController(AController* Controller) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Persistence")
+	bool TryGetCachedCharacterCreationState(AController* Controller, bool& bOutCharacterCreated, FString& OutVisualConfigurationJson) const;
+
 	bool SaveWorld(UWorld* World);
 	bool LoadWorld(UWorld* World);
 	bool SaveDeathEvent(const FSpellRiseDeathEventData& Data);

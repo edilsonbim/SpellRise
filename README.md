@@ -2,16 +2,18 @@
 
 SpellRise é um MMORPG PvP hardcore (UE 5.7) com combate skill-based e arquitetura server-authoritative para Dedicated Server.
 
-## Estado atual (2026-04-06)
-- Base de gameplay/equipment ativa com integração C++ + Blueprint.
-- Fluxo de equip/unequip por inventory e quick slots evoluído.
-- Ponto pendente aberto: drop de item no cliente em DS ainda em ajuste final de spawn do pickup (ver `Fontes/BUG_LOG.md`, BUG-2026-04-06-035).
+## Estado atual (2026-06-05)
+- Base multiplayer live-service em Unreal Engine 5.7 com Dedicated Server obrigatório.
+- Persistência server-side ativa com snapshots revisionados de personagem, inventário, mundo e eventos de morte.
+- Snapshot de personagem schema 7 persiste criação de personagem e configuração visual por `SteamId64`.
+- Bootstrap/auth Steam em Dedicated Server falha cedo quando o OnlineSubsystem degrada para `NULL`.
 
 ## Stack e regras principais
 - Unreal Engine Source Build em `C:\UnrealSource\UnrealEngine`
 - Dedicated Server obrigatório
 - GAS owner no `PlayerState` (ASC/AttributeSets no `PlayerState`)
 - Cliente não decide dano/loot/morte/resultado final
+- Persistência de produção é server-side e indexada por identidade Steam real
 
 ## Estrutura
 - `Source/` C++ de runtime e sistemas de rede/gameplay

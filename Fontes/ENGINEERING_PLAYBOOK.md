@@ -91,6 +91,7 @@ Toda feature de combate/rede deve declarar:
 - projétil autoritativo completo;
 - morte / loot / respawn;
 - reconexão básica;
+- persistência de criação de personagem e configuração visual por `SteamId64`;
 - quando aplicável: building mode e input gating.
 
 ## Evidência mínima para fechamento

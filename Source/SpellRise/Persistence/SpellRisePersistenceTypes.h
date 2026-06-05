@@ -86,13 +86,19 @@ struct FSpellRiseCharacterSaveData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 SchemaVersion = 6;
+	int32 SchemaVersion = 7;
 
 	UPROPERTY()
 	FString SteamId64;
 
 	UPROPERTY()
 	FString PlayerDisplayName;
+
+	UPROPERTY()
+	bool bCharacterCreated = false;
+
+	UPROPERTY()
+	FString VisualConfigurationJson;
 
 	UPROPERTY()
 	FTransform CharacterTransform = FTransform::Identity;
