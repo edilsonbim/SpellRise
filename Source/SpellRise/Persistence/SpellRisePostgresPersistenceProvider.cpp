@@ -15,7 +15,7 @@
 namespace
 {
 	DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistencePostgres, Log, All);
-	constexpr int32 MaxVisualConfigurationJsonLength = 64 * 1024;
+	constexpr int32 PostgresMaxVisualConfigurationJsonLength = 64 * 1024;
 
 	bool ParseRevisionAndSnapshot(const FString& JsonLine, int64& OutRevision, FString& OutSnapshotJson)
 	{
@@ -40,14 +40,14 @@ namespace
 		return FJsonSerializer::Serialize((*SnapshotObject).ToSharedRef(), Writer);
 	}
 
-	bool IsValidOptionalJsonObjectString(const FString& JsonText)
+	bool IsValidOptionalPostgresJsonObjectString(const FString& JsonText)
 	{
 		if (JsonText.IsEmpty())
 		{
 			return true;
 		}
 
-		if (JsonText.Len() > MaxVisualConfigurationJsonLength)
+		if (JsonText.Len() > PostgresMaxVisualConfigurationJsonLength)
 		{
 			return false;
 		}
@@ -123,7 +123,7 @@ bool FSpellRisePostgresPersistenceProvider::SaveCharacterState(const FString& St
 		return false;
 	}
 
-	if (!IsValidOptionalJsonObjectString(Data.VisualConfigurationJson))
+	if (!IsValidOptionalPostgresJsonObjectString(Data.VisualConfigurationJson))
 	{
 		UE_LOG(LogSpellRisePersistencePostgres, Warning,
 			TEXT("[Persistence][PostgresSaveRejected] Reason=invalid_visual_configuration Player=%s"),
