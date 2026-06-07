@@ -152,6 +152,11 @@ static bool IsFallDamageTypeTag(const FGameplayTag& DamageTypeTag)
 	return DataDamageTypeFall.IsValid() && DamageTypeTag == DataDamageTypeFall;
 }
 
+static bool IsFallDamageSelfOrUnknownSource(const FGameplayTag& DamageTypeTag, const ASpellRiseCharacterBase* SourceCharacter, const ASpellRiseCharacterBase* TargetCharacter)
+{
+	return IsFallDamageTypeTag(DamageTypeTag) && (!SourceCharacter || SourceCharacter == TargetCharacter);
+}
+
 static FString ResolveCombatSourceName(const AActor* SourceActor, const AActor* TargetActor, const FGameplayTag& DamageTypeTag)
 {
 	if (IsFallDamageTypeTag(DamageTypeTag) && (!SourceActor || SourceActor == TargetActor))
@@ -295,7 +300,7 @@ static void SendCombatLogMessages(
 	}
 
 	const bool bIsFallDamage = IsFallDamageTypeTag(DamageTypeTag);
-	const bool bFallSourceIsSelfOrUnknown = bIsFallDamage && (!SourceCharacter || SourceCharacter == TargetCharacter);
+	const bool bFallSourceIsSelfOrUnknown = IsFallDamageSelfOrUnknownSource(DamageTypeTag, SourceCharacter, TargetCharacter);
 	ASpellRisePlayerController* SourceController = ResolvePlayerControllerFromCharacter(SourceCharacter);
 	ASpellRisePlayerController* TargetController = ResolvePlayerControllerFromCharacter(TargetCharacter);
 	ASpellRisePlayerState* SourcePlayerState = SourceCharacter ? Cast<ASpellRisePlayerState>(SourceCharacter->GetPlayerState()) : nullptr;
@@ -316,7 +321,7 @@ static void SendCombatLogMessages(
 		World = SourceCharacter->GetWorld();
 	}
 
-	if (SourcePlayerState)
+	if (SourcePlayerState && !bFallSourceIsSelfOrUnknown)
 	{
 		ESpellRiseCombatLogFlags SourceFlags = ESpellRiseCombatLogFlags::Outgoing;
 		if (bTargetDied)
@@ -599,15 +604,16 @@ namespace
 	FSpellRiseDeathParticipantData BuildDeathParticipant(AActor* Actor, const FString& FallbackName, const FGameplayTag& DamageTypeTag, float Damage, UWorld* World)
 	{
 		FSpellRiseDeathParticipantData Participant;
-		Participant.PlayerId = ResolvePersistentIdForDeathActor(Actor, World);
-		Participant.DisplayName = ResolveCombatSourceName(Actor, nullptr, DamageTypeTag);
+		const bool bFallDamage = IsFallDamageTypeTag(DamageTypeTag);
+		Participant.PlayerId = bFallDamage ? FString() : ResolvePersistentIdForDeathActor(Actor, World);
+		Participant.DisplayName = bFallDamage ? TEXT("fall") : ResolveCombatSourceName(Actor, nullptr, DamageTypeTag);
 		if (Participant.DisplayName.IsEmpty() || Participant.DisplayName.Equals(TEXT("desconhecido"), ESearchCase::IgnoreCase))
 		{
 			Participant.DisplayName = FallbackName;
 		}
 		if (Participant.DisplayName.IsEmpty())
 		{
-			Participant.DisplayName = IsFallDamageTypeTag(DamageTypeTag) ? TEXT("fall") : TEXT("unknown");
+			Participant.DisplayName = bFallDamage ? TEXT("fall") : TEXT("unknown");
 		}
 		Participant.CauseType = ResolveDeathCauseType(Actor, DamageTypeTag);
 		Participant.DamageAmount = FMath::Max(0.0f, Damage);
@@ -695,6 +701,19 @@ namespace
 
 	FString BuildDeathMessage(const FSpellRiseDeathParticipantData& TopDamage, const FSpellRiseDeathParticipantData& Fatal)
 	{
+		if (Fatal.CauseType.Equals(TEXT("environment"), ESearchCase::IgnoreCase)
+			&& Fatal.DisplayName.Equals(TEXT("fall"), ESearchCase::IgnoreCase))
+		{
+			if (!TopDamage.DisplayName.IsEmpty()
+				&& !TopDamage.DisplayName.Equals(TEXT("fall"), ESearchCase::IgnoreCase)
+				&& !TopDamage.CauseType.Equals(TEXT("environment"), ESearchCase::IgnoreCase))
+			{
+				return FString::Printf(TEXT("Died from fall damage after taking damage from %s."), *TopDamage.DisplayName);
+			}
+
+			return TEXT("Died from fall damage.");
+		}
+
 		if (TopDamage.DisplayName.IsEmpty() && Fatal.DisplayName.IsEmpty())
 		{
 			return TEXT("Died.");
@@ -1047,6 +1066,13 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		UWorld* World = TargetASC->GetAvatarActor() ? TargetASC->GetAvatarActor()->GetWorld() : nullptr;
 		const double WorldSeconds = World ? World->GetTimeSeconds() : 0.0;
 		AActor* DeathCauserActor = SourceCharacter ? Cast<AActor>(SourceCharacter) : (SourceEnemy ? Cast<AActor>(SourceEnemy) : InstigatorActor);
+		if (IsFallDamageSelfOrUnknownSource(DamageTypeTag, SourceCharacter, TargetCharacter))
+		{
+			DeathCauserActor = nullptr;
+			SourceCharacter = nullptr;
+			SourceEnemy = nullptr;
+			InstigatorActor = nullptr;
+		}
 		FSpellRiseDeathParticipantData FatalParticipant;
 		if (TargetCharacter)
 		{

@@ -1,0 +1,172 @@
+{
+  "world": "SR_Elarion",
+  "generated_at": "2026-06-06T19:35:21",
+  "config": {
+    "input_dir": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Fontes\\MapDesign",
+    "output_dir": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps",
+    "grid": 2,
+    "tile_size": 257,
+    "chunk_rows": 64,
+    "seed": 13371337,
+    "sea_level_norm": 0.335,
+    "export_png_preview": true,
+    "export_png16": false,
+    "export_global_masks": true,
+    "export_full_mask_tiles": false,
+    "preview_size": 257,
+    "global_preview_size": 1024,
+    "smooth_strength": 0.35,
+    "reference_weight": 0.15,
+    "final_mode": false,
+    "prototype_mode": true,
+    "dry_run": false,
+    "allow_clean": true
+  },
+  "backup_dir": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps_Backup_20260606_193513",
+  "reference_image": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\Fontes\\MapDesign\\SpellRise_Elarion_Satellite_Concept_v01.png",
+  "generated_tiles": [
+    "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Height_X00_Y00.r16",
+    "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Height_X01_Y00.r16",
+    "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Height_X00_Y01.r16",
+    "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Height_X01_Y01.r16"
+  ],
+  "global_files": {
+    "global_preview": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_GlobalPreview.png",
+    "mask_LandOcean": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_LandOcean.png",
+    "mask_Slope": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Slope.png",
+    "mask_Flow": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Flow.png",
+    "mask_ErosionWear": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_ErosionWear.png",
+    "mask_Deposit": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Deposit.png",
+    "biome_mask_rgb": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_BiomeMask.png",
+    "biome_Snow": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Snow.png",
+    "biome_Forest": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Forest.png",
+    "biome_Desert": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Desert.png",
+    "biome_Volcanic": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Volcanic.png",
+    "biome_Swamp": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Swamp.png",
+    "biome_Corrupted": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Corrupted.png",
+    "biome_Plains": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Plains.png",
+    "biome_Coast": "C:\\Users\\biM\\Documents\\Unreal Projects\\SpellRise\\SourceArt\\World\\Heightmaps\\SR_Elarion_Mask_Biome_Coast.png"
+  },
+  "sea_level_norm": 0.335,
+  "sea_level_u16": 21954,
+  "format": {
+    "height": ".r16 little-endian uint16 grayscale",
+    "png_preview": "8-bit grayscale preview only",
+    "png16_optional": "16-bit grayscale PNG, no sRGB metadata guarantee"
+  },
+  "seam_validation": {
+    "first_pass_max_diff": 0,
+    "final_max_diff": 0,
+    "comparisons": [
+      {
+        "type": "vertical",
+        "a": [
+          0,
+          0
+        ],
+        "b": [
+          1,
+          0
+        ],
+        "max_diff": 0
+      },
+      {
+        "type": "vertical",
+        "a": [
+          0,
+          1
+        ],
+        "b": [
+          1,
+          1
+        ],
+        "max_diff": 0
+      },
+      {
+        "type": "horizontal",
+        "a": [
+          0,
+          0
+        ],
+        "b": [
+          0,
+          1
+        ],
+        "max_diff": 0
+      },
+      {
+        "type": "horizontal",
+        "a": [
+          1,
+          0
+        ],
+        "b": [
+          1,
+          1
+        ],
+        "max_diff": 0
+      }
+    ],
+    "second_pass": {
+      "max_diff": 0,
+      "final_max_diff": 0,
+      "comparisons": [
+        {
+          "type": "vertical",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            1,
+            0
+          ],
+          "max_diff": 0
+        },
+        {
+          "type": "vertical",
+          "a": [
+            0,
+            1
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "max_diff": 0
+        },
+        {
+          "type": "horizontal",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            0,
+            1
+          ],
+          "max_diff": 0
+        },
+        {
+          "type": "horizontal",
+          "a": [
+            1,
+            0
+          ],
+          "b": [
+            1,
+            1
+          ],
+          "max_diff": 0
+        }
+      ]
+    }
+  },
+  "disk_estimate": {
+    "r16_bytes_per_tile": 132098,
+    "r16_gib_per_tile": 0.00012302584946155548,
+    "r16_total_bytes": 528392,
+    "r16_total_gib": 0.0004921033978462219
+  },
+  "elapsed_seconds": 8.1407630443573
+}

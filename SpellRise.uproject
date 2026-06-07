@@ -19,6 +19,13 @@
 			]
 		},
 		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
 			"Name": "ModularGameplay",
 			"Enabled": true
 		},
@@ -177,6 +184,14 @@
 		},
 		{
 			"Name": "MetaHumanRuntime",
+			"Enabled": true
+		},
+		{
+			"Name": "LandscapePatch",
+			"Enabled": true
+		},
+		{
+			"Name": "PCG",
 			"Enabled": true
 		}
 	],

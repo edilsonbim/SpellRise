@@ -32,6 +32,23 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### BUG-2026-06-05-037
+- Date: 2026-06-05
+- Severity: High
+- Status: In Progress
+- Area: Animation / Traversal / Networking
+- Issue: traversal movements do Character deixaram de replicar para outros clients.
+- Reproduction: executar traversal GASP em sessão multiplayer com player, enemy e `ABP_Sandbox`; nenhum caminho replica/apresenta traversal corretamente.
+- Expected: input local dispara intenção no pawn possuído; servidor valida/decide movimento final; apresentação de traversal chega aos demais clients pelo fluxo padrão GASP/CharacterMovement.
+- Actual: falha não está isolada no player Character; também aparece em enemy/base diferente e no `ABP_Sandbox`.
+- Root Cause: em investigação. Causa provável atual é quebra global no caminho `AC_TraversalLogic`/RPC ownership ou no pipeline AnimBP/linked layer compartilhado; logs antigos mostram `No owning connection` para `PerformTraversalAction_Server` em enemy, e logs recentes mostram histórico de falha em `LinkAnimClassLayers`.
+- Fix: pendente. Não alterar estruturalmente o GASP até confirmar o ponto exato; validar primeiro se o componente está chamando RPC Server em ator sem owning connection e se o AnimBP ainda tem slot/layer de traversal válido.
+- Tested On: 2026-06-05
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Animation/Network
+
 ### BUG-2026-05-27-036
 - Date: 2026-05-27
 - Severity: High
@@ -127,10 +144,16 @@
 
 ### BUG-2026-03-28-030
 - Severity: Medium
-- Status: Open
+- Status: Fixed
 - Area: Combat / Chat / Fall Damage
 - Issue: chat de fall damage ainda pode resolver causer/instigator de forma ambígua.
 - Reproduction: sofrer fall damage em multiplayer e comparar mensagem de chat com evento real.
+- Root Cause: fall damage usa o ASC do próprio alvo para aplicar GE server-side, então o `PostGameplayEffectExecute` podia interpretar o alvo como source/causer e gravar combat log/death event como self-caused.
+- Fix: `Data.DamageType.Fall` agora normaliza fonte self/unknown como ambiente; não replica entrada outgoing duplicada no combat log do próprio jogador; death participant de queda não herda `PlayerId` da vítima e a mensagem persistida usa causa explícita de fall damage.
+- Tested On: 2026-06-05
+- Standalone: não validado neste ciclo
+- Listen Server: não validado neste ciclo
+- Dedicated Server: build `SpellRiseEditor Win64 Development` PASS; smoke DS+2 pendente
 - Owner: Combat/Feedback
 
 ### BUG-2026-04-06-035

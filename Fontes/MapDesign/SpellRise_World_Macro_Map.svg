@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1800" viewBox="0 0 2400 1800">
+  <defs>
+    <radialGradient id="sea" cx="50%" cy="45%" r="78%">
+      <stop offset="0%" stop-color="#183848"/>
+      <stop offset="62%" stop-color="#0d2632"/>
+      <stop offset="100%" stop-color="#07141c"/>
+    </radialGradient>
+    <linearGradient id="mainland" x1="15%" y1="8%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#53624a"/>
+      <stop offset="34%" stop-color="#354532"/>
+      <stop offset="66%" stop-color="#594634"/>
+      <stop offset="100%" stop-color="#242d2a"/>
+    </linearGradient>
+    <linearGradient id="northIce" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b9c9ca"/>
+      <stop offset="100%" stop-color="#53666a"/>
+    </linearGradient>
+    <linearGradient id="ash" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6a5d4f"/>
+      <stop offset="100%" stop-color="#251d1a"/>
+    </linearGradient>
+    <linearGradient id="jungle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#315c35"/>
+      <stop offset="100%" stop-color="#122b20"/>
+    </linearGradient>
+    <linearGradient id="desert" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b7650"/>
+      <stop offset="100%" stop-color="#493421"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <style>
+      .title { font: 700 46px Georgia, serif; fill: #eadbc2; letter-spacing: 0; }
+      .subtitle { font: 400 23px Arial, sans-serif; fill: #c6b99f; letter-spacing: 0; }
+      .label { font: 700 24px Arial, sans-serif; fill: #f0dfbf; letter-spacing: 0; }
+      .small { font: 400 18px Arial, sans-serif; fill: #d7c8a9; letter-spacing: 0; }
+      .tiny { font: 400 14px Arial, sans-serif; fill: #c2b397; letter-spacing: 0; }
+      .land { stroke: #241b14; stroke-width: 7; filter: url(#shadow); }
+      .coast { fill: none; stroke: #d6be84; stroke-width: 5; opacity: 0.52; }
+      .mountain { fill: none; stroke: #5d6158; stroke-width: 24; stroke-linecap: round; stroke-linejoin: round; opacity: 0.78; }
+      .river { fill: none; stroke: #245a70; stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.86; }
+      .route { fill: none; stroke: #b69b65; stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; opacity: 0.76; }
+      .seaRoute { fill: none; stroke: #7eb0bd; stroke-width: 8; stroke-linecap: round; stroke-dasharray: 22 18; opacity: 0.72; }
+      .locked { fill: #000000; opacity: 0.28; stroke: #111111; stroke-width: 3; stroke-dasharray: 14 12; }
+      .green { fill: #2b7a42; opacity: 0.34; stroke: #8ee19c; stroke-width: 3; }
+      .yellow { fill: #c7a333; opacity: 0.29; stroke: #e7d275; stroke-width: 3; }
+      .red { fill: #9e352f; opacity: 0.29; stroke: #d06a5e; stroke-width: 3; }
+      .black { fill: #070707; opacity: 0.48; stroke: #b9a170; stroke-width: 3; }
+      .city { fill: #e8d8ad; stroke: #19140f; stroke-width: 5; }
+      .portal { fill: #43a1a7; stroke: #071417; stroke-width: 4; }
+      .note { fill: #151a18; stroke: #695a3d; stroke-width: 2; opacity: 0.95; }
+    </style>
+  </defs>
+
+  <rect width="2400" height="1800" fill="url(#sea)"/>
+
+  <path class="seaRoute" d="M610 430 C420 550 335 760 365 955 C405 1220 620 1390 845 1465"/>
+  <path class="seaRoute" d="M1770 405 C1975 560 2065 790 2020 1015 C1975 1240 1800 1400 1545 1475"/>
+  <path class="seaRoute" d="M965 270 C1115 125 1375 120 1515 290"/>
+  <path class="seaRoute" d="M900 1535 C1065 1685 1370 1695 1535 1515"/>
+
+  <path id="pangea" class="land" fill="url(#mainland)" d="M700 255
+    C820 130 1015 135 1110 190
+    C1260 90 1465 145 1545 285
+    C1725 285 1865 430 1845 610
+    C1995 735 1990 955 1845 1060
+    C1900 1245 1745 1450 1535 1455
+    C1425 1605 1195 1640 1045 1515
+    C875 1575 655 1485 620 1280
+    C435 1225 350 1025 435 850
+    C300 675 390 450 585 420
+    C590 345 630 290 700 255 Z"/>
+  <path class="coast" d="M700 255 C820 130 1015 135 1110 190 C1260 90 1465 145 1545 285 C1725 285 1865 430 1845 610 C1995 735 1990 955 1845 1060 C1900 1245 1745 1450 1535 1455 C1425 1605 1195 1640 1045 1515 C875 1575 655 1485 620 1280 C435 1225 350 1025 435 850 C300 675 390 450 585 420 C590 345 630 290 700 255 Z"/>
+
+  <path class="locked" d="M1220 230 C1395 175 1585 260 1665 420 C1600 565 1490 655 1325 645 C1160 635 1065 530 1065 390 C1085 310 1135 260 1220 230 Z"/>
+  <path class="locked" d="M1555 1040 C1735 1075 1800 1260 1695 1380 C1595 1490 1400 1470 1315 1340 C1235 1215 1365 1030 1555 1040 Z"/>
+  <path class="locked" d="M520 845 C640 760 825 790 890 925 C945 1040 860 1190 720 1225 C560 1265 410 1110 435 960 C445 910 475 875 520 845 Z"/>
+
+  <path class="black" d="M970 685 C1085 560 1280 560 1395 680 C1520 810 1480 1020 1325 1110 C1170 1200 955 1140 895 965 C865 875 895 765 970 685 Z"/>
+  <path class="red" d="M780 540 C980 355 1300 340 1510 530 C1740 740 1715 1120 1480 1325 C1270 1505 900 1495 690 1270 C500 1065 530 765 780 540 Z"/>
+  <path class="yellow" d="M600 410 C835 175 1220 145 1525 330 C1815 505 1910 845 1765 1140 C1615 1445 1265 1610 935 1500 C615 1395 365 1100 425 775 C455 620 515 500 600 410 Z"/>
+
+  <ellipse class="green" cx="760" cy="480" rx="145" ry="115"/>
+  <ellipse class="green" cx="1545" cy="505" rx="145" ry="110"/>
+  <ellipse class="green" cx="735" cy="1265" rx="150" ry="115"/>
+  <ellipse class="green" cx="1540" cy="1235" rx="145" ry="115"/>
+
+  <path class="mountain" d="M790 345 C900 435 985 545 1030 685"/>
+  <path class="mountain" d="M1510 345 C1425 500 1415 645 1490 790"/>
+  <path class="mountain" d="M630 1120 C760 1060 860 1100 940 1210"/>
+  <path class="mountain" d="M1320 1210 C1435 1115 1560 1090 1710 1150"/>
+
+  <path class="river" d="M1105 195 C1090 350 1125 470 1190 590 C1260 720 1265 875 1190 1015 C1125 1140 1070 1300 1090 1510"/>
+  <path class="river" d="M1540 530 C1430 625 1335 700 1240 790 C1130 895 1005 930 875 900 C750 875 600 910 450 990"/>
+
+  <path class="route" d="M760 480 C890 595 980 720 1010 865 C1040 1015 935 1150 735 1265"/>
+  <path class="route" d="M1545 505 C1425 625 1350 755 1320 900 C1290 1045 1375 1160 1540 1235"/>
+  <path class="route" d="M735 1265 C885 1190 1045 1110 1170 1010 C1310 900 1435 760 1545 505"/>
+  <path class="route" d="M760 480 C905 540 1050 610 1170 730 C1295 855 1420 1015 1540 1235"/>
+
+  <circle class="city" cx="760" cy="480" r="32"/>
+  <text x="760" y="420" text-anchor="middle" class="label">Cidade Racial I</text>
+  <text x="760" y="450" text-anchor="middle" class="small">bioma inicial: floresta sombria</text>
+
+  <circle class="city" cx="1545" cy="505" r="32"/>
+  <text x="1545" y="445" text-anchor="middle" class="label">Cidade Racial II</text>
+  <text x="1545" y="475" text-anchor="middle" class="small">montanhas / mineração</text>
+
+  <circle class="city" cx="735" cy="1265" r="32"/>
+  <text x="735" y="1325" text-anchor="middle" class="label">Cidade Racial III</text>
+  <text x="735" y="1355" text-anchor="middle" class="small">pântano / costa baixa</text>
+
+  <circle class="city" cx="1540" cy="1235" r="32"/>
+  <text x="1540" y="1295" text-anchor="middle" class="label">Cidade Racial IV</text>
+  <text x="1540" y="1325" text-anchor="middle" class="small">cinzas / fortalezas</text>
+
+  <circle class="portal" cx="1030" cy="735" r="22"/>
+  <circle class="portal" cx="1370" cy="780" r="22"/>
+  <circle class="portal" cx="1015" cy="1110" r="22"/>
+  <circle class="portal" cx="1315" cy="1115" r="22"/>
+  <text x="1170" y="1245" text-anchor="middle" class="small">Anel de teleportes antigos</text>
+
+  <path class="land" fill="url(#northIce)" d="M705 115 C820 40 1005 55 1095 145 C1160 215 1115 335 990 365 C850 400 675 330 635 220 C620 175 645 140 705 115 Z"/>
+  <path class="land" fill="url(#desert)" d="M1715 210 C1845 130 2045 155 2140 290 C2245 440 2160 620 1995 665 C1830 710 1665 615 1635 455 C1615 345 1640 260 1715 210 Z"/>
+  <path class="land" fill="url(#jungle)" d="M245 1085 C360 990 540 1025 640 1155 C755 1305 690 1505 520 1575 C370 1640 185 1555 140 1390 C105 1260 145 1165 245 1085 Z"/>
+  <path class="land" fill="url(#ash)" d="M1735 1250 C1880 1165 2105 1230 2195 1395 C2275 1545 2165 1700 1975 1710 C1805 1720 1645 1605 1630 1450 C1620 1360 1655 1295 1735 1250 Z"/>
+
+  <circle class="portal" cx="910" cy="245" r="20"/>
+  <circle class="portal" cx="1905" cy="455" r="20"/>
+  <circle class="portal" cx="405" cy="1340" r="20"/>
+  <circle class="portal" cx="1935" cy="1485" r="20"/>
+
+  <text x="865" y="95" text-anchor="middle" class="label">Ilha Boreal</text>
+  <text x="865" y="125" text-anchor="middle" class="small">neve / ruínas antigas</text>
+
+  <text x="1910" y="165" text-anchor="middle" class="label">Ilha das Dunas</text>
+  <text x="1910" y="195" text-anchor="middle" class="small">deserto / tempestades</text>
+
+  <text x="395" y="1640" text-anchor="middle" class="label">Ilha Verde-Negra</text>
+  <text x="395" y="1670" text-anchor="middle" class="small">selva / veneno / madeira rara</text>
+
+  <text x="1940" y="1760" text-anchor="middle" class="label">Ilha das Cinzas</text>
+  <text x="1940" y="1790" text-anchor="middle" class="small">vulcânica / metal raro</text>
+
+  <text x="1190" y="925" text-anchor="middle" class="label">Coração Negro</text>
+  <text x="1190" y="955" text-anchor="middle" class="small">zona preta / full loot sem punição</text>
+
+  <rect x="70" y="60" width="650" height="150" class="note"/>
+  <text x="100" y="115" class="title">SpellRise - Macro Mapa</text>
+  <text x="100" y="155" class="subtitle">Pangeia irregular + 4 ilhas grandes + mar navegável futuro</text>
+
+  <rect x="1770" y="70" width="560" height="315" class="note"/>
+  <text x="1805" y="120" class="label">Zonas de risco</text>
+  <rect x="1805" y="150" width="52" height="30" class="green"/>
+  <text x="1880" y="173" class="small">verde: safe zone racial</text>
+  <rect x="1805" y="195" width="52" height="30" class="yellow"/>
+  <text x="1880" y="218" class="small">amarela: drop parcial da bag</text>
+  <rect x="1805" y="240" width="52" height="30" class="red"/>
+  <text x="1880" y="263" class="small">vermelha: full loot com punição</text>
+  <rect x="1805" y="285" width="52" height="30" class="black"/>
+  <text x="1880" y="308" class="small">preta: full loot sem punição</text>
+  <circle class="portal" cx="1830" cy="350" r="16"/>
+  <text x="1880" y="356" class="small">teleporte antigo / ilha futura</text>
+
+  <rect x="70" y="1470" width="620" height="245" class="note"/>
+  <text x="105" y="1520" class="label">Primeira entrega jogável</text>
+  <text x="105" y="1560" class="small">Começar no noroeste da pangeia.</text>
+  <text x="105" y="1595" class="small">Um bioma: floresta dark fantasy + costa.</text>
+  <text x="105" y="1630" class="small">Uma cidade racial, zona verde e faixa amarela.</text>
+  <text x="105" y="1665" class="small">Resto do mundo existe no macro, mas fica bloqueado.</text>
+
+  <text x="1210" y="1710" text-anchor="middle" class="tiny">Mapa original do SpellRise. Referências usadas como direção: Darkfall Unholy Wars, Mortal Online 2, Game of Thrones e geografia real costeira.</text>
+</svg>

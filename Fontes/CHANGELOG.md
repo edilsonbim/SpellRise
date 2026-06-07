@@ -8,6 +8,7 @@
 
 ### Gameplay / Networking
 - Combat log autoritativo com transporte nativo em C++.
+- Fall damage agora resolve causer/instigator como causa ambiental determinística quando o GE é aplicado pelo ASC do próprio alvo, evitando self-causer em chat/combat log/death event.
 - Combat log owner-only limitado para reduzir burst de replicação: buffer replicado padrão reduzido para 50 entradas, snapshot inicial limitado às 30 últimas e `ForceNetUpdate` rate-limitado em spam de dano.
 - Hardening de RPCs críticos de gameplay e respawn.
 - Bootstrap/auth de Dedicated Server agora registra estado do OnlineSubsystem e falha cedo quando Steam e obrigatorio mas o processo degradou para `NULL`.

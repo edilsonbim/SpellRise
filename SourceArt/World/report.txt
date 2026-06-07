@@ -1,0 +1,39 @@
+
+──────────────────────────────────────────────────────────────────────────────────────────  GAEA BUILD SWARM  2.3.0.1 ──
+
+                                                                                                          
+          Filename:  │ C:/Users/biM/Documents/Unreal Projects/SpellRise/SourceArt/World/hp_teste.terrain  
+    Build Location:  │ C:\Users\biM\Documents\Unreal Projects\SpellRise\SourceArt\World                   
+        Build Type:  │ Standard                                                                           
+  Build Resolution:  │ 1024 × 1024                                                                        
+     Build Profile:  │ None / Last Saved Settings                                                         
+             Nodes:  │ 10 to build                                                                        
+                     │ 01 to export                                                                       
+                                                                                                          
+
+──────────────────────────────────────────────────────────────────────────────────────────  GAEA BUILD SWARM  2.3.0.1 ──
+
+                                                                                                          
+          Filename:  │ C:/Users/biM/Documents/Unreal Projects/SpellRise/SourceArt/World/hp_teste.terrain  
+    Build Location:  │ C:\Users\biM\Documents\Unreal Projects\SpellRise\SourceArt\World                   
+        Build Type:  │ Standard                                                                           
+  Build Resolution:  │ 1024 × 1024                                                                        
+     Build Profile:  │ None / Last Saved Settings                                                         
+             Nodes:  │ 10 to build                                                                        
+                     │ 01 to export                                                                       
+                                                                                                          
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────── Build Report ──
+
+              Build Results                                  Statistics                   
+                                                                                          
+          Result: │ Success                         Canyon │ 0:00:01.059                  
+      Resolution: │ 1024                     MountainRange │ 0:00:01.322                  
+      Node Count: │ 10                                Draw │ 0:00:00.301                  
+      Start Time: │ 06/07/2026 00:01:00             Island │ 0:00:00.347                  
+        End Time: │ 06/07/2026 00:01:04           Distance │ 0:00:00.391                  
+        Duration: │ 00:00:03.8405562                       │                              
+  Non-Build Time: │ 00:00:00.3615561               Fastest │ Height @ 0:00:00.002         
+                                                   Slowest │ MountainRange @ 0:00:01.322  
+                                                                                          
+                                               * nodes that took <100ms are excluded.     
