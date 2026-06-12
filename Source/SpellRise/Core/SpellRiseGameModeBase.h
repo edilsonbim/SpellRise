@@ -66,6 +66,7 @@ private:
 	bool ShouldSkipSaveDuringHandover(const AController* ExitingController) const;
 	FString BuildDevOfflinePersistentId(const FString& Seed) const;
 	FString NormalizeAddressKey(const FString& Address) const;
+	FString NormalizeConnectionAddressKey(const FString& Address) const;
 
 	bool IsNoSteamCommandLineParamPresent() const;
 	bool IsNoSteamTestingModeActive() const;

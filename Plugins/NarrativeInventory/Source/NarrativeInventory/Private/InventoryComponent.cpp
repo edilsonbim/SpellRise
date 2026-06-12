@@ -15,9 +15,14 @@
 
 #define LOCTEXT_NAMESPACE "Inventory"
 DEFINE_LOG_CATEGORY_STATIC(LogNarrativeInventoryLootState, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogNarrativeInventorySecurity, Log, All);
 
 namespace
 {
+	constexpr double InventoryRpcRateLimitWindowSeconds = 0.25;
+	constexpr int32 InventoryRpcRateLimitMaxCountPerWindow = 6;
+	constexpr int32 InventoryRpcMaxQuantity = 1000;
+
 	static bool IsPlayerOwnedInventory(const UNarrativeInventoryComponent* Inventory)
 	{
 		if (!Inventory)
@@ -1040,8 +1045,71 @@ void UNarrativeInventoryComponent::GiveDefaultItems()
 	}
 }
 
+bool UNarrativeInventoryComponent::CheckInventoryServerRpcBudget(const TCHAR* RpcName, const int32 Quantity)
+{
+	if (GetOwnerRole() < ROLE_Authority)
+	{
+		AuditRejectedInventoryServerRpc(RpcName, TEXT("not_authority"));
+		return false;
+	}
+
+	if (Quantity <= 0 || Quantity > InventoryRpcMaxQuantity)
+	{
+		AuditRejectedInventoryServerRpc(
+			RpcName,
+			FString::Printf(TEXT("quantity_out_of_range(quantity=%d max=%d)"), Quantity, InventoryRpcMaxQuantity));
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		AuditRejectedInventoryServerRpc(RpcName, TEXT("missing_world_context"));
+		return false;
+	}
+
+	const double Now = static_cast<double>(World->GetTimeSeconds());
+	if ((Now - InventoryRpcWindowStartServerTimeSeconds) > InventoryRpcRateLimitWindowSeconds)
+	{
+		InventoryRpcWindowStartServerTimeSeconds = Now;
+		InventoryRpcCountInWindow = 0;
+	}
+
+	InventoryRpcCountInWindow += 1;
+	if (InventoryRpcCountInWindow > InventoryRpcRateLimitMaxCountPerWindow)
+	{
+		InventoryRpcRejectCount += 1;
+		AuditRejectedInventoryServerRpc(
+			RpcName,
+			FString::Printf(
+				TEXT("rate_limit_exceeded(window=%.2fs count=%d max=%d)"),
+				InventoryRpcRateLimitWindowSeconds,
+				InventoryRpcCountInWindow,
+				InventoryRpcRateLimitMaxCountPerWindow));
+		return false;
+	}
+
+	return true;
+}
+
+void UNarrativeInventoryComponent::AuditRejectedInventoryServerRpc(const TCHAR* RpcName, const FString& RejectReason) const
+{
+	UE_LOG(
+		LogNarrativeInventorySecurity,
+		Warning,
+		TEXT("[InventoryRpcRejected] Owner=%s Rpc=%s Reason=%s"),
+		*GetNameSafe(GetOwner()),
+		RpcName ? RpcName : TEXT("unknown"),
+		*RejectReason);
+}
+
 void UNarrativeInventoryComponent::ServerRemoveItem_Implementation(class UNarrativeItem* Item)
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerRemoveItem"), 1))
+	{
+		return;
+	}
+
 	if (Item)
 	{
 		RemoveItem(Item);
@@ -1050,6 +1118,11 @@ void UNarrativeInventoryComponent::ServerRemoveItem_Implementation(class UNarrat
 
 void UNarrativeInventoryComponent::ServerConsumeItem_Implementation(class UNarrativeItem* Item, const int32 Quantity)
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerConsumeItem"), Quantity))
+	{
+		return;
+	}
+
 	if (Item)
 	{
 		ConsumeItem(Item, Quantity);
@@ -1058,16 +1131,31 @@ void UNarrativeInventoryComponent::ServerConsumeItem_Implementation(class UNarra
 
 void UNarrativeInventoryComponent::ServerConsumeItemsByClass_Implementation(const TSoftClassPtr<class UNarrativeItem>& ItemClass, int32 Quantity, bool bCheckVisibility)
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerConsumeItemsByClass"), Quantity))
+	{
+		return;
+	}
+
 	ConsumeItemsByClass(ItemClass, Quantity, bCheckVisibility);
 }
 
 void UNarrativeInventoryComponent::ServerUseItem_Implementation(class UNarrativeItem* Item)
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerUseItem"), 1))
+	{
+		return;
+	}
+
 	UseItem(Item);
 }
 
 void UNarrativeInventoryComponent::ServerStopLooting_Implementation()
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerStopLooting"), 1))
+	{
+		return;
+	}
+
 	StopLooting();
 }
 
@@ -1136,6 +1224,11 @@ bool UNarrativeInventoryComponent::RequestLootItem(class UNarrativeItem* ItemToL
 
 void UNarrativeInventoryComponent::ServerRequestLootItem_Implementation(class UNarrativeItem* ItemToLoot, const int32 Quantity)
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerRequestLootItem"), Quantity))
+	{
+		return;
+	}
+
 	FText DummyText;
 	RequestLootItem(ItemToLoot, DummyText, Quantity);
 }
@@ -1188,6 +1281,11 @@ bool UNarrativeInventoryComponent::RequestStoreItem(class UNarrativeItem* ItemTo
 
 void UNarrativeInventoryComponent::ServerRequestStoreItem_Implementation(class UNarrativeItem* ItemToLoot, const int32 Quantity)
 {
+	if (!CheckInventoryServerRpcBudget(TEXT("ServerRequestStoreItem"), Quantity))
+	{
+		return;
+	}
+
 	FText DummyText;
 	RequestStoreItem(ItemToLoot, DummyText, Quantity);
 }

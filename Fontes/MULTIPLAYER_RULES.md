@@ -16,9 +16,10 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 | Sistema | Início | Validação Server | Commit | Replicação | Client Prediction | Risco principal |
 |---|---|---|---|---|---|---|
 | GA Instant/Cast/Channel | Input local -> `SR_ProcessAbilityInput` | `CanActivate/Commit` + tags/cost/cooldown | Servidor | estado de ability + GE/cues | Sim (UX) | desync de confirmação com RTT alto |
+| Ability Hotbar 8+8 | input local -> slot lógico -> `InputTag` | servidor valida alteração de slot, grupo Weapon/Common e rate-limit | GAS ativa ability já concedida | slots `OwnerOnly` no `PlayerState` | só UX/seleção | slot stale após troca de arma ou OnRep fora de ordem |
 | Target Data (spell/projétil) | trace local como intenção | payload/alcance/LOS/ownership | Servidor | resultado autoritativo | Sim (pré-visual) | cliente tentar forçar hit inválido |
 | Projétil | após validação do cast | spawn + trajetória inicial | Servidor | actor replicado + hit no servidor | opcional visual local | hit fantasma por ordem de eventos |
-| Atributos/Recursos | n/a | ExecCalc/MMC/GE no servidor | Servidor | via ASC/AttributeSet | não | trust indevido no cliente |
+| Atributos/Recursos | n/a | ExecCalc/MMC/GE no servidor | Servidor | `Health/MaxHealth` público; `Mana/Stamina/Regen/CarryWeight` `OwnerOnly` | não | trust indevido no cliente |
 | Morte/Loot/Respawn | dano autoritativo | estado de morte + regras de loot | Servidor | tags/estado/atores de loot | só UI | corrida de OnRep e apresentação |
 | Building Mode | input local | contexto/material/range/LOS/RPC rate | Servidor | estado mínimo necessário | opcional ghost local | abuso de RPC/payload |
 | PlayerController runtime | input/UI local | apenas RPCs permitidos | Servidor | somente dados essenciais | não | overflow de replicação |
@@ -42,7 +43,11 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 
 ## Budget de rede (baseline inicial)
 - `PlayerController`: zero payload cosmético replicado.
+- Hotbar de abilities: `PlayerState` owner-only, 16 slots; RPC de edição envia `SlotIndex + InputTag + AbilityClass`, rate-limitado no servidor.
 - RPC crítico de gameplay: máximo recomendado `<= 20/s` por jogador por fluxo.
+- Inventário/loot/use/store: máximo inicial de 6 RPCs por 0,25s por componente e quantity `1..1000`; rejeições devem usar log categorizado.
+- Chat público é apresentação e não deve usar reliable.
+- Death/corpse/equipment visual multicast é apresentação e não deve usar reliable; autoridade vem de GE/tag/estado replicado pelo servidor.
 - Eventos de gameplay server-side: manter rate-limit por tag.
 - Mudança de feature só entra se declarar impacto de tráfego esperado.
 

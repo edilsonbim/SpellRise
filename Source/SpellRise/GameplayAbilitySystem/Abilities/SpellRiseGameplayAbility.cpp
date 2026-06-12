@@ -9,6 +9,7 @@
 #include "TimerManager.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseGameplayAbilityRuntime, Log, All);
@@ -119,6 +120,45 @@ bool USpellRiseGameplayAbility::HasPC() const
 	return Cast<APlayerController>(GetControllerFromActorInfo()) != nullptr;
 }
 
+bool USpellRiseGameplayAbility::AreWeaponRequirementsMet() const
+{
+	return AreWeaponRequirementsMetForActorInfo(CurrentActorInfo);
+}
+
+bool USpellRiseGameplayAbility::AreWeaponRequirementsMetForActorInfo(const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	if (RequiredWeaponTags.IsEmpty() && BlockedWeaponTags.IsEmpty())
+	{
+		return true;
+	}
+
+	const FGameplayAbilityActorInfo* EffectiveActorInfo = ActorInfo;
+	AActor* AvatarActor = EffectiveActorInfo ? EffectiveActorInfo->AvatarActor.Get() : GetAvatarActorFromActorInfo();
+	if (!AvatarActor)
+	{
+		return RequiredWeaponTags.IsEmpty();
+	}
+
+	const USpellRiseWeaponComponent* WeaponComponent = AvatarActor->FindComponentByClass<USpellRiseWeaponComponent>();
+	FGameplayTagContainer EquippedWeaponTags;
+	if (WeaponComponent)
+	{
+		WeaponComponent->GetActiveWeaponTags(EquippedWeaponTags);
+	}
+
+	if (!RequiredWeaponTags.IsEmpty() && !EquippedWeaponTags.HasAll(RequiredWeaponTags))
+	{
+		return false;
+	}
+
+	if (!BlockedWeaponTags.IsEmpty() && EquippedWeaponTags.HasAny(BlockedWeaponTags))
+	{
+		return false;
+	}
+
+	return true;
+}
+
 USpellRiseAbilitySystemComponent* USpellRiseGameplayAbility::GetSpellRiseAbilitySystemComponentFromActorInfo() const
 {
 	return Cast<USpellRiseAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
@@ -178,7 +218,12 @@ bool USpellRiseGameplayAbility::CanActivateAbility(
 	const FGameplayTagContainer* TargetTags,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
-	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	return AreWeaponRequirementsMetForActorInfo(ActorInfo);
 }
 
 void USpellRiseGameplayAbility::ActivateAbility(

@@ -12,6 +12,7 @@
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
@@ -282,6 +283,7 @@ ASpellRisePlayerState::ASpellRisePlayerState()
 	AbilitySystemComponent = CreateDefaultSubobject<USpellRiseAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+	AbilityHotbarComponent = CreateDefaultSubobject<USpellRiseAbilityHotbarComponent>(TEXT("AbilityHotbarComponent"));
 
 	BasicAttributeSet = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));
 	CombatAttributeSet = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributeSet"));

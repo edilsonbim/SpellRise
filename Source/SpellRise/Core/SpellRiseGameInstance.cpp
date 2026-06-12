@@ -4,6 +4,7 @@
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
 #include "OnlineSubsystem.h"
+#include "OnlineAuthInterfaceUtilsSteam.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
@@ -111,6 +112,12 @@ namespace
 			!IsNoSteamTestingModeActive();
 	}
 
+	bool IsSteamAuthEnabled()
+	{
+		FOnlineAuthUtilsSteam SteamAuthUtils;
+		return SteamAuthUtils.IsSteamAuthEnabled();
+	}
+
 	bool ResolveLocalSessionIdentity(
 		const IOnlineSubsystem* OnlineSubsystem,
 		const int32 LocalUserNum,
@@ -157,13 +164,15 @@ void USpellRiseGameInstance::Init()
 	const bool bNoSteamParam = IsNoSteamCommandLineParamPresent();
 	const bool bNoSteamTestingMode = IsNoSteamTestingModeActive();
 	const bool bRequireSteamForDedicatedServer = ShouldRequireSteamForDedicatedServer();
+	const bool bSteamAuthEnabled = IsSteamAuthEnabled();
 
 	UE_LOG(LogSpellRiseGameInstanceRuntime, Log,
-		TEXT("[Auth][Bootstrap] DedicatedServer=%d NoSteamParam=%d NoSteamTestingMode=%d RequireSteamDS=%d Subsystems=%s LocalIdentityValid=%d LocalIdentitySource=%s LocalIdentity=%s"),
+		TEXT("[Auth][Bootstrap] DedicatedServer=%d NoSteamParam=%d NoSteamTestingMode=%d RequireSteamDS=%d SteamAuthEnabled=%d Subsystems=%s LocalIdentityValid=%d LocalIdentitySource=%s LocalIdentity=%s"),
 		IsRunningDedicatedServer() ? 1 : 0,
 		bNoSteamParam ? 1 : 0,
 		bNoSteamTestingMode ? 1 : 0,
 		bRequireSteamForDedicatedServer ? 1 : 0,
+		bSteamAuthEnabled ? 1 : 0,
 		*DescribeOnlineSubsystemState(),
 		bHasLocalSessionIdentity ? 1 : 0,
 		*LocalSessionSource,
@@ -179,6 +188,13 @@ void USpellRiseGameInstance::Init()
 	{
 		UE_LOG(LogSpellRiseGameInstanceRuntime, Fatal,
 			TEXT("[Auth][BootstrapFailure] Reason=steam_required_but_default_subsystem_not_steam Subsystems=%s Hint=fix_steam_runtime_or_launch_with_nosteam_for_dev_only"),
+			*DescribeOnlineSubsystemState());
+	}
+
+	if (bRequireSteamForDedicatedServer && !bSteamAuthEnabled)
+	{
+		UE_LOG(LogSpellRiseGameInstanceRuntime, Fatal,
+			TEXT("[Auth][BootstrapFailure] Reason=steam_auth_packet_handler_disabled Subsystems=%s Hint=enable_OnlineSubsystemSteam.SteamAuthComponentModuleInterface"),
 			*DescribeOnlineSubsystemState());
 	}
 

@@ -254,7 +254,7 @@ void ASpellRiseGameModeBase::PreLogin(const FString& Options, const FString& Add
 		return;
 	}
 
-	const FString AddressKey = NormalizeAddressKey(Address);
+	const FString AddressKey = NormalizeConnectionAddressKey(Address);
 	if (!AddressKey.IsEmpty())
 	{
 		PendingPersistentIdByAddress.Add(AddressKey, PersistentId);
@@ -499,7 +499,7 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdForController(APlayerControll
 		return *ExistingPersistentId;
 	}
 
-	const FString AddressKey = NormalizeAddressKey(PlayerController->GetPlayerNetworkAddress());
+	const FString AddressKey = NormalizeConnectionAddressKey(PlayerController->GetPlayerNetworkAddress());
 	if (const FString* PendingId = PendingPersistentIdByAddress.Find(AddressKey))
 	{
 		return *PendingId;
@@ -541,7 +541,7 @@ void ASpellRiseGameModeBase::RegisterActiveSessionForController(APlayerControlle
 	}
 
 	PersistentIdByController.Add(NewPlayer, PersistentId);
-	PendingPersistentIdByAddress.Remove(NormalizeAddressKey(NewPlayer->GetPlayerNetworkAddress()));
+	PendingPersistentIdByAddress.Remove(NormalizeConnectionAddressKey(NewPlayer->GetPlayerNetworkAddress()));
 
 	if (USpellRisePersistenceSubsystem* Persistence = GetPersistenceSubsystem())
 	{
@@ -674,6 +674,11 @@ FString ASpellRiseGameModeBase::NormalizeAddressKey(const FString& Address) cons
 	}
 
 	return Result.TrimStartAndEnd();
+}
+
+FString ASpellRiseGameModeBase::NormalizeConnectionAddressKey(const FString& Address) const
+{
+	return Address.TrimStartAndEnd().ToLower();
 }
 
 bool ASpellRiseGameModeBase::IsNoSteamCommandLineParamPresent() const

@@ -499,6 +499,8 @@ private:
 	
 	/**Don't call Items.Add() directly, use this function instead, as it handles replication and ownership*/
 	UNarrativeItem* AddItem(TSubclassOf<class UNarrativeItem> ItemClass, const int32 Quantity);
+	bool CheckInventoryServerRpcBudget(const TCHAR* RpcName, int32 Quantity);
+	void AuditRejectedInventoryServerRpc(const TCHAR* RpcName, const FString& RejectReason) const;
 
 	UFUNCTION()
 	void OnRep_Items(const TArray<class UNarrativeItem*>& OldItems);
@@ -511,5 +513,9 @@ private:
 
 	UPROPERTY()
 	int32 ReplicatedItemsKey;
+
+	double InventoryRpcWindowStartServerTimeSeconds = 0.0;
+	int32 InventoryRpcCountInWindow = 0;
+	int32 InventoryRpcRejectCount = 0;
 
 };

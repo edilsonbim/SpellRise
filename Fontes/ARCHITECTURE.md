@@ -14,6 +14,8 @@
 ### Ability System
 - `USpellRiseAbilitySystemComponent` no `PlayerState`.
 - Replication mode: `Mixed`.
+- `USpellRiseAbilityHotbarComponent` vive no `PlayerState` e mapeia 16 slots lógicos (`0-7` Weapon, `8-15` Common) para `InputTag`/classe de ability já concedida.
+- Requisitos de arma ficam em `USpellRiseGameplayAbility` via `RequiredWeaponTags`/`BlockedWeaponTags`; Blueprints de ability não devem implementar checagem estrutural de arma por classe.
 
 ### Attribute Sets
 - `UBasicAttributeSet`
@@ -51,11 +53,13 @@
 
 ## Módulos de runtime relevantes
 - `ASpellRisePlayerController`: input de gameplay e glue local de UX.
+- `USpellRiseAbilityHotbarComponent`: loadout owner-only de hotbar, validado no servidor e consumido pelo input local.
 - `USpellRiseConstructionModeComponent`: isola o building mode no controller.
 - Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
 
 ## Regras estruturais
 - dedicated server deve funcionar sem HUD/widget/câmera;
+- dedicated server não deve forçar tick de AnimBP/bones nem trace visual contínuo quando o fluxo puder ser validado sob demanda pelo servidor;
 - lógica obrigatória de gameplay não deve depender de Blueprint de UI;
 - features novas devem preferir data-driven sobre hardcode quando isso não enfraquecer a arquitetura.
 

@@ -23,6 +23,7 @@ public class SpellRise : ModuleRules
 				"GameplayTags",
 				"GameplayTasks",
 				"GameplayAbilities",
+				"GameplayCameras",
 				"UMG",
 				"Niagara",
 				"ModularGameplay",

@@ -13,6 +13,7 @@ class AController;
 class ASpellRiseCharacterBase;
 class UAbilitySystemComponent;
 class USpellRiseAbilitySystemComponent;
+class UTexture2D;
 
 UENUM(BlueprintType)
 enum class ESpellRiseAbilityCastType : uint8
@@ -39,6 +40,13 @@ enum class ESpellRiseCueTriggerMode : uint8
 	Remove = 2 UMETA(DisplayName="Remove (Persistent)")
 };
 
+UENUM(BlueprintType)
+enum class ESpellRiseAbilitySlotGroup : uint8
+{
+	Weapon = 0 UMETA(DisplayName="Weapon"),
+	Common = 1 UMETA(DisplayName="Common")
+};
+
 UCLASS(Blueprintable, Abstract)
 class SPELLRISE_API USpellRiseGameplayAbility : public UGameplayAbility
 {
@@ -51,8 +59,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	bool ShouldShowInAbilityBar = false;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="UI")
+	FText AbilityDisplayName;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="UI")
+	FText AbilityDescription;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="UI")
+	TObjectPtr<UTexture2D> AbilityIcon = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Hotbar")
+	ESpellRiseAbilitySlotGroup AbilitySlotGroup = ESpellRiseAbilitySlotGroup::Common;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input", meta=(Categories="InputTag"))
 	FGameplayTag AbilityInputTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon", meta=(Categories="Weapon"))
+	FGameplayTagContainer RequiredWeaponTags;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon", meta=(Categories="Weapon"))
+	FGameplayTagContainer BlockedWeaponTags;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
 	ESpellRiseAbilityCastType CastType = ESpellRiseAbilityCastType::Instant;
@@ -129,6 +155,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
 	bool HasPC() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Weapon")
+	bool AreWeaponRequirementsMet() const;
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Ability")
 	USpellRiseAbilitySystemComponent* GetSpellRiseAbilitySystemComponentFromActorInfo() const;
 
@@ -174,6 +203,8 @@ public:
 		bool bWasCancelled) override;
 
 protected:
+	bool AreWeaponRequirementsMetForActorInfo(const FGameplayAbilityActorInfo* ActorInfo) const;
+
 	void StartCastFlow();
 	void FinishCastFlow();
 	void StartChannelFlow();

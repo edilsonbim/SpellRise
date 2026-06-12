@@ -25,6 +25,6 @@ public:
 	void SendCombatToPlayer(ASpellRisePlayerController* TargetPlayerController, const FText& Text, const FText& TimeText);
 
 protected:
-	UFUNCTION(NetMulticast, Reliable)
+	UFUNCTION(NetMulticast, Unreliable)
 	void Multi_ReceivePublicMessage(const FSpellRiseChatMessage& Message);
 };

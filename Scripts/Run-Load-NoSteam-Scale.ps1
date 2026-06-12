@@ -1,6 +1,9 @@
 param(
     [string]$EditorPath = "C:\UnrealSource\UnrealEngine\Engine\Binaries\Win64\UnrealEditor.exe",
     [string]$EditorCmdPath = "",
+    [switch]$UseProjectBinaries,
+    [string]$ServerBinaryPath = "",
+    [string]$ClientBinaryPath = "",
     [string]$Map = "/Game/Maps/Stylized/Stylized",
     [int]$Port = 17777,
     [int]$ServerBootSeconds = 12,
@@ -13,6 +16,16 @@ param(
     [string]$ServerExtraArgs = "",
     [string]$ClientExtraArgs = "",
     [string]$ClientExecCmds = "",
+    [int]$InitialConnectTimeoutSeconds = 60,
+    [int]$ConnectionTimeoutSeconds = 60,
+    [switch]$WithInsightsTrace,
+    [string]$TraceChannels = "cpu,frame,bookmark,log,net",
+    [switch]$WithPerfStats,
+    [switch]$EnableGameplayCameras,
+    [int]$LoadTestMaxPlayers = 100,
+    [int]$MaxLocalClientsWithoutExplicitOverride = 12,
+    [int]$ProcessExitGraceSeconds = 5,
+    [switch]$AllowHighLocalClientCount,
     [switch]$StopOnFirstUnstable
 )
 
@@ -43,9 +56,23 @@ function Stop-IfRunning {
         return
     }
 
+    $processId = $Process.Id
     try {
         if (!$Process.HasExited) {
-            Stop-Process -Id $Process.Id -Force -ErrorAction Stop
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            if ($Process.WaitForExit($ProcessExitGraceSeconds * 1000)) {
+                return
+            }
+        }
+    }
+    catch {
+    }
+
+    try {
+        $taskKill = Join-Path $env:SystemRoot "System32\taskkill.exe"
+        if (Test-Path $taskKill) {
+            $taskKillProcess = Start-Process -FilePath $taskKill -ArgumentList @("/PID", $processId, "/T", "/F") -PassThru -WindowStyle Hidden
+            [void]$taskKillProcess.WaitForExit(5000)
         }
     }
     catch {
@@ -65,9 +92,35 @@ if ([string]::IsNullOrWhiteSpace($EditorCmdPath)) {
     $EditorCmdPath = $EditorPath -replace "UnrealEditor\.exe$", "UnrealEditor-Cmd.exe"
 }
 
-if (!(Test-Path $EditorCmdPath)) {
+if ([string]::IsNullOrWhiteSpace($ServerBinaryPath)) {
+    $ServerBinaryPath = Join-Path $ProjectRoot "Binaries\Win64\SpellRiseServer.exe"
+}
+
+if ([string]::IsNullOrWhiteSpace($ClientBinaryPath)) {
+    $ClientBinaryPath = Join-Path $ProjectRoot "Binaries\Win64\SpellRiseClient.exe"
+}
+
+if (!$UseProjectBinaries.IsPresent -and !(Test-Path $EditorCmdPath)) {
     Write-Error "UnrealEditor-Cmd.exe nao encontrado em: $EditorCmdPath"
     exit 1
+}
+
+if ($UseProjectBinaries.IsPresent -and !(Test-Path $ServerBinaryPath)) {
+    Write-Error "SpellRiseServer.exe nao encontrado em: $ServerBinaryPath"
+    exit 1
+}
+
+if ($UseProjectBinaries.IsPresent -and !(Test-Path $ClientBinaryPath)) {
+    Write-Error "SpellRiseClient.exe nao encontrado em: $ClientBinaryPath"
+    exit 1
+}
+
+if ($UseProjectBinaries.IsPresent) {
+    $serverCookedContent = Join-Path (Split-Path $ServerBinaryPath -Parent) "..\Content\Paks"
+    $clientCookedContent = Join-Path (Split-Path $ClientBinaryPath -Parent) "..\Content\Paks"
+    if (!(Test-Path $serverCookedContent) -or !(Test-Path $clientCookedContent)) {
+        Write-Warning "UseProjectBinaries requer build staged/cooked. Binarios soltos em Binaries\\Win64 podem crashar carregando assets uncooked. Use Scripts\\Build-Cooked-Load-NoSteam.ps1 e passe os caminhos staged."
+    }
 }
 
 if (!(Test-Path $ProjectPath)) {
@@ -79,7 +132,9 @@ if (!(Test-Path $ProjectPath)) {
 $steamAppIdValue = "480"
 $steamAppIdPaths = @(
     (Join-Path (Split-Path $EditorPath -Parent) "steam_appid.txt"),
-    (Join-Path (Split-Path $EditorCmdPath -Parent) "steam_appid.txt")
+    (Join-Path (Split-Path $EditorCmdPath -Parent) "steam_appid.txt"),
+    (Join-Path (Split-Path $ServerBinaryPath -Parent) "steam_appid.txt"),
+    (Join-Path (Split-Path $ClientBinaryPath -Parent) "steam_appid.txt")
 ) | Select-Object -Unique
 
 foreach ($steamAppIdPath in $steamAppIdPaths) {
@@ -87,7 +142,7 @@ foreach ($steamAppIdPath in $steamAppIdPaths) {
 }
 
 $parsedCounts = @()
-foreach ($token in $ClientCounts.Split(',')) {
+foreach ($token in ([regex]::Split($ClientCounts, '[,\s]+'))) {
     $trimmed = $token.Trim()
     if ([string]::IsNullOrWhiteSpace($trimmed)) {
         continue
@@ -112,6 +167,12 @@ if ($parsedCounts.Count -eq 0) {
     exit 1
 }
 
+$maxRequestedClients = ($parsedCounts | Measure-Object -Maximum).Maximum
+if ($maxRequestedClients -gt $MaxLocalClientsWithoutExplicitOverride -and !$AllowHighLocalClientCount.IsPresent) {
+    Write-Error ("ClientCounts solicita {0} clientes locais. Limite seguro padrao={1}. Use -AllowHighLocalClientCount apenas em maquina dedicada/CI ou apos fechar clientes pesados." -f $maxRequestedClients, $MaxLocalClientsWithoutExplicitOverride)
+    exit 1
+}
+
 $stamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $runDir = Join-Path $LogsRoot ("LoadNoSteam\{0}" -f $stamp)
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
@@ -119,6 +180,7 @@ $runDir = (Resolve-Path $runDir).Path
 
 $overallResults = @()
 $overallUnstable = $false
+$netTimeoutArgs = (' -ini:Engine:[/Script/OnlineSubsystemUtils.IpNetDriver]:InitialConnectTimeout={0}.0 -ini:Engine:[/Script/OnlineSubsystemUtils.IpNetDriver]:ConnectionTimeout={1}.0' -f $InitialConnectTimeoutSeconds, $ConnectionTimeoutSeconds)
 
 foreach ($count in $parsedCounts) {
     $roundName = "Round_{0}Clients" -f $count
@@ -127,11 +189,30 @@ foreach ($count in $parsedCounts) {
 
     $serverLog = Join-Path $roundDir "Server.stdout.log"
     $serverErr = Join-Path $roundDir "Server.stderr.log"
+    $serverTrace = Join-Path $roundDir "Server.utrace"
+    $serverMaxPlayers = [math]::Max($LoadTestMaxPlayers, $count)
+    $serverMapUrl = $Map
+    if ($serverMapUrl.Contains("?")) {
+        $serverMapUrl += ("?MaxPlayers={0}" -f $serverMaxPlayers)
+    }
+    else {
+        $serverMapUrl += ("?MaxPlayers={0}" -f $serverMaxPlayers)
+    }
 
     $clientExecCommandList = @()
+    if (!$EnableGameplayCameras.IsPresent) {
+        $clientExecCommandList += "DDCVar.NewGameplayCameraSystem.Enable 0"
+    }
+
+    if ($WithPerfStats.IsPresent) {
+        $clientExecCommandList += "stat net"
+        $clientExecCommandList += "stat game"
+        $clientExecCommandList += "stat abilitysystem"
+    }
+
     if ($WithLagLoss.IsPresent) {
-        $clientExecCommandList += ("Net PktLag={0}" -f $PktLag)
-        $clientExecCommandList += ("Net PktLoss={0}" -f $PktLoss)
+        $clientExecCommandList += ("NetEmulation.PktLag {0}" -f $PktLag)
+        $clientExecCommandList += ("NetEmulation.PktLoss {0}" -f $PktLoss)
     }
 
     if (![string]::IsNullOrWhiteSpace($ClientExecCmds)) {
@@ -149,7 +230,30 @@ foreach ($count in $parsedCounts) {
         $clientExecArg = (' -ExecCmds="{0}"' -f ($clientExecCommandList -join ";"))
     }
 
-    $serverArgs = ('"{0}" {1} -server -unattended -nullrhi -nosplash -stdout -FullStdOutLogOutput -log -nosteam -Port={2} -NetDriverListenPort={2}' -f $ProjectPath, $Map, $Port)
+    $clientLoadCameraArgs = ""
+    if (!$EnableGameplayCameras.IsPresent) {
+        # Clientes sinteticos usam -unattended/-nullrhi; Gameplay Cameras e apresentacao local
+        # e pode gerar ensure/hitch sem validar autoridade, rede ou desempenho do Dedicated Server.
+        $clientLoadCameraArgs = " -DDCVar.NewGameplayCameraSystem.Enable=0 -SpellRiseSkipLocalHUDFlow"
+    }
+
+    $clientNetworkEmulationArgs = ""
+    if ($WithLagLoss.IsPresent) {
+        $clientNetworkEmulationArgs = (" PktLag={0} PktLoss={1}" -f $PktLag, $PktLoss)
+    }
+
+    $serverExe = $EditorCmdPath
+    $serverArgs = ('"{0}" {1} -server -unattended -nullrhi -nosound -nosplash -stdout -FullStdOutLogOutput -log -nosteam -Port={2} -NetDriverListenPort={2}{3}' -f $ProjectPath, $serverMapUrl, $Port, $netTimeoutArgs)
+    if ($UseProjectBinaries.IsPresent) {
+        $serverExe = $ServerBinaryPath
+        $serverArgs = ('{0} -server -unattended -nullrhi -nosound -nosplash -stdout -FullStdOutLogOutput -log -nosteam -Port={1} -NetDriverListenPort={1}{2}' -f $serverMapUrl, $Port, $netTimeoutArgs)
+    }
+    if ($WithInsightsTrace.IsPresent) {
+        $serverArgs += (' -trace="{0}" -tracefile="{1}"' -f $TraceChannels, $serverTrace)
+    }
+    if ($WithPerfStats.IsPresent) {
+        $serverArgs += ' -ExecCmds="stat net;stat game;stat abilitysystem"'
+    }
     if (![string]::IsNullOrWhiteSpace($ServerExtraArgs)) {
         $serverArgs += (" " + $ServerExtraArgs.Trim())
     }
@@ -158,7 +262,7 @@ foreach ($count in $parsedCounts) {
     $clientProcs = @()
 
     try {
-        $serverProc = Start-Process -FilePath $EditorCmdPath -ArgumentList $serverArgs -PassThru -RedirectStandardOutput $serverLog -RedirectStandardError $serverErr
+        $serverProc = Start-Process -FilePath $serverExe -ArgumentList $serverArgs -PassThru -RedirectStandardOutput $serverLog -RedirectStandardError $serverErr
         Start-Sleep -Seconds $ServerBootSeconds
 
         for ($i = 1; $i -le $count; $i++) {
@@ -168,12 +272,18 @@ foreach ($count in $parsedCounts) {
             $winX = (($i - 1) % 4) * 960
             $winY = [math]::Floor(($i - 1) / 4) * 540
 
-            $clientArgs = ('"{0}" 127.0.0.1:{1} -game -unattended -nullrhi -nosplash -stdout -FullStdOutLogOutput -log -nosteam -windowed -ResX=960 -ResY=540 -WinX={2} -WinY={3}{4}' -f $ProjectPath, $Port, $winX, $winY, $clientExecArg)
+            $clientExe = $EditorCmdPath
+            $clientConnectUrl = ('127.0.0.1:{0}?InitialConnectTimeout={1}.0?ConnectionTimeout={2}.0' -f $Port, $InitialConnectTimeoutSeconds, $ConnectionTimeoutSeconds)
+            $clientArgs = ('"{0}" {1} -game -unattended -nullrhi -nosound -nosplash -stdout -FullStdOutLogOutput -log -nosteam -windowed -ResX=960 -ResY=540 -WinX={2} -WinY={3}{4}{5}{6}{7}' -f $ProjectPath, $clientConnectUrl, $winX, $winY, $clientExecArg, $clientLoadCameraArgs, $clientNetworkEmulationArgs, $netTimeoutArgs)
+            if ($UseProjectBinaries.IsPresent) {
+                $clientExe = $ClientBinaryPath
+                $clientArgs = ('{0} -game -unattended -nullrhi -nosound -nosplash -stdout -FullStdOutLogOutput -log -nosteam -windowed -ResX=960 -ResY=540 -WinX={1} -WinY={2}{3}{4}{5}{6}' -f $clientConnectUrl, $winX, $winY, $clientExecArg, $clientLoadCameraArgs, $clientNetworkEmulationArgs, $netTimeoutArgs)
+            }
             if (![string]::IsNullOrWhiteSpace($ClientExtraArgs)) {
                 $clientArgs += (" " + $ClientExtraArgs.Trim())
             }
 
-            $clientProc = Start-Process -FilePath $EditorCmdPath -ArgumentList $clientArgs -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError $clientErr
+            $clientProc = Start-Process -FilePath $clientExe -ArgumentList $clientArgs -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError $clientErr
             $clientProcs += [PSCustomObject]@{
                 Index = $i
                 Process = $clientProc
@@ -207,7 +317,7 @@ foreach ($count in $parsedCounts) {
 
     foreach ($entry in $clientProcs) {
         $joinCount = (Get-MatchCount -Path $entry.Log -Pattern "Welcomed by server") + (Get-MatchCount -Path $entry.Log -Pattern "Join succeeded")
-        $timeoutCount = Get-MatchCount -Path $entry.Log -Pattern "ConnectionTimeout|Connection TIMED OUT"
+        $timeoutCount = Get-MatchCount -Path $entry.Log -Pattern "UNetConnection::Tick: Connection TIMED OUT|FailureType = ConnectionTimeout|Network Failure: .*ConnectionTimeout"
         $preLoginCount = Get-MatchCount -Path $entry.Log -Pattern "PreLogin failure|incompatible_unique_net_id"
         $networkFailureCount = Get-MatchCount -Path $entry.Log -Pattern "NetworkFailure|ConnectionLost|PendingConnectionFailure"
         $ensureCount = Get-MatchCount -Path $entry.Log -Pattern "Handled ensure|Ensure condition failed|Critical error|Fatal error"
@@ -236,12 +346,16 @@ foreach ($count in $parsedCounts) {
         }
     }
 
-    $lagLossApplied = $true
+    $lagLossApplied = $false
     if ($WithLagLoss.IsPresent) {
         $lagLossApplied = $true
         foreach ($entry in $clientProcs) {
-            $lagApplied = (Get-MatchCount -Path $entry.Log -Pattern ("PktLag set to {0}" -f $PktLag)) -gt 0
-            $lossApplied = (Get-MatchCount -Path $entry.Log -Pattern ("PktLoss set to {0}" -f $PktLoss)) -gt 0
+            $lagApplied =
+                (Get-MatchCount -Path $entry.Log -Pattern ("PktLag={0}" -f $PktLag)) -gt 0 -or
+                (Get-MatchCount -Path $entry.Log -Pattern ("NetEmulation\.PktLag {0}" -f $PktLag)) -gt 0
+            $lossApplied =
+                (Get-MatchCount -Path $entry.Log -Pattern ("PktLoss={0}" -f $PktLoss)) -gt 0 -or
+                (Get-MatchCount -Path $entry.Log -Pattern ("NetEmulation\.PktLoss {0}" -f $PktLoss)) -gt 0
             if (!($lagApplied -and $lossApplied)) {
                 $lagLossApplied = $false
                 break
@@ -278,6 +392,8 @@ foreach ($count in $parsedCounts) {
         Unstable = $roundUnstable
         ServerLog = $serverLog
         ServerErr = $serverErr
+        ServerTrace = $(if ($WithInsightsTrace.IsPresent) { $serverTrace } else { "" })
+        ServerMaxPlayers = $serverMaxPlayers
         ClientExecCmds = ($clientExecCommandList -join ";")
         Clients = $clientResults
     }
@@ -301,15 +417,28 @@ $summaryObject = [PSCustomObject]@{
     ProjectPath = $ProjectPath
     EditorPath = $EditorPath
     EditorCmdPath = $EditorCmdPath
+    UseProjectBinaries = $UseProjectBinaries.IsPresent
+    ServerBinaryPath = $ServerBinaryPath
+    ClientBinaryPath = $ClientBinaryPath
     Map = $Map
     Port = $Port
     ServerBootSeconds = $ServerBootSeconds
     ClientJoinGapMs = $ClientJoinGapMs
     RoundDurationSeconds = $RoundDurationSeconds
+    InitialConnectTimeoutSeconds = $InitialConnectTimeoutSeconds
+    ConnectionTimeoutSeconds = $ConnectionTimeoutSeconds
     ClientCounts = $parsedCounts
     WithLagLoss = $WithLagLoss.IsPresent
     PktLag = $PktLag
     PktLoss = $PktLoss
+    WithInsightsTrace = $WithInsightsTrace.IsPresent
+    TraceChannels = $TraceChannels
+    WithPerfStats = $WithPerfStats.IsPresent
+    EnableGameplayCameras = $EnableGameplayCameras.IsPresent
+    LoadTestMaxPlayers = $LoadTestMaxPlayers
+    MaxLocalClientsWithoutExplicitOverride = $MaxLocalClientsWithoutExplicitOverride
+    ProcessExitGraceSeconds = $ProcessExitGraceSeconds
+    AllowHighLocalClientCount = $AllowHighLocalClientCount.IsPresent
     SteamAppIdPaths = $steamAppIdPaths
     OverallUnstable = $overallUnstable
     Rounds = $overallResults
@@ -321,9 +450,16 @@ $txt = @()
 $txt += ("RunDir={0}" -f $runDir)
 $txt += ("ProjectPath={0}" -f $ProjectPath)
 $txt += ("EditorCmdPath={0}" -f $EditorCmdPath)
+$txt += ("UseProjectBinaries={0} ServerBinaryPath={1} ClientBinaryPath={2}" -f $UseProjectBinaries.IsPresent, $ServerBinaryPath, $ClientBinaryPath)
 $txt += ("Map={0} Port={1}" -f $Map, $Port)
 $txt += ("ClientCounts={0}" -f ($parsedCounts -join ","))
+$txt += ("InitialConnectTimeoutSeconds={0} ConnectionTimeoutSeconds={1}" -f $InitialConnectTimeoutSeconds, $ConnectionTimeoutSeconds)
 $txt += ("WithLagLoss={0} PktLag={1} PktLoss={2}" -f $WithLagLoss.IsPresent, $PktLag, $PktLoss)
+$txt += ("WithInsightsTrace={0} TraceChannels={1}" -f $WithInsightsTrace.IsPresent, $TraceChannels)
+$txt += ("WithPerfStats={0}" -f $WithPerfStats.IsPresent)
+$txt += ("EnableGameplayCameras={0}" -f $EnableGameplayCameras.IsPresent)
+$txt += ("LoadTestMaxPlayers={0}" -f $LoadTestMaxPlayers)
+$txt += ("MaxLocalClientsWithoutExplicitOverride={0} ProcessExitGraceSeconds={1} AllowHighLocalClientCount={2}" -f $MaxLocalClientsWithoutExplicitOverride, $ProcessExitGraceSeconds, $AllowHighLocalClientCount.IsPresent)
 $txt += ("OverallUnstable={0}" -f $overallUnstable)
 $txt += ""
 
@@ -335,6 +471,10 @@ foreach ($round in $overallResults) {
     $txt += ("TimeoutSignals={0} PreLoginFailures={1} NetworkFailures={2}" -f $round.TimeoutSignals, $round.PreLoginFailures, $round.NetworkFailures)
     $txt += ("EnsureSignals={0} BitReaderOverflowSignals={1}" -f $round.EnsureSignals, $round.BitReaderOverflowSignals)
     $txt += ("LagLossApplied={0} ClientExecCmds={1}" -f $round.LagLossApplied, $round.ClientExecCmds)
+    if (![string]::IsNullOrWhiteSpace($round.ServerTrace)) {
+        $txt += ("ServerTrace={0}" -f $round.ServerTrace)
+    }
+    $txt += ("ServerMaxPlayers={0}" -f $round.ServerMaxPlayers)
     $txt += ("Unstable={0}" -f $round.Unstable)
     $txt += ""
 }

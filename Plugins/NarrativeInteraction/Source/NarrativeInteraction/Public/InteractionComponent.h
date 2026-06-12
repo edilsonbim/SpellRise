@@ -80,6 +80,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
 	bool bDrawDebugTrace;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction|Performance")
+	bool bRunContinuousInteractionTraceOnDedicatedServer;
+
 protected:
 
 	//Our pawn owner

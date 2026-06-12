@@ -11,6 +11,7 @@
 
 class UAbilitySystemComponent;
 class USpellRiseAbilitySystemComponent;
+class USpellRiseAbilityHotbarComponent;
 class UBasicAttributeSet;
 class UCombatAttributeSet;
 class UResourceAttributeSet;
@@ -32,6 +33,7 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
+	USpellRiseAbilityHotbarComponent* GetAbilityHotbarComponent() const { return AbilityHotbarComponent; }
 
 	UBasicAttributeSet* GetBasicAttributeSet() const { return BasicAttributeSet; }
 	UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributeSet; }
@@ -83,6 +85,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Hotbar", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseAbilityHotbarComponent> AbilityHotbarComponent = nullptr;
 
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))

@@ -32,10 +32,29 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### BUG-2026-06-10-038
+- Date: 2026-06-10
+- Severity: High
+- Status: Open
+- Area: Dedicated Server / Load Test / Login Bootstrap
+- Issue: escala local NoSteam com 32 clientes nao estabiliza; conexoes aceitas entram em timeout durante bootstrap/login antes de formar sessao completa.
+- Reproduction: `Scripts/Run-Load-NoSteam-Scale.ps1 -ClientCounts 32 -ServerBootSeconds 65 -ClientJoinGapMs 2000 -RoundDurationSeconds 90 -InitialConnectTimeoutSeconds 90 -ConnectionTimeoutSeconds 90 -WithPerfStats -StopOnFirstUnstable`.
+- Expected: 32/32 clientes conectados sem timeout, overflow ou failure.
+- Actual: 15/32 clientes conectados; `TimeoutSignals=64`, `BitReaderOverflowSignals=0`; servidor registra `PreLoginAccept` e depois `UNetConnection::Tick: Connection TIMED OUT` em conexoes ainda sem PC/Owner.
+- Root Cause: causa provavel identificada em 2026-06-10: pending id de PreLogin usava chave de IP normalizada sem porta (`127.0.0.1`), fazendo clientes locais sobrescreverem o id uns dos outros antes do registro do controller.
+- Fix: usar chave de conexao com porta para `PendingPersistentIdByAddress`; manter chave sem porta apenas para ban por IP.
+- Tested On: `Saved\Logs\LoadNoSteam\2026-06-10_16-59-51`
+- Additional Evidence: `Saved\Logs\LoadNoSteam\2026-06-10_19-17-57` conectou 16/16 com zero overflow e zero timeout apos timeout via URL, mas clientes locais falharam por OOM/pagefile.
+- Additional Evidence: `Saved\Logs\LoadNoSteam\2026-06-10_19-43-11` mostrou que binarios soltos `Binaries\Win64` sem cook crasham em `FBufferReaderBase::Serialize`/asset registry; carga por binario precisa de build staged/cooked.
+- Standalone: nao aplicavel
+- Listen Server: pendente
+- Dedicated Server: falha em 32 clientes locais; 16 clientes locais estavel sem overflow
+- Owner: Multiplayer/Core
+
 ### BUG-2026-06-05-037
 - Date: 2026-06-05
 - Severity: High
-- Status: In Progress
+- Status: Fixed
 - Area: Animation / Traversal / Networking
 - Issue: traversal movements do Character deixaram de replicar para outros clients.
 - Reproduction: executar traversal GASP em sessão multiplayer com player, enemy e `ABP_Sandbox`; nenhum caminho replica/apresenta traversal corretamente.
@@ -107,14 +126,47 @@
 - Area: Online / Dedicated Server / Steam
 - Issue: DS sobe com `OnlineSubsystem=NULL` e rejeita cliente Steam por `incompatible_unique_net_id`.
 - Reproduction: subir DS em ambiente Steam e observar fallback para `NULL` + `PreLoginFailure`.
-- Root Cause: bootstrap do `GameInstance` permitia continuar silenciosamente com default subsystem degradado para `NULL` antes do gate de `PreLogin`.
-- Fix: adicionada observabilidade `[Auth][Bootstrap]` e fail-fast no Dedicated Server quando Steam e obrigatorio e o default subsystem nao e `STEAM`; `-nosteam` continua permitido apenas no modo de teste configurado.
-- Tested On: 2026-05-27
+- Root Cause: bootstrap do `GameInstance` permitia continuar silenciosamente com default subsystem degradado para `NULL` antes do gate de `PreLogin`; alem disso, o projeto nao habilitava `SteamAuthComponentModuleInterface`, entao o fluxo validava tipo de `UniqueNetId` mas nao autenticava ticket Steam no handshake.
+- Fix: adicionada observabilidade `[Auth][Bootstrap]` e fail-fast no Dedicated Server quando Steam e obrigatorio e o default subsystem nao e `STEAM`; `SteamAuthComponentModuleInterface` habilitado em `PacketHandlerComponents` e bootstrap agora falha cedo quando SteamAuth esta desabilitado; `-nosteam` continua permitido apenas no modo de teste configurado.
+- Tested On: 2026-06-09
 - Standalone: nao aplicavel
 - Listen Server: nao aplicavel
-- Dedicated Server: build pendente; link bloqueado por `UnrealEditor-SpellRise.dll` em uso pelo editor aberto
+- Dedicated Server: build pendente; falta smoke Steam real com cliente empacotado autenticado.
 - Observação: nao marcar `Fixed` ate build/link passar e smoke Steam/NoSteam confirmar o comportamento.
 - Owner: Backend/Online
+
+### BUG-2026-06-10-039
+- Severity: High
+- Status: In Progress
+- Area: Client / Gameplay Cameras / Load Gate
+- Issue: cliente cooked em carga headless dispara ensure de Gameplay Cameras ao possuir personagem.
+- Reproduction: rodar `Scripts\Run-Load-NoSteam-Scale.ps1 -UseProjectBinaries` com build staged/cooked e `ClientCounts=2`; ver `Saved\Logs\LoadNoSteam\2026-06-10_20-07-20\Round_2Clients\Client_1.stdout.log`.
+- Actual: `Ensure condition failed: (FocalLength <= 0 || FieldOfView <= 0) && ...` e mensagem `Can't specify both FocalLength and FieldOfView on a camera pose!`.
+- Expected: cliente headless `-nullrhi` nao deve gerar ensure nem hitch de camera durante gate multiplayer.
+- Root Cause: asset/config de `GameplayCamera`/`CameraRigAsset_2147482084` ainda pode emitir pose invalida com `FocalLength` e `FieldOfView` simultaneamente em carga headless; o problema nao apareceu em `DS+2`, mas reapareceu em escala 12.
+- Fix: assets de camera revisados no Editor; rigs ativos mantidos em `FieldOfView` sem `Lens Parameters/FocalLength`; recook/stage executado. Mitigacao parcial: carga sintetica headless passa a desligar fluxo local de HUD/Gameplay Cameras por flag e desativar componentes de Gameplay Camera no Character, mas o asset ainda e avaliado em alguns clientes.
+- Tested On: 2026-06-10
+- Dedicated Server: PASS em `Saved\Logs\LoadNoSteam\2026-06-10_20-59-26`; `JoinedClients=2/2`, `EnsureSignals=0`, sem `FocalLength/FieldOfView`, sem `FBitReader::SetOverflowed`.
+- Additional Evidence: `Saved\Logs\LoadNoSteam\2026-06-10_21-02-52` conectou 12/12 com zero timeout, zero prelogin failure, zero network failure e zero `FBitReader::SetOverflowed`, mas marcou `OverallUnstable=True` por 8 ensures de camera em clientes.
+- Additional Evidence: `Saved\Logs\LoadNoSteam\2026-06-10_21-38-14` apos build/cook com mitigacao C++ conectou 12/12 com zero timeout, zero prelogin failure, zero network failure e zero `FBitReader::SetOverflowed`, mas ainda marcou `OverallUnstable=True` por 4 ensures de `CameraRigAsset_2147482084`.
+- Additional Evidence: `Saved\Logs\LoadNoSteam\2026-06-11_08-49-18` apos ajuste do `CameraAsset_SandboxCharacter`/`CameraDirector_SandboxCharacter` conectou 12/12, `OverallUnstable=False`, `EnsureSignals=0`, `TimeoutSignals=0`, `PreLoginFailures=0`, `NetworkFailures=0`, `BitReaderOverflowSignals=0`.
+- Additional Evidence: `Saved\Logs\LoadNoSteam\2026-06-11_09-42-59` conectou 16/16, `OverallUnstable=False`, `EnsureSignals=0`, `TimeoutSignals=0`, `PreLoginFailures=0`, `NetworkFailures=0`, `BitReaderOverflowSignals=0`; houve 16 warnings `Both FocalLength and FieldOfView`, sem ensure.
+- Impact: gate `DS+16` cooked ficou limpo para rede/performance; warning visual de pose mista permanece como follow-up nao bloqueante do gate headless.
+- Owner: Client/Camera
+
+### BUG-2026-06-10-040
+- Severity: Medium
+- Status: Fixed
+- Area: Blueprint / Weather Effects / Load Gate
+- Issue: `DLWE_Interaction_C` gera spam de `Accessed None` lendo `Interaction Sound` em cliente cooked.
+- Reproduction: mesmo run `Saved\Logs\LoadNoSteam\2026-06-10_20-07-20`, apos possess de `BP_SpellRiseCharacter`.
+- Actual: warnings repetidos em `/Game/UltraDynamicSky/Blueprints/Weather_Effects/DLWE_Interaction.DLWE_Interaction_C:Make Sound Component`.
+- Expected: Blueprint deve validar nulo ou desativar esse fluxo em headless/load test sem gerar spam de log.
+- Fix: `Interaction Sound` validado no Blueprint pelo Editor.
+- Tested On: 2026-06-10
+- Dedicated Server: PASS em `Saved\Logs\LoadNoSteam\2026-06-10_20-59-26`; busca por `Interaction Sound`, `DLWE_Interaction` e `Accessed None` nao retornou ocorrencias.
+- Impact: log do gate `DS+2` cooked ficou limpo para esses sinais; escala maior ainda pendente.
+- Owner: Client/Blueprint
 
 ### BUG-2026-03-28-031
 - Severity: High

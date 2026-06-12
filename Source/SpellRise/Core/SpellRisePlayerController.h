@@ -7,6 +7,7 @@
 #include "GameplayTagContainer.h"
 #include "TimerManager.h"
 #include "SpellRiseChatTypes.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRisePlayerController.generated.h"
 
 class UInputMappingContext;
@@ -64,6 +65,24 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Talents")
 	UActorComponent* ResolveTalentTreeComponentForUI() const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Hotbar|Input")
+	void SetActiveAbilityHotbarGroup(ESpellRiseAbilityHotbarGroup NewGroup);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Hotbar|Input")
+	void ToggleActiveAbilityHotbarGroup();
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Hotbar|Input")
+	ESpellRiseAbilityHotbarGroup GetActiveAbilityHotbarGroup() const { return ActiveAbilityHotbarGroup; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Hotbar|Input")
+	FText GetAbilityHotbarPhysicalSlotInputText(int32 PhysicalSlotIndex) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Hotbar|Input")
+	void PressAbilityHotbarPhysicalSlot(int32 PhysicalSlotIndex);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Hotbar|Input")
+	void ReleaseAbilityHotbarPhysicalSlot(int32 PhysicalSlotIndex);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|HUD")
 	void BP_OnLocalHUDContextChanged(APawn* NewPawn, APawn* PreviousPawn, FName Source);
@@ -231,6 +250,9 @@ private:
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<APawn> LastSpellRiseControlledPawn;
+
+	UPROPERTY(Transient)
+	ESpellRiseAbilityHotbarGroup ActiveAbilityHotbarGroup = ESpellRiseAbilityHotbarGroup::Weapon;
 
 	UPROPERTY(Transient)
 	TMap<FString, int32> RejectedInventoryRpcCountByReason;

@@ -88,7 +88,7 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="SpellRise|Enemy|Death")
 	void HandleDeath();
 
-	UFUNCTION(NetMulticast, Reliable)
+	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleDeath();
 
 	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="SpellRise|Enemy|Combat")

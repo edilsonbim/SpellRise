@@ -153,10 +153,10 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="SpellRise|Death")
 	void HandleDeath();
 
-	UFUNCTION(NetMulticast, Reliable)
+	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleDeath();
 
-	UFUNCTION(NetMulticast, Reliable)
+	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleCorpseDespawn();
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Catalyst")
@@ -168,7 +168,7 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiOnCatalystProc(int32 CatalystTier);
 
-	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="SpellRise|Equipment")
+	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="SpellRise|Equipment")
 	void MultiRefreshEquipmentVisuals();
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
@@ -295,6 +295,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation", meta=(EditCondition="bTreatVisualOverrideAsPresentationOnly"))
 	bool bEnforceAliveVisualMeshPresentationCollision = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation|Performance")
+	bool bForceAnimationTickOnDedicatedServer = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Animation", meta=(EditCondition="bTreatVisualOverrideAsPresentationOnly"))
 	FName AliveVisualMeshCollisionProfileName = TEXT("CharacterMesh");
@@ -489,6 +492,7 @@ protected:
 	void ValidateAnimationPresentationPolicy() const;
 	void ForceServerAnimTick();
 	void EnsureAnimInstanceInitialized();
+	void RefreshRuntimeTickPolicy();
 	USkeletalMeshComponent* FindCharacterSkeletalMeshComponentByName(FName ComponentName) const;
 	UChildActorComponent* FindCharacterChildActorComponentByName(FName ComponentName) const;
 	USkeletalMeshComponent* ResolveSkeletalMeshFromChildActorComponent(FName ComponentName) const;
@@ -519,7 +523,7 @@ protected:
 	float ServerGameplayEventRateLimitWindowSeconds = 0.25f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|GameplayEvent", meta=(ClampMin="1"))
-	int32 ServerGameplayEventRateLimitMaxCountPerWindow = 10;
+	int32 ServerGameplayEventRateLimitMaxCountPerWindow = 5;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|GameplayEvent", meta=(ClampMin="0.0"))
 	float ServerGameplayEventDefaultMaxAbsMagnitude = 1.0f;

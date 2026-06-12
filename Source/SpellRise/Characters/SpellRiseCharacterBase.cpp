@@ -16,11 +16,14 @@
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameplayCameraComponentBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameplayEffect.h"
 #include "InputMappingContext.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "NavigationMarkerComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -33,6 +36,7 @@
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
@@ -147,6 +151,46 @@ namespace SpellRiseTags
 			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Skill8"));
 			return Tag;
 		}
+		case 8:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common1"), false);
+			return Tag;
+		}
+		case 9:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common2"), false);
+			return Tag;
+		}
+		case 10:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common3"), false);
+			return Tag;
+		}
+		case 11:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common4"), false);
+			return Tag;
+		}
+		case 12:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common5"), false);
+			return Tag;
+		}
+		case 13:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common6"), false);
+			return Tag;
+		}
+		case 14:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common7"), false);
+			return Tag;
+		}
+		case 15:
+		{
+			static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("InputTag.Ability.Common8"), false);
+			return Tag;
+		}
 		default:
 		{
 			static FGameplayTag InvalidTag;
@@ -181,7 +225,7 @@ namespace
 			return true;
 		}
 
-		for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
+		for (int32 SlotIndex = 0; SlotIndex < 16; ++SlotIndex)
 		{
 			if (Tag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
 			{
@@ -197,6 +241,7 @@ namespace
 ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	CatalystComponent = CreateDefaultSubobject<UCatalystComponent>(TEXT("CatalystComponent"));
 	if (CatalystComponent)
@@ -255,6 +300,23 @@ void ASpellRiseCharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (FParse::Param(FCommandLine::Get(), TEXT("SpellRiseSkipLocalHUDFlow")))
+	{
+		TArray<UGameplayCameraComponentBase*> GameplayCameraComponents;
+		GetComponents<UGameplayCameraComponentBase>(GameplayCameraComponents);
+		for (UGameplayCameraComponentBase* GameplayCameraComponent : GameplayCameraComponents)
+		{
+			if (!GameplayCameraComponent)
+			{
+				continue;
+			}
+
+			GameplayCameraComponent->DeactivateCamera(true);
+			GameplayCameraComponent->Deactivate();
+			GameplayCameraComponent->SetComponentTickEnabled(false);
+		}
+	}
+
 	ResetLocalDeathPresentation();
 	SyncDeadStateFromASC(TEXT("BeginPlay"));
 
@@ -271,6 +333,7 @@ void ASpellRiseCharacterBase::BeginPlay()
 	InitASCActorInfo();
 	BindASCDelegates();
 	SetCharacterInputEnabled(!IsDead());
+	RefreshRuntimeTickPolicy();
 
 	TArray<UNavigationMarkerComponent*> NavigationMarkers;
 	GetComponents<UNavigationMarkerComponent>(NavigationMarkers);
@@ -476,6 +539,14 @@ void ASpellRiseCharacterBase::ForceServerAnimTick()
 			continue;
 		}
 
+		if (GetNetMode() == NM_DedicatedServer && !bForceAnimationTickOnDedicatedServer)
+		{
+			MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickMontagesWhenNotRendered;
+			MeshComp->bEnableUpdateRateOptimizations = true;
+			MeshComp->SetComponentTickEnabled(false);
+			continue;
+		}
+
 		MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 		MeshComp->bEnableUpdateRateOptimizations = false;
 		MeshComp->SetComponentTickEnabled(true);
@@ -484,6 +555,11 @@ void ASpellRiseCharacterBase::ForceServerAnimTick()
 
 void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
 {
+	if (GetNetMode() == NM_DedicatedServer && !bForceAnimationTickOnDedicatedServer)
+	{
+		return;
+	}
+
 	TArray<USkeletalMeshComponent*> SkeletalMeshes;
 	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
 
@@ -499,6 +575,12 @@ void ASpellRiseCharacterBase::EnsureAnimInstanceInitialized()
 			MeshComp->InitAnim(true);
 		}
 	}
+}
+
+void ASpellRiseCharacterBase::RefreshRuntimeTickPolicy()
+{
+	const bool bNeedsLocalAbilityInputTick = GetNetMode() != NM_DedicatedServer && IsLocallyControlled() && !IsDead();
+	SetActorTickEnabled(bNeedsLocalAbilityInputTick);
 }
 
 void ASpellRiseCharacterBase::ApplyAnimationPresentationPolicy()
@@ -1111,7 +1193,19 @@ void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 {
 	FGameplayTag NewTag;
 
-	if (SlotIndex >= 0 && SlotIndex < 8)
+	if (ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		if (USpellRiseAbilityHotbarComponent* Hotbar = SpellRisePlayerState->GetAbilityHotbarComponent())
+		{
+			FSpellRiseAbilityHotbarSlot Slot;
+			if (Hotbar->GetSlot(SlotIndex, Slot))
+			{
+				NewTag = Slot.AbilityInputTag;
+			}
+		}
+	}
+
+	if (!NewTag.IsValid() && SlotIndex >= 0 && SlotIndex < 16)
 	{
 		NewTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
 	}
@@ -1142,7 +1236,16 @@ void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
 		return;
 	}
 
-	if (SlotIndex < 0 || SlotIndex >= 8)
+	if (ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		if (USpellRiseAbilityHotbarComponent* Hotbar = SpellRisePlayerState->GetAbilityHotbarComponent())
+		{
+			Hotbar->AbilitySlotPressed(SlotIndex);
+			return;
+		}
+	}
+
+	if (SlotIndex < 0 || SlotIndex >= 16)
 	{
 		return;
 	}
@@ -1166,7 +1269,17 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 		return;
 	}
 
-	if (SlotIndex < 0 || SlotIndex >= 8)
+	if (ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		if (USpellRiseAbilityHotbarComponent* Hotbar = SpellRisePlayerState->GetAbilityHotbarComponent())
+		{
+			Hotbar->AbilitySlotReleased(SlotIndex);
+			ClearSelectedAbility();
+			return;
+		}
+	}
+
+	if (SlotIndex < 0 || SlotIndex >= 16)
 	{
 		return;
 	}
@@ -1400,6 +1513,7 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	SyncDeadStateFromASC(TEXT("PossessedBy"));
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(!IsDead());
+	RefreshRuntimeTickPolicy();
 
 	if (!GetSpellRiseASC())
 	{
@@ -1457,6 +1571,7 @@ void ASpellRiseCharacterBase::OnRep_Controller()
 	SyncDeadStateFromASC(TEXT("OnRep_Controller"));
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(!IsDead());
+	RefreshRuntimeTickPolicy();
 }
 
 void ASpellRiseCharacterBase::OnRep_PlayerState()
@@ -1480,6 +1595,7 @@ void ASpellRiseCharacterBase::OnRep_PlayerState()
 	SyncDeadStateFromASC(TEXT("OnRep_PlayerState"));
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(!IsDead());
+	RefreshRuntimeTickPolicy();
 
 	if (!GetSpellRiseASC())
 	{
@@ -1931,6 +2047,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 
 	GetSpellRiseASC()->CancelAllAbilities();
 	SyncDeadStateFromASC(TEXT("OnHealthChanged"));
+	RefreshRuntimeTickPolicy();
 	ProcessFullLootDrop_Server(GetActorLocation());
 	ScheduleCorpseDespawn_Server();
 	ScheduleRespawn_Server();
@@ -2103,6 +2220,7 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 	bIsDead = false;
 	bFullLootProcessedForCurrentDeath = false;
 	SyncDeadStateFromASC(TEXT("ResetDeathStateAndResources_Server"));
+	RefreshRuntimeTickPolicy();
 
 	const float MaxHealthValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute());
 	const float MaxManaValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxManaAttribute());
@@ -2396,6 +2514,30 @@ bool ASpellRiseCharacterBase::ValidateServerGameplayEventPayload(const FGameplay
 		return false;
 	}
 
+	if (EventData.OptionalObject || EventData.OptionalObject2)
+	{
+		OutRejectReason = TEXT("optional_object_payload_blocked");
+		return false;
+	}
+
+	if (EventData.ContextHandle.IsValid())
+	{
+		OutRejectReason = TEXT("client_context_handle_blocked");
+		return false;
+	}
+
+	if (EventData.TargetData.Num() > 0)
+	{
+		OutRejectReason = TEXT("target_data_not_allowed_on_generic_event_rpc");
+		return false;
+	}
+
+	if (EventData.InstigatorTags.Num() > 0 || EventData.TargetTags.Num() > 0)
+	{
+		OutRejectReason = TEXT("client_tag_container_payload_blocked");
+		return false;
+	}
+
 	const float MaxAbsMagnitude = ResolveMaxAbsServerEventMagnitude(EventData.EventTag);
 	if (MaxAbsMagnitude >= 0.f && FMath::Abs(EventData.EventMagnitude) > MaxAbsMagnitude)
 	{
@@ -2622,6 +2764,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 		}
 
 		SyncDeadStateFromASC(TEXT("OnDeadTagChanged"));
+		RefreshRuntimeTickPolicy();
 		return;
 	}
 
@@ -2631,6 +2774,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 	CombatLockExpireAtServerTimeSeconds = -1.0;
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(true);
+	RefreshRuntimeTickPolicy();
 	if (HasAuthority())
 	{
 		if (UWorld* World = GetWorld())

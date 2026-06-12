@@ -405,6 +405,11 @@ bool ASpellRisePlayerController::CanRunLocalHUDFlow(FString* OutSkipReason) cons
 		return SetSkipReason(TEXT("dedicated_server"));
 	}
 
+	if (FParse::Param(FCommandLine::Get(), TEXT("SpellRiseSkipLocalHUDFlow")))
+	{
+		return SetSkipReason(TEXT("load_test_local_hud_flow_disabled"));
+	}
+
 	if (!IsLocalController())
 	{
 		return SetSkipReason(TEXT("non_local_controller"));
@@ -843,10 +848,23 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 
 	if (IsLocalController())
 	{
-		BP_OnLocalHUDContextChanged(
-			NewPawn,
-			PreviousPawn,
-			SourceLabel ? FName(SourceLabel) : NAME_None);
+		FString LocalHUDFlowSkipReason;
+		if (CanRunLocalHUDFlow(&LocalHUDFlowSkipReason))
+		{
+			BP_OnLocalHUDContextChanged(
+				NewPawn,
+				PreviousPawn,
+				SourceLabel ? FName(SourceLabel) : NAME_None);
+		}
+		else
+		{
+			UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose,
+				TEXT("[HUD][LocalFlowSkipped] Source=%s Reason=%s Controller=%s Pawn=%s"),
+				SourceLabel ? SourceLabel : TEXT("Unknown"),
+				*LocalHUDFlowSkipReason,
+				*GetNameSafe(this),
+				*GetNameSafe(NewPawn));
+		}
 	}
 
 	if (NewPawn)
@@ -1025,10 +1043,21 @@ void ASpellRisePlayerController::HandleAbilitySlotPressed(int32 SlotIndex)
 		return;
 	}
 
+	const int32 LogicalSlotIndex = USpellRiseAbilityHotbarComponent::MakeSlotIndex(ActiveAbilityHotbarGroup, SlotIndex);
+	if (LogicalSlotIndex == INDEX_NONE)
+	{
+		return;
+	}
+
 	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
 	{
-		ControlledCharacter->AbilityWheelInputPressed(SlotIndex);
+		ControlledCharacter->AbilityWheelInputPressed(LogicalSlotIndex);
 	}
+}
+
+void ASpellRisePlayerController::PressAbilityHotbarPhysicalSlot(const int32 PhysicalSlotIndex)
+{
+	HandleAbilitySlotPressed(PhysicalSlotIndex);
 }
 
 void ASpellRisePlayerController::HandleAbilitySlotReleased(int32 SlotIndex)
@@ -1038,10 +1067,112 @@ void ASpellRisePlayerController::HandleAbilitySlotReleased(int32 SlotIndex)
 		return;
 	}
 
+	const int32 LogicalSlotIndex = USpellRiseAbilityHotbarComponent::MakeSlotIndex(ActiveAbilityHotbarGroup, SlotIndex);
+	if (LogicalSlotIndex == INDEX_NONE)
+	{
+		return;
+	}
+
 	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
 	{
-		ControlledCharacter->AbilityWheelInputReleased(SlotIndex);
+		ControlledCharacter->AbilityWheelInputReleased(LogicalSlotIndex);
 	}
+}
+
+void ASpellRisePlayerController::ReleaseAbilityHotbarPhysicalSlot(const int32 PhysicalSlotIndex)
+{
+	HandleAbilitySlotReleased(PhysicalSlotIndex);
+}
+
+void ASpellRisePlayerController::SetActiveAbilityHotbarGroup(const ESpellRiseAbilityHotbarGroup NewGroup)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	ActiveAbilityHotbarGroup = NewGroup;
+
+	if (ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
+	{
+		ControlledCharacter->SR_ClearAbilityInput();
+		ControlledCharacter->ClearSelectedAbility();
+	}
+}
+
+void ASpellRisePlayerController::ToggleActiveAbilityHotbarGroup()
+{
+	const ESpellRiseAbilityHotbarGroup NewGroup = ActiveAbilityHotbarGroup == ESpellRiseAbilityHotbarGroup::Weapon
+		? ESpellRiseAbilityHotbarGroup::Common
+		: ESpellRiseAbilityHotbarGroup::Weapon;
+	SetActiveAbilityHotbarGroup(NewGroup);
+}
+
+FText ASpellRisePlayerController::GetAbilityHotbarPhysicalSlotInputText(const int32 PhysicalSlotIndex) const
+{
+	const UInputAction* AbilityAction = nullptr;
+	switch (PhysicalSlotIndex)
+	{
+	case 0:
+		AbilityAction = IA_Ability1.Get();
+		break;
+	case 1:
+		AbilityAction = IA_Ability2.Get();
+		break;
+	case 2:
+		AbilityAction = IA_Ability3.Get();
+		break;
+	case 3:
+		AbilityAction = IA_Ability4.Get();
+		break;
+	case 4:
+		AbilityAction = IA_Ability5.Get();
+		break;
+	case 5:
+		AbilityAction = IA_Ability6.Get();
+		break;
+	case 6:
+		AbilityAction = IA_Ability7.Get();
+		break;
+	case 7:
+		AbilityAction = IA_Ability8.Get();
+		break;
+	default:
+		break;
+	}
+
+	if (!AbilityAction)
+	{
+		return FText::AsNumber(PhysicalSlotIndex + 1);
+	}
+
+	const UInputMappingContext* ContextsToSearch[] =
+	{
+		IMC_Combat.Get(),
+		IMC_CoreMovement.Get(),
+		IMC_CoreCamera.Get(),
+		IMC_Interaction.Get(),
+		IMC_UI.Get(),
+		IMC_System.Get()
+	};
+
+	for (const UInputMappingContext* Context : ContextsToSearch)
+	{
+		if (!Context)
+		{
+			continue;
+		}
+
+		for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
+		{
+			if (Mapping.Action == AbilityAction && Mapping.Key.IsValid())
+			{
+				return Mapping.Key.GetDisplayName(false);
+			}
+		}
+	}
+
+	return FText::AsNumber(PhysicalSlotIndex + 1);
 }
 
 void ASpellRisePlayerController::OnPrimaryPressed()

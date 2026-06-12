@@ -64,6 +64,12 @@ public:
 	void SR_AbilityInputTagReleased(FGameplayTag InputTag);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
+	void SR_AbilityInputClassPressed(TSubclassOf<UGameplayAbility> AbilityClass);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
+	void SR_AbilityInputClassReleased(TSubclassOf<UGameplayAbility> AbilityClass);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_ProcessAbilityInput(float DeltaTime, bool bGamePaused);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
@@ -98,6 +104,7 @@ protected:
 
 	bool AbilitySpecMatchesInputTag(const FGameplayAbilitySpec& Spec, const FGameplayTag& InputTag) const;
 	void GetAbilitySpecsFromInputTag(const FGameplayTag& InputTag, TArray<FGameplayAbilitySpecHandle>& OutSpecHandles) const;
+	void GetAbilitySpecsFromAbilityClass(TSubclassOf<UGameplayAbility> AbilityClass, TArray<FGameplayAbilitySpecHandle>& OutSpecHandles) const;
 	void RecordAbilityActivationFailure(const FGameplayAbilitySpec& Spec, const FGameplayTagContainer& FailureTags, const TCHAR* Context);
 
 	void MarkSpecInputPressed(FGameplayAbilitySpec& Spec);

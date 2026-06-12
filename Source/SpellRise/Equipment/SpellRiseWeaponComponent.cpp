@@ -355,6 +355,25 @@ ASpellRiseWeaponBase* USpellRiseWeaponComponent::GetEquippedWeaponBase() const
 	return Cast<ASpellRiseWeaponBase>(EquippedWeapon);
 }
 
+void USpellRiseWeaponComponent::GetActiveWeaponTags(FGameplayTagContainer& OutWeaponTags) const
+{
+	OutWeaponTags.Reset();
+
+	const FSpellRiseWeaponSlotState* ActiveSlot = GetActiveSlotState();
+	if (bWeaponDrawn && ActiveSlot && ActiveSlot->WeaponDefinition && ActiveSlot->WeaponDefinition->WeaponTag.IsValid())
+	{
+		OutWeaponTags.AddTag(ActiveSlot->WeaponDefinition->WeaponTag);
+	}
+
+	if (OffHandWeapon.Item
+		&& !OffHandWeapon.bIsSuppressed
+		&& OffHandWeapon.WeaponDefinition
+		&& OffHandWeapon.WeaponDefinition->WeaponTag.IsValid())
+	{
+		OutWeaponTags.AddTag(OffHandWeapon.WeaponDefinition->WeaponTag);
+	}
+}
+
 bool USpellRiseWeaponComponent::GetActiveEquippedWeaponSpawnPointTransform(FTransform& OutTransform) const
 {
 	if (!bWeaponDrawn || !EquippedWeapon)

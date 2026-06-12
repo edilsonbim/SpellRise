@@ -16,12 +16,13 @@ UNarrativeInteractionComponent::UNarrativeInteractionComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = true;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
-	PrimaryComponentTick.bAllowTickOnDedicatedServer = true;
+	PrimaryComponentTick.bAllowTickOnDedicatedServer = false;
 
 	CurrentInteractable = nullptr;
 	LastInteractionCheckTime = 0.f;
 	InteractionCheckDistance = 1000.f;
 	RemainingInteractTime = -999.f;
+	bRunContinuousInteractionTraceOnDedicatedServer = false;
 
 	bInteractHeld = false;
 	SetAutoActivate(true);
@@ -38,6 +39,11 @@ void UNarrativeInteractionComponent::BeginPlay()
 	if (OwningController)
 	{
 		OwningPawn = OwningController->GetPawn();
+	}
+
+	if (GetNetMode() == NM_DedicatedServer && !bRunContinuousInteractionTraceOnDedicatedServer)
+	{
+		SetComponentTickEnabled(false);
 	}
 }
 
@@ -211,6 +217,16 @@ void UNarrativeInteractionComponent::FoundInteractable(UNarrativeInteractableCom
 
 void UNarrativeInteractionComponent::ServerBeginInteract_Implementation()
 {
+	if (GetNetMode() == NM_DedicatedServer && !bRunContinuousInteractionTraceOnDedicatedServer)
+	{
+		if (!OwningPawn && OwningController)
+		{
+			OwningPawn = OwningController->GetPawn();
+		}
+
+		PerformInteractionCheck(0.f);
+	}
+
 	BeginInteract();
 }
 

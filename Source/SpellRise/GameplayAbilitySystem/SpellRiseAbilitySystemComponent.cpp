@@ -292,6 +292,45 @@ void USpellRiseAbilitySystemComponent::SR_AbilityInputTagReleased(FGameplayTag I
 	}
 }
 
+void USpellRiseAbilitySystemComponent::SR_AbilityInputClassPressed(TSubclassOf<UGameplayAbility> AbilityClass)
+{
+	if (!AbilityClass)
+	{
+		return;
+	}
+
+	TArray<FGameplayAbilitySpecHandle> MatchingHandles;
+	GetAbilitySpecsFromAbilityClass(AbilityClass, MatchingHandles);
+
+	for (const FGameplayAbilitySpecHandle& Handle : MatchingHandles)
+	{
+		InputPressedSpecHandles.AddUnique(Handle);
+		InputHeldSpecHandles.AddUnique(Handle);
+	}
+}
+
+void USpellRiseAbilitySystemComponent::SR_AbilityInputClassReleased(TSubclassOf<UGameplayAbility> AbilityClass)
+{
+	if (!AbilityClass)
+	{
+		return;
+	}
+
+	TArray<FGameplayAbilitySpecHandle> MatchingHandles;
+	GetAbilitySpecsFromAbilityClass(AbilityClass, MatchingHandles);
+
+	for (const FGameplayAbilitySpecHandle& Handle : MatchingHandles)
+	{
+		if (!InputHeldSpecHandles.Contains(Handle))
+		{
+			continue;
+		}
+
+		InputReleasedSpecHandles.AddUnique(Handle);
+		InputHeldSpecHandles.Remove(Handle);
+	}
+}
+
 void USpellRiseAbilitySystemComponent::SR_ClearAbilityInput()
 {
 	InputPressedSpecHandles.Reset();
@@ -336,6 +375,26 @@ void USpellRiseAbilitySystemComponent::GetAbilitySpecsFromInputTag(
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
 		if (AbilitySpecMatchesInputTag(Spec, InputTag))
+		{
+			OutSpecHandles.AddUnique(Spec.Handle);
+		}
+	}
+}
+
+void USpellRiseAbilitySystemComponent::GetAbilitySpecsFromAbilityClass(
+	TSubclassOf<UGameplayAbility> AbilityClass,
+	TArray<FGameplayAbilitySpecHandle>& OutSpecHandles) const
+{
+	OutSpecHandles.Reset();
+
+	if (!AbilityClass)
+	{
+		return;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.Ability && Spec.Ability->GetClass() == AbilityClass)
 		{
 			OutSpecHandles.AddUnique(Spec.Handle);
 		}
