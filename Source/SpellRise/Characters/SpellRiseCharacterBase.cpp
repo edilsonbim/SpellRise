@@ -83,6 +83,42 @@ namespace SpellRiseTags
 		return Tag;
 	}
 
+	static const FGameplayTag& Status_Bleeding()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Status.Bleeding"), false);
+		return Tag;
+	}
+
+	static const FGameplayTag& Debuff_ManaRegenPenalty()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Debuff.ManaRegenPenalty"), false);
+		return Tag;
+	}
+
+	static const FGameplayTag& State_Resource_StaminaRegenPaused()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Resource.StaminaRegenPaused"), false);
+		return Tag;
+	}
+
+	static const FGameplayTag& State_Casting()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Casting"), false);
+		return Tag;
+	}
+
+	static const FGameplayTag& State_Drawing()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Drawing"), false);
+		return Tag;
+	}
+
+	static const FGameplayTag& State_Sprinting()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Sprinting"), false);
+		return Tag;
+	}
+
 	static const FGameplayTag& Event_Abilities_Changed()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Event.Abilities.Changed"));
@@ -253,6 +289,12 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 	WeaponComponent = CreateDefaultSubobject<USpellRiseWeaponComponent>(TEXT("WeaponComponent"));
 
 	DeadStateTag = SpellRiseTags::State_Dead();
+	BleedingBlocksRegenTag = SpellRiseTags::Status_Bleeding();
+	ManaRegenPenaltyTag = SpellRiseTags::Debuff_ManaRegenPenalty();
+	StaminaRegenPausedTag = SpellRiseTags::State_Resource_StaminaRegenPaused();
+	StaminaRegenPausedWhileTags.AddTag(SpellRiseTags::State_Casting());
+	StaminaRegenPausedWhileTags.AddTag(SpellRiseTags::State_Drawing());
+	StaminaRegenPausedWhileTags.AddTag(SpellRiseTags::State_Sprinting());
 
 	GetCapsuleComponent()->InitCapsuleSize(35.0f, 90.0f);
 
@@ -355,6 +397,7 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(ASCInitializationRetryTimerHandle);
+		World->GetTimerManager().ClearTimer(ResourceRegenTimerHandle);
 	}
 	UnbindNarrativeInventoryWeightDelegates();
 	ResetLocalDeathPresentation();
@@ -1091,7 +1134,7 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		return;
 	}
 
-	constexpr float Baseline = 0.f;
+	constexpr float Baseline = 20.f;
 
 	float dSTR = 0.f;
 	float dAGI = 0.f;
@@ -1125,10 +1168,6 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 		break;
 	case ESpellRiseArchetype::None:
 	default:
-		dSTR = 10.f;
-		dAGI = 10.f;
-		dINT = 10.f;
-		dWIS = 10.f;
 		break;
 	}
 
@@ -1535,6 +1574,7 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 
 	ApplyRegenStartupEffects();
 	ApplyStartupEffects();
+	StartResourceRegen_Server();
 }
 
 void ASpellRiseCharacterBase::OnRep_Controller()
@@ -2027,6 +2067,7 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 	}
 
 	GetSpellRiseASC()->CancelAllAbilities();
+	StopResourceRegen_Server();
 	SyncDeadStateFromASC(TEXT("OnHealthChanged"));
 	RefreshRuntimeTickPolicy();
 	ProcessFullLootDrop_Server(GetActorLocation());
@@ -2078,6 +2119,8 @@ void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> 
 	{
 		return;
 	}
+
+	GetSpellRiseASC()->RemoveActiveGameplayEffectBySourceEffect(EffectClass, GetSpellRiseASC());
 
 	FGameplayEffectContextHandle Context = GetSpellRiseASC()->MakeEffectContext();
 	Context.AddSourceObject(this);
@@ -2161,6 +2204,108 @@ void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
 	for (const TSubclassOf<UGameplayEffect>& RegenGE : GE_RegenEffects)
 	{
 		ApplyOrRefreshEffect(RegenGE);
+	}
+}
+
+void ASpellRiseCharacterBase::StartResourceRegen_Server()
+{
+	if (!HasAuthority() || IsDead() || !GetSpellRiseASC())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float TickInterval = FMath::Max(0.1f, ResourceRegenTickIntervalSeconds);
+	World->GetTimerManager().SetTimer(
+		ResourceRegenTimerHandle,
+		this,
+		&ASpellRiseCharacterBase::ApplyResourceRegenTick_Server,
+		TickInterval,
+		true,
+		TickInterval);
+}
+
+void ASpellRiseCharacterBase::StopResourceRegen_Server()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ResourceRegenTimerHandle);
+	}
+}
+
+void ASpellRiseCharacterBase::ApplyResourceRegenTick_Server()
+{
+	USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC();
+	if (!HasAuthority() || !ASC || IsDead())
+	{
+		StopResourceRegen_Server();
+		return;
+	}
+
+	const float TickInterval = FMath::Max(0.1f, ResourceRegenTickIntervalSeconds);
+	const bool bInCombat = IsCombatLockActive_Server();
+	const bool bBleedingBlocksRegen = BleedingBlocksRegenTag.IsValid() && ASC->HasMatchingGameplayTag(BleedingBlocksRegenTag);
+	const bool bManaRegenPenalized = ManaRegenPenaltyTag.IsValid() && ASC->HasMatchingGameplayTag(ManaRegenPenaltyTag);
+	const bool bStaminaRegenPaused = (StaminaRegenPausedTag.IsValid() && ASC->HasMatchingGameplayTag(StaminaRegenPausedTag))
+		|| (StaminaRegenPausedWhileTags.Num() > 0 && ASC->HasAnyMatchingGameplayTags(StaminaRegenPausedWhileTags));
+
+	const auto ApplyRegen = [ASC, TickInterval](const FGameplayAttribute& ResourceAttribute, const FGameplayAttribute& MaxResourceAttribute, const FGameplayAttribute& RegenAttribute, float RegenMultiplier)
+	{
+		RegenMultiplier = FMath::Clamp(RegenMultiplier, 0.f, 1.f);
+		if (RegenMultiplier <= 0.f)
+		{
+			return;
+		}
+
+		const float CurrentValue = ASC->GetNumericAttribute(ResourceAttribute);
+		const float MaxValue = ASC->GetNumericAttribute(MaxResourceAttribute);
+		const float RegenPerSecond = ASC->GetNumericAttribute(RegenAttribute) * RegenMultiplier;
+
+		if (MaxValue <= 0.f || CurrentValue >= MaxValue || RegenPerSecond <= 0.f)
+		{
+			return;
+		}
+
+		const float RegenDelta = FMath::Min(RegenPerSecond * TickInterval, MaxValue - CurrentValue);
+		if (RegenDelta > 0.f)
+		{
+			ASC->ApplyModToAttributeUnsafe(ResourceAttribute, EGameplayModOp::Additive, RegenDelta);
+		}
+	};
+
+	if (!bBleedingBlocksRegen)
+	{
+		ApplyRegen(
+			UResourceAttributeSet::GetHealthAttribute(),
+			UResourceAttributeSet::GetMaxHealthAttribute(),
+			UResourceAttributeSet::GetHealthRegenAttribute(),
+			bInCombat ? CombatHealthRegenMultiplier : 1.f);
+	}
+
+	float ManaMultiplier = bInCombat ? CombatManaRegenMultiplier : 1.f;
+	if (bManaRegenPenalized)
+	{
+		ManaMultiplier *= ManaRegenDebuffMultiplier;
+	}
+
+	ApplyRegen(
+		UResourceAttributeSet::GetManaAttribute(),
+		UResourceAttributeSet::GetMaxManaAttribute(),
+		UResourceAttributeSet::GetManaRegenAttribute(),
+		ManaMultiplier);
+
+	if (!bStaminaRegenPaused)
+	{
+		ApplyRegen(
+			UResourceAttributeSet::GetStaminaAttribute(),
+			UResourceAttributeSet::GetMaxStaminaAttribute(),
+			UResourceAttributeSet::GetStaminaRegenAttribute(),
+			bInCombat ? CombatStaminaRegenMultiplier : 1.f);
 	}
 }
 
@@ -2561,6 +2706,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 
 		if (HasAuthority())
 		{
+			StopResourceRegen_Server();
 			MultiHandleDeath();
 			ProcessFullLootDrop_Server(GetActorLocation());
 			ScheduleCorpseDespawn_Server();
@@ -2591,6 +2737,7 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 			World->GetTimerManager().ClearTimer(CorpseDespawnTimerHandle);
 		}
 		ApplyRegenStartupEffects();
+		StartResourceRegen_Server();
 	}
 }
 
@@ -3095,7 +3242,6 @@ void ASpellRiseCharacterBase::ConfigureDeathRagdoll(USkeletalMeshComponent* Visu
 		AnimInstance->StopAllMontages(0.08f);
 	}
 
-	VisualMesh->SetVisibility(true, true);
 	VisualMesh->SetEnableGravity(true);
 
 	if (!DeathRagdollCollisionProfileName.IsNone())
@@ -3110,8 +3256,14 @@ void ASpellRiseCharacterBase::ConfigureDeathRagdoll(USkeletalMeshComponent* Visu
 	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	VisualMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 	VisualMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	VisualMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+	VisualMesh->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
 	VisualMesh->SetGenerateOverlapEvents(false);
 	VisualMesh->SetNotifyRigidBodyCollision(false);
+	VisualMesh->bBlendPhysics = true;
 	VisualMesh->SetAllBodiesSimulatePhysics(true);
 	VisualMesh->SetSimulatePhysics(true);
 	VisualMesh->SetAllBodiesPhysicsBlendWeight(1.0f);

@@ -1048,6 +1048,7 @@ void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
 		StartupGrantedAbilityHandles.Reset();
 	}
 
+	Movement->StopMovementImmediately();
 	Movement->DisableMovement();
 	Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Capsule->SetGenerateOverlapEvents(false);
@@ -1059,22 +1060,38 @@ void ASpellRiseEnemyCharacterBase::HandleDeath_Implementation()
 			AnimInstance->StopAllMontages(0.08f);
 		}
 
-		VisualMesh->SetVisibility(true, true);
 		VisualMesh->SetEnableGravity(true);
 		VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		VisualMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
 		VisualMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+		VisualMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+		VisualMesh->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+		VisualMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		VisualMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+		VisualMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+		VisualMesh->SetGenerateOverlapEvents(false);
+		VisualMesh->SetNotifyRigidBodyCollision(false);
+		VisualMesh->bBlendPhysics = true;
 		VisualMesh->SetAllBodiesSimulatePhysics(true);
 		VisualMesh->SetSimulatePhysics(true);
 		VisualMesh->SetAllBodiesPhysicsBlendWeight(1.0f);
 		VisualMesh->WakeAllRigidBodies();
 
-		const FVector DeathImpulse = (-GetActorForwardVector() * 6000.0f)
+		FVector DeathImpulse = (-GetActorForwardVector() * 6000.0f)
 			+ (FVector::UpVector * 3000.0f)
 			+ (PreDeathVelocity * 25.0f);
+		DeathImpulse = DeathImpulse.GetClampedToMaxSize(12000.0f);
+
 		if (!DeathImpulse.IsNearlyZero())
 		{
-			VisualMesh->AddImpulseAtLocation(DeathImpulse, VisualMesh->Bounds.Origin);
+			FVector ImpulseLocation = VisualMesh->Bounds.Origin;
+			static const FName PelvisBoneName(TEXT("pelvis"));
+			if (VisualMesh->GetBoneIndex(PelvisBoneName) != INDEX_NONE)
+			{
+				ImpulseLocation = VisualMesh->GetBoneLocation(PelvisBoneName);
+			}
+
+			VisualMesh->AddImpulseAtLocation(DeathImpulse, ImpulseLocation);
 		}
 	}
 

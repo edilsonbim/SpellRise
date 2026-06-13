@@ -246,6 +246,33 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
 	TArray<TSubclassOf<UGameplayEffect>> GE_RegenEffects;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen", meta=(ClampMin="0.1"))
+	float ResourceRegenTickIntervalSeconds = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float CombatHealthRegenMultiplier = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float CombatManaRegenMultiplier = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float CombatStaminaRegenMultiplier = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float ManaRegenDebuffMultiplier = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
+	FGameplayTag BleedingBlocksRegenTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
+	FGameplayTag ManaRegenPenaltyTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
+	FGameplayTag StaminaRegenPausedTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|GAS|Regen")
+	FGameplayTagContainer StaminaRegenPausedWhileTags;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Character|Mesh")
 	FName VisualMeshComponentName = TEXT("VisualOverride");
 
@@ -381,6 +408,7 @@ public:
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
 	FTimerHandle ASCInitializationRetryTimerHandle;
+	FTimerHandle ResourceRegenTimerHandle;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS")
 	bool bASCDelegatesBound = false;
@@ -433,6 +461,9 @@ protected:
 	void OnNarrativeInventoryUpdatedForWeight();
 	void ApplyRegenStartupEffects();
 	void ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass);
+	void StartResourceRegen_Server();
+	void StopResourceRegen_Server();
+	void ApplyResourceRegenTick_Server();
 	void SetCharacterInputEnabled(bool bEnabled);
 	void ScheduleRespawn_Server();
 	void ExecuteRespawn_Server();

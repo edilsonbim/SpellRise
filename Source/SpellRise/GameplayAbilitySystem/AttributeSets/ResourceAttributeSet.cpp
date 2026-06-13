@@ -776,9 +776,9 @@ UResourceAttributeSet::UResourceAttributeSet()
 	Stamina = 180.f;
 	MaxStamina = 180.f;
 
-	HealthRegen = 1.f;
-	ManaRegen = 1.f;
-	StaminaRegen = 1.f;
+	HealthRegen = 0.f;
+	ManaRegen = 0.f;
+	StaminaRegen = 0.f;
 
 	Damage = 0.f;
 }
