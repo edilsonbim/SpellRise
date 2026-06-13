@@ -407,7 +407,9 @@ bool USpellRiseAbilityHotbarComponent::GetSlotViewData(
 
 	if (OutViewData.DisplayName.IsEmpty())
 	{
-		OutViewData.DisplayName = LoadedAbilityClass->GetDisplayNameText();
+		FString AbilityClassName = LoadedAbilityClass->GetName();
+		AbilityClassName.RemoveFromEnd(TEXT("_C"));
+		OutViewData.DisplayName = FText::FromString(FName::NameToDisplayString(AbilityClassName, false));
 	}
 
 	SpellRiseAbilityHotbarPrivate::CaptureAbilityRuntimeState(
