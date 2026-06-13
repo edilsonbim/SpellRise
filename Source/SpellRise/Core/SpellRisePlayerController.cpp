@@ -17,6 +17,8 @@
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
+#include "InventoryComponent.h"
+#include "InventoryFunctionLibrary.h"
 #include "InteractionComponent.h"
 #include "Misc/DateTime.h"
 #include "Misc/CommandLine.h"
@@ -1287,8 +1289,74 @@ UNarrativeInteractionComponent* ASpellRisePlayerController::ResolveNarrativeInte
 	return nullptr;
 }
 
+UNarrativeInventoryComponent* ASpellRisePlayerController::ResolveNarrativeInventoryComponentForUI() const
+{
+	if (AActor* PlayerStateActor = GetPlayerState<APlayerState>())
+	{
+		if (UNarrativeInventoryComponent* PlayerStateInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(PlayerStateActor))
+		{
+			return PlayerStateInventory;
+		}
+	}
+
+	if (APawn* ControlledPawn = GetPawn())
+	{
+		if (UNarrativeInventoryComponent* PawnInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(ControlledPawn))
+		{
+			return PawnInventory;
+		}
+	}
+
+	return UInventoryFunctionLibrary::GetInventoryComponentFromTarget(const_cast<ASpellRisePlayerController*>(this));
+}
+
+bool ASpellRisePlayerController::TryStopLootingFromUIInput(const FName Source)
+{
+	if (!IsLocalController() || GetNetMode() == NM_DedicatedServer)
+	{
+		return false;
+	}
+
+	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponentForUI();
+	if (!Inventory)
+	{
+		return false;
+	}
+
+	static const FObjectProperty* LootSourceProperty = FindFProperty<FObjectProperty>(
+		UNarrativeInventoryComponent::StaticClass(),
+		TEXT("LootSource"));
+	if (!LootSourceProperty)
+	{
+		return false;
+	}
+
+	UObject* LootSourceObject = LootSourceProperty->GetObjectPropertyValue_InContainer(Inventory);
+	if (!LootSourceObject)
+	{
+		return false;
+	}
+
+	Inventory->RequestStopLootingFromUI();
+	RestoreGameplayInputAfterUI(Source);
+
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+		TEXT("[InventoryUI][StopLooting] Source=%s Controller=%s Inventory=%s LootSource=%s"),
+		*Source.ToString(),
+		*GetNameSafe(this),
+		*GetNameSafe(Inventory),
+		*GetNameSafe(LootSourceObject));
+
+	return true;
+}
+
 void ASpellRisePlayerController::OnClearSelectionPressed()
 {
+	if (TryStopLootingFromUIInput(TEXT("ClearSelection")))
+	{
+		return;
+	}
+
 	if (IsGameplayInputBlocked())
 	{
 		return;

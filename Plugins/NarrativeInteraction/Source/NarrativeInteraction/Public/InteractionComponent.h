@@ -56,6 +56,8 @@ protected:
 
 	void CouldntFindInteractable();
 	void FoundInteractable(UNarrativeInteractableComponent* Interactable);
+	void CompleteCurrentInteraction();
+	void RestoreDedicatedServerIdleTickState();
 
 	 UFUNCTION(Server, Reliable)
 	void ServerBeginInteract();

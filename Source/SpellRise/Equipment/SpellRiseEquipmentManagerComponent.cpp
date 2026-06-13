@@ -19,6 +19,7 @@
 #include "NarrativeItem.h"
 #include "TimerManager.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentInstance.h"
 #include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
@@ -2531,10 +2532,11 @@ void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippab
 	}
 
 	ASpellRiseCharacterBase* CharacterOwner = Cast<ASpellRiseCharacterBase>(GetOwner());
-	if (!CharacterOwner)
+	ASpellRisePlayerState* OwnerPlayerState = CharacterOwner ? CharacterOwner->GetPlayerState<ASpellRisePlayerState>() : nullptr;
+	if (!CharacterOwner || !OwnerPlayerState)
 	{
 		UE_LOG(LogSpellRiseEquipmentTrace, Warning,
-			TEXT("ApplyGrantedAbilitiesForSlot abortado: owner nao e ASpellRiseCharacterBase. Owner=%s Item=%s SlotValue=%d"),
+			TEXT("ApplyGrantedAbilitiesForSlot abortado: owner sem Character/PlayerState. Owner=%s Item=%s SlotValue=%d"),
 			*GetNameSafe(GetOwner()),
 			*GetNameSafe(Item),
 			SlotValue);
@@ -2549,7 +2551,7 @@ void USpellRiseEquipmentManagerComponent::ApplyGrantedAbilitiesForSlot(UEquippab
 	UObject* AbilitySourceObject = SourceInstance ? static_cast<UObject*>(SourceInstance) : static_cast<UObject*>(Item);
 	if (bHasAbilitiesToGrant)
 	{
-		const TArray<FGameplayAbilitySpecHandle> Handles = CharacterOwner->GrantAbilitiesFromSource(AbilitiesToGrant, AbilitySourceObject, true);
+		const TArray<FGameplayAbilitySpecHandle> Handles = OwnerPlayerState->GrantAbilitiesFromSource(AbilitiesToGrant, AbilitySourceObject, 1, true);
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("ApplyGrantedAbilitiesForSlot abilities aplicadas. Owner=%s Item=%s SlotValue=%d Source=%s Requested=%d Granted=%d"),
 			*GetNameSafe(GetOwner()),
@@ -2684,7 +2686,10 @@ void USpellRiseEquipmentManagerComponent::RemoveGrantedAbilitiesForSlot(uint8 Sl
 
 	if (HandlesToRemove.Num() > 0)
 	{
-		CharacterOwner->RemoveAbilities(HandlesToRemove);
+		if (ASpellRisePlayerState* OwnerPlayerState = CharacterOwner->GetPlayerState<ASpellRisePlayerState>())
+		{
+			OwnerPlayerState->RemoveAbilities(HandlesToRemove);
+		}
 		UE_LOG(LogSpellRiseEquipmentTrace, Log,
 			TEXT("RemoveGrantedAbilitiesForSlot abilities removidas. Owner=%s SlotValue=%d Count=%d"),
 			*GetNameSafe(GetOwner()),

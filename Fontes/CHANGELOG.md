@@ -7,6 +7,11 @@
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Movido o contrato de grant/remove/evento de abilities de player para `ASpellRisePlayerState`, mantendo o `Character` apenas como avatar do ASC.
+- Grants persistentes/startup passam a usar source estável no `PlayerState`; grants de equipamento continuam usando item/instância como source.
+- Inventario de player movido para `ASpellRisePlayerState`; resolucao de inventario para pawn/controller passa a priorizar o `PlayerState`, e full loot/persistencia/UI deixam de coletar inventario do `Character` como fonte de verdade.
+- Interacao Narrative instantanea em Dedicated Server passa a completar no proprio `BeginInteract` apos trace/`CanInteract` server-side; hold-interact reativa tick no DS apenas enquanto necessario. Corrige containers/loot que nao abriam porque `SetLootSource` nunca era executado no ramo autoritativo.
+- `UInventoryWidget` passa a capturar foco de teclado, tratar ESC nativamente, chamar `StopLooting` no inventario do owning player e restaurar input `GameOnly` ao fechar inventory/loot; `ASpellRisePlayerController` tambem fecha looting via ESC/clear antes do bloqueio de gameplay, cobrindo BP/widget sem foco confiavel.
 - Auditoria P0 de performance DS 100: tick local do `CharacterBase` passa a ligar somente para pawn local vivo; Dedicated Server não força refresh de bones/AnimBP por padrão; trace contínuo do `NarrativeInteractionComponent` foi desativado no DS com validação sob demanda no RPC de interação.
 - Chat público deixa de usar multicast reliable; RPC genérico de gameplay event passa a rejeitar target data, objetos opcionais, context handle e tag containers enviados pelo cliente.
 - Multicasts visuais de morte, corpse despawn e refresh visual de equipment deixam de usar reliable; a decisão autoritativa continua em GE/tag/estado do servidor.

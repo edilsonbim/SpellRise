@@ -9,6 +9,7 @@
 #include "GameplayEffectTypes.h"
 #include "GameplayTagContainer.h"
 #include "SpellRise/Components/FallDamageComponent.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityGrantTypes.h"
 
 class UInputMappingContext;
 class UInputAction;
@@ -51,21 +52,6 @@ enum class ESpellRiseAnimationRuntimeStandard : uint8
 	GameAnimationSampleMannyQuinn UMETA(DisplayName="Game Animation Sample / UE5 Manny-Quinn"),
 	MetaHumanVisualOverride UMETA(DisplayName="MetaHuman VisualOverride"),
 	UEFNRetargetedSource UMETA(DisplayName="UEFN Retargeted Source")
-};
-
-USTRUCT(BlueprintType)
-struct FSpellRiseGrantedAbility
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(AllowedClasses="/Script/GameplayAbilities.GameplayAbility", DisplayName="Ability"))
-	TSoftClassPtr<UGameplayAbility> AbilityClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant", meta=(Categories="InputTag"))
-	FGameplayTag InputTag;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="SpellRise|GAS|Grant")
-	bool bAutoActivateIfNoInputTag = false;
 };
 
 USTRUCT()
@@ -112,27 +98,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS|Input")
 	void SR_ClearAbilityInput();
-
-	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel = 1);
-
-	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS", meta=(DisplayName="Grant Ability"))
-	FGameplayAbilitySpecHandle GrantAbility(
-		TSoftClassPtr<UGameplayAbility> AbilityClass,
-		UPARAM(meta=(ClampMin="1")) int32 AbilityLevel,
-		UPARAM(meta=(Categories="InputTag")) FGameplayTag InputTag,
-		bool bAutoActivateIfNoInputTag);
-
-	TArray<FGameplayAbilitySpecHandle> GrantAbilitiesFromSource(
-		const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
-		UObject* SourceObject,
-		bool bAllowDuplicateAbilityClassesForDifferentSources = true);
-
-	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
-
-	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
-	void SendAbilitiesChangedEvent();
 
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|GAS")
 	void ServerSendGameplayEventToSelf(const FGameplayEventData& EventData);
@@ -416,9 +381,6 @@ public:
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
 	FTimerHandle ASCInitializationRetryTimerHandle;
-
-	UPROPERTY(Transient)
-	TArray<FGameplayAbilitySpecHandle> StartupGrantedAbilityHandles;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|GAS")
 	bool bASCDelegatesBound = false;

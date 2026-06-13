@@ -1528,23 +1528,9 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	ResetDeathStateAndResources_Server();
 	ApplyArchetypeToPrimaries_Server();
 
-	static const FName StartupGrantedTagName(TEXT("SpellRise.StartupAbilitiesGranted"));
-	const bool bAlreadyGranted = Tags.Contains(StartupGrantedTagName);
-
-	if (!bAlreadyGranted)
+	if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
 	{
-		const TArray<FGameplayAbilitySpecHandle> GrantedHandles = GrantAbilities(StartingAbilities);
-		for (const FGameplayAbilitySpecHandle& Handle : GrantedHandles)
-		{
-			if (Handle.IsValid())
-			{
-				StartupGrantedAbilityHandles.AddUnique(Handle);
-			}
-		}
-		Tags.AddUnique(StartupGrantedTagName);
-	}
-	else
-	{
+		SRPlayerState->GrantAbilities(StartingAbilities);
 	}
 
 	ApplyRegenStartupEffects();
@@ -1733,11 +1719,6 @@ bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
 
 UNarrativeInventoryComponent* ASpellRiseCharacterBase::ResolveNarrativeInventoryComponent() const
 {
-	if (UNarrativeInventoryComponent* Inventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(const_cast<ASpellRiseCharacterBase*>(this)))
-	{
-		return Inventory;
-	}
-
 	if (APlayerState* OwningPlayerState = GetPlayerState())
 	{
 		return UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwningPlayerState);
@@ -2230,179 +2211,6 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), FMath::Max(0.f, MaxManaValue));
 	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaAttribute(), FMath::Max(0.f, MaxStaminaValue));
 
-}
-
-TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel)
-{
-	if (!GetSpellRiseASC() || !HasAuthority())
-	{
-		return {};
-	}
-
-	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
-	AbilityHandles.Reserve(AbilitiesToGrant.Num());
-
-	const int32 FinalLevel = FMath::Max(1, AbilityLevel);
-	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
-	{
-		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
-		if (!AbilityClass)
-		{
-			continue;
-		}
-
-		if (GetSpellRiseASC()->FindAbilitySpecFromClass(AbilityClass) != nullptr)
-		{
-			continue;
-		}
-
-		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, this);
-
-		if (Grant.InputTag.IsValid())
-		{
-			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
-		}
-
-		const FGameplayAbilitySpecHandle Handle = GetSpellRiseASC()->GiveAbility(Spec);
-		AbilityHandles.Add(Handle);
-
-		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
-		{
-			GetSpellRiseASC()->TryActivateAbility(Handle);
-		}
-	}
-
-	GetSpellRiseASC()->RefreshAbilityActorInfo();
-	SendAbilitiesChangedEvent();
-
-	return AbilityHandles;
-}
-
-FGameplayAbilitySpecHandle ASpellRiseCharacterBase::GrantAbility(
-	TSoftClassPtr<UGameplayAbility> AbilityClass,
-	const int32 AbilityLevel,
-	FGameplayTag InputTag,
-	const bool bAutoActivateIfNoInputTag)
-{
-	FSpellRiseGrantedAbility Grant;
-	Grant.AbilityClass = AbilityClass;
-	Grant.InputTag = InputTag;
-	Grant.bAutoActivateIfNoInputTag = bAutoActivateIfNoInputTag;
-
-	const TArray<FGameplayAbilitySpecHandle> Handles = GrantAbilities({ Grant }, AbilityLevel);
-	return Handles.Num() > 0 ? Handles[0] : FGameplayAbilitySpecHandle();
-}
-
-TArray<FGameplayAbilitySpecHandle> ASpellRiseCharacterBase::GrantAbilitiesFromSource(
-	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
-	UObject* SourceObject,
-	const bool bAllowDuplicateAbilityClassesForDifferentSources)
-{
-	if (!GetSpellRiseASC() || !HasAuthority())
-	{
-		return {};
-	}
-
-	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
-	AbilityHandles.Reserve(AbilitiesToGrant.Num());
-
-	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
-	{
-		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
-		if (!AbilityClass)
-		{
-			continue;
-		}
-
-		if (!bAllowDuplicateAbilityClassesForDifferentSources && GetSpellRiseASC()->FindAbilitySpecFromClass(AbilityClass) != nullptr)
-		{
-			continue;
-		}
-
-		if (bAllowDuplicateAbilityClassesForDifferentSources)
-		{
-			bool bAlreadyGrantedForSource = false;
-			for (const FGameplayAbilitySpec& ExistingSpec : GetSpellRiseASC()->GetActivatableAbilities())
-			{
-				if (ExistingSpec.Ability && ExistingSpec.Ability->GetClass() == AbilityClass && ExistingSpec.SourceObject == SourceObject)
-				{
-					bAlreadyGrantedForSource = true;
-					break;
-				}
-			}
-
-			if (bAlreadyGrantedForSource)
-			{
-				continue;
-			}
-		}
-
-		FGameplayAbilitySpec Spec(AbilityClass, 1, INDEX_NONE, SourceObject ? SourceObject : this);
-
-		if (Grant.InputTag.IsValid())
-		{
-			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
-		}
-
-		const FGameplayAbilitySpecHandle Handle = GetSpellRiseASC()->GiveAbility(Spec);
-		AbilityHandles.Add(Handle);
-
-		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
-		{
-			const bool bActivated = GetSpellRiseASC()->TryActivateAbility(Handle);
-			if (!bActivated)
-			{
-			}
-		}
-	}
-
-	GetSpellRiseASC()->RefreshAbilityActorInfo();
-	SendAbilitiesChangedEvent();
-
-	return AbilityHandles;
-}
-
-void ASpellRiseCharacterBase::RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove)
-{
-	if (!GetSpellRiseASC() || !HasAuthority())
-	{
-		return;
-	}
-
-	GetSpellRiseASC()->SR_ClearAbilityInput();
-	GetSpellRiseASC()->SR_ClearSelectedSpellAbility();
-
-	for (const FGameplayAbilitySpecHandle& AbilityHandle : AbilityHandlesToRemove)
-	{
-		GetSpellRiseASC()->ClearAbility(AbilityHandle);
-	}
-
-	SendAbilitiesChangedEvent();
-}
-
-void ASpellRiseCharacterBase::SendAbilitiesChangedEvent()
-{
-	if (!SpellRiseTags::Event_Abilities_Changed().IsValid())
-	{
-		return;
-	}
-
-	if (!GetSpellRiseASC())
-	{
-		InitASCActorInfo();
-	}
-
-	if (!GetSpellRiseASC())
-	{
-		return;
-	}
-
-	FGameplayEventData EventData;
-	EventData.EventTag = SpellRiseTags::Event_Abilities_Changed();
-	EventData.Instigator = this;
-	EventData.Target = this;
-	AActor* EventReceiverActor = GetPlayerState() ? Cast<AActor>(GetPlayerState()) : Cast<AActor>(this);
-	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(EventReceiverActor, EventData.EventTag, EventData);
 }
 
 void ASpellRiseCharacterBase::ServerSendGameplayEventToSelf_Implementation(const FGameplayEventData& EventData)
@@ -3355,9 +3163,12 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 			continue;
 		}
 
-		if (StartupGrantedAbilityHandles.Contains(Spec.Handle))
+		if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
 		{
-			continue;
+			if (Spec.SourceObject.Get() == SRPlayerState)
+			{
+				continue;
+			}
 		}
 
 		if (Spec.SourceObject.Get() != this)
@@ -3391,7 +3202,10 @@ void ASpellRiseCharacterBase::RemoveRuntimeGrantedAbilitiesOnDeath_Server()
 	}
 
 	GetSpellRiseASC()->RefreshAbilityActorInfo();
-	SendAbilitiesChangedEvent();
+	if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		SRPlayerState->SendAbilitiesChangedEvent();
+	}
 
 }
 

@@ -32,6 +32,75 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### BUG-2026-06-13-043
+- Date: 2026-06-13
+- Severity: High
+- Status: Open
+- Area: Character Creation / MetaHuman / Mutable / Animation
+- Issue: editor crash durante PIE apos fluxo de morte/equip, com assert em avaliacao paralela de skeletal mesh.
+- Reproduction: em PIE, testar personagem com visual MetaHuman/Mutable, equipar/desequipar staff, matar personagem por fall damage ou fluxo equivalente de death/respawn; crash ocorreu durante um dos ciclos.
+- Expected: troca/atualizacao de visual, morte, equip e animacao devem completar sem crash; death/respawn nao deve avaliar mesh com skeleton/transforms inconsistentes.
+- Actual: editor fechou com assert `GetRefSkeleton().GetNum() == OutComponentSpaceTransforms.Num()` em `SkinnedAsset.cpp:462`.
+- Root Cause: pendente. Causa provavel: `CO_MetaHuman`/Mutable atualizando skeletal mesh async enquanto `USkeletalMeshComponent` executa `ParallelAnimationEvaluation`, ou asset de pose/animacao desatualizado causando mismatch de ref skeleton/transforms.
+- Fix: pendente. Investigar pipeline de criacao de personagem/visual override para bloquear ou sincronizar troca de skeletal mesh durante avaliacao de animacao, especialmente perto de death/ragdoll/equip.
+- Tested On: `Saved\Logs\SpellRise.log`, crash `Saved\Crashes\UECC-Windows-5EE5E20B4EFC910BCF9437888DC92DF7_0000`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: provavelmente nao aplicavel ao crash visual, mas validar que DS nao depende de MetaHuman/Mutable.
+- Owner: Character Creation/Animation
+
+### BUG-2026-06-12-041
+- Date: 2026-06-12
+- Severity: High
+- Status: Fixed
+- Area: Inventory / Loot / Narrative Interaction / Dedicated Server
+- Issue: containers/loot Narrative nao abriam de forma autoritativa em Dedicated Server.
+- Reproduction: interagir com chest/loot bag em client conectado ao DS usando interacao Narrative instantanea.
+- Expected: servidor valida trace/interactable, executa `OnInteracted`, chama `SetLootSource` no inventario do jogador e replica `LootSource` `OwnerOnly` para abrir UI no client dono.
+- Actual: client executava apenas o caminho local/remoto do Blueprint; o ramo `Authority` que seta `LootSource` nao completava no DS.
+- Root Cause: `UNarrativeInteractionComponent` desliga tick continuo no Dedicated Server por padrao; `ServerBeginInteract` fazia o trace sob demanda, mas a conclusao de interacao instantanea (`InteractionTime <= 0`) dependia do proximo tick, que estava desabilitado.
+- Fix: `BeginInteract` agora completa interacoes instantaneas imediatamente apos `CanInteract`; hold-interact no DS reativa tick apenas enquanto houver tempo restante e volta ao estado idle depois.
+- Net Scope: morte/loot
+- Authority Boundary: servidor decide a interacao final e o `LootSource`; client apenas inicia input/RPC e apresenta UI via `OnRep_LootSource`.
+- Prediction Path (Client): interacao local pode apresentar feedback, mas nao decide loot final.
+- Server Validation: trace server-side em `ServerBeginInteract`, `CanInteract` do interactable e validacoes existentes de `SetLootSource`.
+- RPCs afetados: `ServerBeginInteract`, `ServerEndInteract`.
+- OnRep afetados: `UNarrativeInventoryComponent::OnRep_LootSource`.
+- Replication Condition envolvida: `OwnerOnly`.
+- Overflow (`FBitReader::SetOverflowed`): nao observado neste ciclo; smoke pendente.
+- Cenário com lag/loss: pendente.
+- Tested On: 2026-06-12, build `SpellRiseEditor Win64 Development` PASS via `C:\UnrealSource\UnrealEngine`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Multiplayer/Inventory
+
+### BUG-2026-06-13-042
+- Date: 2026-06-13
+- Severity: High
+- Status: Fixed
+- Area: Inventory / UI Input / Narrative Inventory
+- Issue: ao fechar janela de loot/container, o input de gameplay nao voltava e `OnKeyDown` com ESC nao era chamado de forma confiavel.
+- Reproduction: abrir inventory/loot Narrative e tentar sair pelo ESC ou fechar a janela; cursor/UI permanecem capturando input e movimento/look nao retomam.
+- Expected: ESC/clear fecha looting, chama `StopLooting`, fecha a UI e restaura `GameOnly` no client local mesmo se o BP/widget nao receber foco.
+- Actual: `UInventoryWidget` apenas logava foco; `OnKeyDown` dependia de foco/visibilidade do BP e `OnClearSelectionPressed` retornava cedo quando input de gameplay estava bloqueado pela UI.
+- Root Cause: contrato de UI estava dividido entre BP e C++ sem fallback nativo; `WB_Inventory`/`WB_Storage` sao focusable, mas usam visibilidade `SelfHitTestInvisible`, entao o caminho de `OnKeyDown` em BP/C++ nao e confiavel quando foco cai em widget filho ou input mode fica travado em UI.
+- Fix: `UInventoryWidget` agora e focusable, seta foco/input `GameAndUI` ao abrir, trata ESC em `NativeOnKeyDown`, chama `StopLooting` no inventario do owning player e restaura `GameOnly`/cursor/input no fechamento. Alem disso, `ASpellRisePlayerController` trata ESC/clear antes do bloqueio de gameplay: se houver `LootSource`, chama `UNarrativeInventoryComponent::RequestStopLootingFromUI()` e restaura input local.
+- Net Scope: morte/loot
+- Authority Boundary: client apenas solicita `StopLooting`; servidor limpa `LootSource` autoritativo via RPC existente.
+- Prediction Path (Client): fechamento da UI e restore de input sao locais; loot final segue server-authoritative.
+- Server Validation: `ServerStopLooting` usa rate-limit/validação existente do `UNarrativeInventoryComponent`.
+- RPCs afetados: `ServerStopLooting`.
+- OnRep afetados: `UNarrativeInventoryComponent::OnRep_LootSource`.
+- Replication Condition envolvida: `OwnerOnly`.
+- Overflow (`FBitReader::SetOverflowed`): nao observado neste ciclo.
+- Cenário com lag/loss: pendente.
+- Tested On: 2026-06-13, build `SpellRiseEditor Win64 Development` PASS via `C:\UnrealSource\UnrealEngine`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: UI/Inventory
+
 ### BUG-2026-06-10-038
 - Date: 2026-06-10
 - Severity: High

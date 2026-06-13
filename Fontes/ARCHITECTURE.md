@@ -16,6 +16,14 @@
 - Replication mode: `Mixed`.
 - `USpellRiseAbilityHotbarComponent` vive no `PlayerState` e mapeia 16 slots lógicos (`0-7` Weapon, `8-15` Common) para `InputTag`/classe de ability já concedida.
 - Requisitos de arma ficam em `USpellRiseGameplayAbility` via `RequiredWeaponTags`/`BlockedWeaponTags`; Blueprints de ability não devem implementar checagem estrutural de arma por classe.
+- Grants de abilities persistentes/startup/progressão são responsabilidade do `ASpellRisePlayerState`; o `Character` apenas inicializa `ActorInfo` como avatar atual.
+- `SourceObject` de grants persistentes deve ser estável (`PlayerState`, item, instância de equipamento ou asset persistente), nunca o pawn quando a ability deve sobreviver morte/respawn.
+
+### Inventario e loot
+- O inventario de player vive no `ASpellRisePlayerState` via `UNarrativeInventoryComponent`.
+- O `Character` pode consumir o inventario do `PlayerState` para capacidade/peso/movimento, mas nao e owner nem source autoritativo do inventario.
+- Resolucao de inventario para pawn/controller deve priorizar `PlayerState`; componentes legados no pawn nao devem ser usados como fonte de verdade de player.
+- Full loot, persistencia e UI devem coletar o inventario de player pelo `PlayerState`, mantendo o source estavel durante morte/respawn.
 
 ### Attribute Sets
 - `UBasicAttributeSet`

@@ -1,7 +1,9 @@
 // Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRisePlayerState.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
+#include "Abilities/GameplayAbility.h"
 #include "Components/ActorComponent.h"
 #include "EngineUtils.h"
 #include "GameFramework/Actor.h"
@@ -21,6 +23,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "InventoryComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCombatLog, Log, All);
@@ -272,6 +275,12 @@ namespace
 			OutNewPoints);
 		return true;
 	}
+
+	const FGameplayTag& SRPS_EventAbilitiesChanged()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Event.Abilities.Changed"), false);
+		return Tag;
+	}
 }
 
 ASpellRisePlayerState::ASpellRisePlayerState()
@@ -284,6 +293,7 @@ ASpellRisePlayerState::ASpellRisePlayerState()
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	AbilityHotbarComponent = CreateDefaultSubobject<USpellRiseAbilityHotbarComponent>(TEXT("AbilityHotbarComponent"));
+	NarrativeInventoryComponent = CreateDefaultSubobject<UNarrativeInventoryComponent>(TEXT("NarrativeInventoryComponent"));
 
 	BasicAttributeSet = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));
 	CombatAttributeSet = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributeSet"));
@@ -300,6 +310,166 @@ UAbilitySystemComponent* ASpellRisePlayerState::GetAbilitySystemComponent() cons
 USpellRiseAbilitySystemComponent* ASpellRisePlayerState::GetSpellRiseASC() const
 {
 	return AbilitySystemComponent;
+}
+
+TArray<FGameplayAbilitySpecHandle> ASpellRisePlayerState::GrantAbilities(
+	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+	const int32 AbilityLevel)
+{
+	if (!AbilitySystemComponent || !HasAuthority())
+	{
+		return {};
+	}
+
+	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
+	AbilityHandles.Reserve(AbilitiesToGrant.Num());
+
+	const int32 FinalLevel = FMath::Max(1, AbilityLevel);
+	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
+	{
+		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
+		{
+			continue;
+		}
+
+		if (AbilitySystemComponent->FindAbilitySpecFromClass(AbilityClass) != nullptr)
+		{
+			continue;
+		}
+
+		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, this);
+		if (Grant.InputTag.IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
+		}
+
+		const FGameplayAbilitySpecHandle Handle = AbilitySystemComponent->GiveAbility(Spec);
+		AbilityHandles.Add(Handle);
+
+		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
+		{
+			AbilitySystemComponent->TryActivateAbility(Handle);
+		}
+	}
+
+	AbilitySystemComponent->RefreshAbilityActorInfo();
+	SendAbilitiesChangedEvent();
+	return AbilityHandles;
+}
+
+FGameplayAbilitySpecHandle ASpellRisePlayerState::GrantAbility(
+	TSoftClassPtr<UGameplayAbility> AbilityClass,
+	const int32 AbilityLevel,
+	FGameplayTag InputTag,
+	const bool bAutoActivateIfNoInputTag)
+{
+	FSpellRiseGrantedAbility Grant;
+	Grant.AbilityClass = AbilityClass;
+	Grant.InputTag = InputTag;
+	Grant.bAutoActivateIfNoInputTag = bAutoActivateIfNoInputTag;
+
+	const TArray<FGameplayAbilitySpecHandle> Handles = GrantAbilities({ Grant }, AbilityLevel);
+	return Handles.Num() > 0 ? Handles[0] : FGameplayAbilitySpecHandle();
+}
+
+TArray<FGameplayAbilitySpecHandle> ASpellRisePlayerState::GrantAbilitiesFromSource(
+	const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+	UObject* SourceObject,
+	const int32 AbilityLevel,
+	const bool bAllowDuplicateAbilityClassesForDifferentSources)
+{
+	if (!AbilitySystemComponent || !HasAuthority())
+	{
+		return {};
+	}
+
+	UObject* EffectiveSourceObject = SourceObject ? SourceObject : static_cast<UObject*>(this);
+	const int32 FinalLevel = FMath::Max(1, AbilityLevel);
+	TArray<FGameplayAbilitySpecHandle> AbilityHandles;
+	AbilityHandles.Reserve(AbilitiesToGrant.Num());
+
+	for (const FSpellRiseGrantedAbility& Grant : AbilitiesToGrant)
+	{
+		UClass* AbilityClass = Grant.AbilityClass.LoadSynchronous();
+		if (!AbilityClass)
+		{
+			continue;
+		}
+
+		if (!bAllowDuplicateAbilityClassesForDifferentSources && AbilitySystemComponent->FindAbilitySpecFromClass(AbilityClass) != nullptr)
+		{
+			continue;
+		}
+
+		if (bAllowDuplicateAbilityClassesForDifferentSources)
+		{
+			bool bAlreadyGrantedForSource = false;
+			for (const FGameplayAbilitySpec& ExistingSpec : AbilitySystemComponent->GetActivatableAbilities())
+			{
+				if (ExistingSpec.Ability && ExistingSpec.Ability->GetClass() == AbilityClass && ExistingSpec.SourceObject == EffectiveSourceObject)
+				{
+					bAlreadyGrantedForSource = true;
+					break;
+				}
+			}
+
+			if (bAlreadyGrantedForSource)
+			{
+				continue;
+			}
+		}
+
+		FGameplayAbilitySpec Spec(AbilityClass, FinalLevel, INDEX_NONE, EffectiveSourceObject);
+		if (Grant.InputTag.IsValid())
+		{
+			Spec.GetDynamicSpecSourceTags().AddTag(Grant.InputTag);
+		}
+
+		const FGameplayAbilitySpecHandle Handle = AbilitySystemComponent->GiveAbility(Spec);
+		AbilityHandles.Add(Handle);
+
+		if (Grant.bAutoActivateIfNoInputTag && !Grant.InputTag.IsValid())
+		{
+			AbilitySystemComponent->TryActivateAbility(Handle);
+		}
+	}
+
+	AbilitySystemComponent->RefreshAbilityActorInfo();
+	SendAbilitiesChangedEvent();
+	return AbilityHandles;
+}
+
+void ASpellRisePlayerState::RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove)
+{
+	if (!AbilitySystemComponent || !HasAuthority())
+	{
+		return;
+	}
+
+	AbilitySystemComponent->SR_ClearAbilityInput();
+	AbilitySystemComponent->SR_ClearSelectedSpellAbility();
+
+	for (const FGameplayAbilitySpecHandle& AbilityHandle : AbilityHandlesToRemove)
+	{
+		AbilitySystemComponent->ClearAbility(AbilityHandle);
+	}
+
+	SendAbilitiesChangedEvent();
+}
+
+void ASpellRisePlayerState::SendAbilitiesChangedEvent()
+{
+	if (!SRPS_EventAbilitiesChanged().IsValid())
+	{
+		return;
+	}
+
+	FGameplayEventData EventData;
+	EventData.EventTag = SRPS_EventAbilitiesChanged();
+	EventData.Instigator = this;
+	EventData.Target = this;
+	UAbilitySystemBlueprintLibrary::SendGameplayEventToActor(this, EventData.EventTag, EventData);
 }
 
 void ASpellRisePlayerState::SetRespawnBedReference(AActor* BedActor)

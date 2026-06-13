@@ -37,6 +37,7 @@ public class NarrativeInventory : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"InputCore",
                 "UMG",
                 "GameplayTags",
 				"CommonUI"

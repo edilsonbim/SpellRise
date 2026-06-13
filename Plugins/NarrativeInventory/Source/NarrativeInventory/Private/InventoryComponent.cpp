@@ -1159,6 +1159,11 @@ void UNarrativeInventoryComponent::ServerStopLooting_Implementation()
 	StopLooting();
 }
 
+void UNarrativeInventoryComponent::RequestStopLootingFromUI()
+{
+	StopLooting();
+}
+
 void UNarrativeInventoryComponent::StopLooting()
 {
 	if (GetOwnerRole() < ROLE_Authority)

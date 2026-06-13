@@ -6,7 +6,10 @@
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
 #include "Engine/NetSerialization.h"
+#include "GameplayEffectTypes.h"
+#include "GameplayTagContainer.h"
 #include "SpellRise/Core/SpellRiseCombatLogTypes.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityGrantTypes.h"
 #include "SpellRisePlayerState.generated.h"
 
 class UAbilitySystemComponent;
@@ -17,6 +20,7 @@ class UCombatAttributeSet;
 class UResourceAttributeSet;
 class UCatalystAttributeSet;
 class UDerivedStatsAttributeSet;
+class UNarrativeInventoryComponent;
 class AActor;
 class AController;
 
@@ -34,6 +38,30 @@ public:
 
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	USpellRiseAbilityHotbarComponent* GetAbilityHotbarComponent() const { return AbilityHotbarComponent; }
+	UNarrativeInventoryComponent* GetNarrativeInventoryComponent() const { return NarrativeInventoryComponent; }
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
+	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel = 1);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS", meta=(DisplayName="Grant Ability"))
+	FGameplayAbilitySpecHandle GrantAbility(
+		TSoftClassPtr<UGameplayAbility> AbilityClass,
+		UPARAM(meta=(ClampMin="1")) int32 AbilityLevel,
+		UPARAM(meta=(Categories="InputTag")) FGameplayTag InputTag,
+		bool bAutoActivateIfNoInputTag);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS", meta=(DisplayName="Grant Abilities From Source"))
+	TArray<FGameplayAbilitySpecHandle> GrantAbilitiesFromSource(
+		const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant,
+		UObject* SourceObject,
+		UPARAM(meta=(ClampMin="1")) int32 AbilityLevel = 1,
+		bool bAllowDuplicateAbilityClassesForDifferentSources = true);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
+	void RemoveAbilities(const TArray<FGameplayAbilitySpecHandle>& AbilityHandlesToRemove);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
+	void SendAbilitiesChangedEvent();
 
 	UBasicAttributeSet* GetBasicAttributeSet() const { return BasicAttributeSet; }
 	UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributeSet; }
@@ -89,6 +117,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Hotbar", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USpellRiseAbilityHotbarComponent> AbilityHotbarComponent = nullptr;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<UNarrativeInventoryComponent> NarrativeInventoryComponent = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;

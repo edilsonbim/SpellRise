@@ -9,6 +9,7 @@
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCCues, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseASCObservability, Log, All);
@@ -762,9 +763,8 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 {
 	Super::OnRep_ActivateAbilities();
 
-	AActor* Avatar = GetAvatarActor();
-	ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(Avatar);
-	if (!Character)
+	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(GetOwnerActor());
+	if (!SRPlayerState)
 	{
 		return;
 	}
@@ -786,7 +786,7 @@ void USpellRiseAbilitySystemComponent::OnRep_ActivateAbilities()
 
 	if (bAbilitiesChanged)
 	{
-		Character->SendAbilitiesChangedEvent();
+		SRPlayerState->SendAbilitiesChangedEvent();
 		LastActivatableAbilities = ActivatableAbilities.Items;
 	}
 }

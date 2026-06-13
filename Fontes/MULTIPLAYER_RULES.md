@@ -21,6 +21,7 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 | Projétil | após validação do cast | spawn + trajetória inicial | Servidor | actor replicado + hit no servidor | opcional visual local | hit fantasma por ordem de eventos |
 | Atributos/Recursos | n/a | ExecCalc/MMC/GE no servidor | Servidor | `Health/MaxHealth` público; `Mana/Stamina/Regen/CarryWeight` `OwnerOnly` | não | trust indevido no cliente |
 | Morte/Loot/Respawn | dano autoritativo | estado de morte + regras de loot | Servidor | tags/estado/atores de loot | só UI | corrida de OnRep e apresentação |
+| Inventario/Loot UI | UI local -> componente de inventario do `PlayerState` | servidor valida owner, source de loot, quantidade e rate-limit | Servidor | inventario/loot source no `PlayerState`, `LootSource` `OwnerOnly` | só UX | source stale se resolver pelo pawn durante respawn |
 | Building Mode | input local | contexto/material/range/LOS/RPC rate | Servidor | estado mínimo necessário | opcional ghost local | abuso de RPC/payload |
 | PlayerController runtime | input/UI local | apenas RPCs permitidos | Servidor | somente dados essenciais | não | overflow de replicação |
 
@@ -44,6 +45,7 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 ## Budget de rede (baseline inicial)
 - `PlayerController`: zero payload cosmético replicado.
 - Hotbar de abilities: `PlayerState` owner-only, 16 slots; RPC de edição envia `SlotIndex + InputTag + AbilityClass`, rate-limitado no servidor.
+- Inventario de player: componente no `PlayerState`; `Items`/`Currency` seguem a replicacao do componente Narrative e `LootSource` permanece `OwnerOnly`.
 - RPC crítico de gameplay: máximo recomendado `<= 20/s` por jogador por fluxo.
 - Inventário/loot/use/store: máximo inicial de 6 RPCs por 0,25s por componente e quantity `1..1000`; rejeições devem usar log categorizado.
 - Chat público é apresentação e não deve usar reliable.

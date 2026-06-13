@@ -16,6 +16,7 @@ class UGameplayAbility;
 class USpellRiseNumberPopComponent_NiagaraText;
 class USpellRiseAbilitySystemComponent;
 class UNarrativeInteractionComponent;
+class UNarrativeInventoryComponent;
 class UActorComponent;
 
 UCLASS()
@@ -237,6 +238,8 @@ private:
 	bool IsControlledCharacterDead() const;
 	bool IsGameplayInputBlocked() const;
 	UNarrativeInteractionComponent* ResolveNarrativeInteractionComponent() const;
+	UNarrativeInventoryComponent* ResolveNarrativeInventoryComponentForUI() const;
+	bool TryStopLootingFromUIInput(const FName Source);
 	void AuditRejectedInventoryRpc(const TCHAR* RpcName, const FString& RejectReason);
 
 	void PushCombatLogMessage(const FString& MessageText);

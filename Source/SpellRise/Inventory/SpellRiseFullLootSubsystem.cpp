@@ -639,7 +639,6 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 	}
 
 	TArray<UNarrativeInventoryComponent*> SourceInventories;
-	GatherEligibleInventoryComponents(DeadCharacter, false, SourceInventories);
 	GatherEligibleInventoryComponents(DeadCharacter->GetPlayerState(), true, SourceInventories);
 
 	if (SourceInventories.Num() <= 0)

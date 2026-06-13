@@ -439,6 +439,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Inventory")
 	virtual void SetLootSource(class UNarrativeInventoryComponent* NewLootSource);
 
+	/** Public UI-safe wrapper for ending looting from widgets or local input. */
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	virtual void RequestStopLootingFromUI();
+
 protected:
 
 	UFUNCTION(Server, Reliable)

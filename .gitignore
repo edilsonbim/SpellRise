@@ -26,7 +26,8 @@ Server/
 *.rar
 
 # Large project assets kept outside GitHub
-Images/
+Images/*
+!Images/SpellRise_Root_20260607.png
 *.uasset
 *.umap
 Content/Hivemind/Medieval_Docks/SkySphere/Textures/HDRI/

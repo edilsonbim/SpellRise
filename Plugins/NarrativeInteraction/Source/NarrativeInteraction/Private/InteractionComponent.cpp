@@ -16,7 +16,7 @@ UNarrativeInteractionComponent::UNarrativeInteractionComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = true;
 	PrimaryComponentTick.TickGroup = TG_PostPhysics;
-	PrimaryComponentTick.bAllowTickOnDedicatedServer = false;
+	PrimaryComponentTick.bAllowTickOnDedicatedServer = true;
 
 	CurrentInteractable = nullptr;
 	LastInteractionCheckTime = 0.f;
@@ -51,10 +51,11 @@ void UNarrativeInteractionComponent::TickComponent(float DeltaTime, enum ELevelT
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	//Server wasn't able to get this
-	if (!OwningPawn && OwningController)
+	// Keep the cached pawn aligned with the controller across death/respawn.
+	if (OwningController && OwningPawn != OwningController->GetPawn())
 	{
 		OwningPawn = OwningController->GetPawn();
+		CouldntFindInteractable();
 	}
 
 	if (IsActive())
@@ -73,14 +74,7 @@ void UNarrativeInteractionComponent::TickComponent(float DeltaTime, enum ELevelT
 
 			if (RemainingInteractTime <= 0.f && RemainingInteractTime > -998.f)
 			{
-				const bool bInteracted = CurrentInteractable->Interact(OwningPawn, this);
-
-				if (bInteracted)
-				{
-					OnInteracted.Broadcast(this, CurrentInteractable);
-				}
-
-				RemainingInteractTime = -999.f; 
+				CompleteCurrentInteraction();
 			}
 		}
 	}
@@ -215,13 +209,39 @@ void UNarrativeInteractionComponent::FoundInteractable(UNarrativeInteractableCom
 	}
 }
 
+void UNarrativeInteractionComponent::CompleteCurrentInteraction()
+{
+	if (!CurrentInteractable || RemainingInteractTime <= -998.f)
+	{
+		return;
+	}
+
+	const bool bInteracted = CurrentInteractable->Interact(OwningPawn, this);
+	if (bInteracted)
+	{
+		OnInteracted.Broadcast(this, CurrentInteractable);
+	}
+
+	RemainingInteractTime = -999.f;
+	RestoreDedicatedServerIdleTickState();
+}
+
+void UNarrativeInteractionComponent::RestoreDedicatedServerIdleTickState()
+{
+	if (GetNetMode() == NM_DedicatedServer && !bRunContinuousInteractionTraceOnDedicatedServer)
+	{
+		SetComponentTickEnabled(false);
+	}
+}
+
 void UNarrativeInteractionComponent::ServerBeginInteract_Implementation()
 {
 	if (GetNetMode() == NM_DedicatedServer && !bRunContinuousInteractionTraceOnDedicatedServer)
 	{
-		if (!OwningPawn && OwningController)
+		if (OwningController && OwningPawn != OwningController->GetPawn())
 		{
 			OwningPawn = OwningController->GetPawn();
+			CouldntFindInteractable();
 		}
 
 		PerformInteractionCheck(0.f);
@@ -251,6 +271,15 @@ void UNarrativeInteractionComponent::BeginInteract()
 	{
 		CurrentInteractable->BeginInteract(OwningPawn, this);
 		RemainingInteractTime = CurrentInteractable->InteractionTime;
+
+		if (RemainingInteractTime <= 0.f)
+		{
+			CompleteCurrentInteraction();
+		}
+		else if (GetNetMode() == NM_DedicatedServer && !bRunContinuousInteractionTraceOnDedicatedServer)
+		{
+			SetComponentTickEnabled(true);
+		}
 	}
 }
 
@@ -269,6 +298,7 @@ void UNarrativeInteractionComponent::EndInteract()
 
 	bInteractHeld = false;
 	OnInteractReleased.Broadcast(this);
+	RestoreDedicatedServerIdleTickState();
 }
 
 #undef LOCTEXT_NAMESPACE

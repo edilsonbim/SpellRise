@@ -21,7 +21,10 @@ protected:
 	virtual void NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent) override;
 	virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
 	virtual void NativeOnFocusLost(const FFocusEvent& InFocusEvent) override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 private:
 	void LogFocusState(const TCHAR* SourceLabel) const;
+	bool RequestStopLootingFromOwningInventory() const;
+	void RestoreOwningPlayerGameplayInput(const TCHAR* SourceLabel) const;
 };

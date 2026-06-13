@@ -109,12 +109,6 @@ class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryCompo
 		return nullptr;
 	}
 
-	if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(Target))
-	{
-		return InventoryComp;
-	}
-
-	//Try player state, then pawn, then controller
 	if (const APawn* OwningPawn = Cast<APawn>(Target))
 	{
 		if (const APlayerState* PlayerState = OwningPawn->GetPlayerState<APlayerState>())
@@ -132,21 +126,28 @@ class UNarrativeInventoryComponent* UInventoryFunctionLibrary::GetInventoryCompo
 				return InventoryComp;
 			}
 		}
+
+		return ResolveBestInventoryComponent(Target);
 	}
 	else if (const APlayerController* OwningController = Cast<APlayerController>(Target))
 	{
+		if (const APlayerState* PlayerState = OwningController->GetPlayerState<APlayerState>())
+		{
+			if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(const_cast<APlayerState*>(PlayerState)))
+			{
+				return InventoryComp;
+			}
+		}
+
 		if (OwningController->GetPawn())
 		{
-			if (const APlayerState* PlayerState = OwningController->GetPlayerState<APlayerState>())
-			{
-				if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(const_cast<APlayerState*>(PlayerState)))
-				{
-					return InventoryComp;
-				}
-			}
-
 			return ResolveBestInventoryComponent(OwningController->GetPawn());
 		}
+	}
+
+	if (UNarrativeInventoryComponent* InventoryComp = ResolveBestInventoryComponent(Target))
+	{
+		return InventoryComp;
 	}
 
 	return nullptr;

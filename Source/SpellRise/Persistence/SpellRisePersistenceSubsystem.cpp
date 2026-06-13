@@ -2281,7 +2281,6 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	}
 
 	TArray<FNarrativeInventoryBinding> Bindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, Bindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, Bindings);
 
 	for (const FNarrativeInventoryBinding& Binding : Bindings)
@@ -2409,7 +2408,6 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 
 	DestroyOwnedEquipmentVisualActors(Character);
 	TArray<FNarrativeInventoryBinding> AvailableBindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, AvailableBindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, AvailableBindings);
 	Character->SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("BeforePersistenceInventoryApply"));
 
@@ -2545,7 +2543,6 @@ void USpellRisePersistenceSubsystem::EnsureDefaultItemsForControllerIfNeeded(ACo
 	}
 
 	TArray<FNarrativeInventoryBinding> Bindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, Bindings);
 	GatherNarrativeInventoryBindings(SRPlayerState, ESpellRiseSaveOwnerScope::PlayerState, Bindings);
 
 	for (const FNarrativeInventoryBinding& Binding : Bindings)
@@ -2611,7 +2608,6 @@ void USpellRisePersistenceSubsystem::ReconcileCharacterVisualEquipment(ASpellRis
 	}
 
 	TArray<FNarrativeInventoryBinding> CandidateBindings;
-	GatherNarrativeInventoryBindings(Character, ESpellRiseSaveOwnerScope::Character, CandidateBindings);
 	GatherNarrativeInventoryBindings(PlayerState, ESpellRiseSaveOwnerScope::PlayerState, CandidateBindings);
 
 	for (const FNarrativeInventoryBinding& Binding : CandidateBindings)
