@@ -36,6 +36,7 @@
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
+#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
@@ -1312,8 +1313,34 @@ void ASpellRiseCharacterBase::AbilityWheelInputReleased(int32 SlotIndex)
 	{
 		if (USpellRiseAbilityHotbarComponent* Hotbar = SpellRisePlayerState->GetAbilityHotbarComponent())
 		{
+			bool bShouldClearSelectedAbility = true;
+			FSpellRiseAbilityHotbarSlot Slot;
+			if (Hotbar->GetSlot(SlotIndex, Slot))
+			{
+				if (USpellRiseAbilitySystemComponent* SRASC = Cast<USpellRiseAbilitySystemComponent>(GetSpellRiseASC()))
+				{
+					USpellRiseGameplayAbility* SlotAbility = nullptr;
+					if (UClass* AbilityClass = Slot.AbilityClass.LoadSynchronous())
+					{
+						SlotAbility = SRASC->SR_GetSpellRiseAbilityForAbilityClass(AbilityClass);
+					}
+					else if (Slot.AbilityInputTag.IsValid())
+					{
+						SlotAbility = SRASC->SR_GetSpellRiseAbilityForInputTag(Slot.AbilityInputTag);
+					}
+
+					if (SlotAbility && !SlotAbility->FiresFromOwnInputTag())
+					{
+						bShouldClearSelectedAbility = false;
+					}
+				}
+			}
+
 			Hotbar->AbilitySlotReleased(SlotIndex);
-			ClearSelectedAbility();
+			if (bShouldClearSelectedAbility)
+			{
+				ClearSelectedAbility();
+			}
 			return;
 		}
 	}
@@ -2190,10 +2217,15 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 
 void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
 {
-	if (!GetSpellRiseASC() || !HasAuthority())
+	USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC();
+	if (!ASC || !HasAuthority())
 	{
 		return;
 	}
+
+	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetHealthRegenAttribute(), 0.f);
+	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetManaRegenAttribute(), 0.f);
+	ASC->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaRegenAttribute(), 0.f);
 
 	if (GE_RegenBase)
 	{
@@ -2247,14 +2279,13 @@ void ASpellRiseCharacterBase::ApplyResourceRegenTick_Server()
 		return;
 	}
 
-	const float TickInterval = FMath::Max(0.1f, ResourceRegenTickIntervalSeconds);
 	const bool bInCombat = IsCombatLockActive_Server();
 	const bool bBleedingBlocksRegen = BleedingBlocksRegenTag.IsValid() && ASC->HasMatchingGameplayTag(BleedingBlocksRegenTag);
 	const bool bManaRegenPenalized = ManaRegenPenaltyTag.IsValid() && ASC->HasMatchingGameplayTag(ManaRegenPenaltyTag);
 	const bool bStaminaRegenPaused = (StaminaRegenPausedTag.IsValid() && ASC->HasMatchingGameplayTag(StaminaRegenPausedTag))
 		|| (StaminaRegenPausedWhileTags.Num() > 0 && ASC->HasAnyMatchingGameplayTags(StaminaRegenPausedWhileTags));
 
-	const auto ApplyRegen = [ASC, TickInterval](const FGameplayAttribute& ResourceAttribute, const FGameplayAttribute& MaxResourceAttribute, const FGameplayAttribute& RegenAttribute, float RegenMultiplier)
+	const auto ApplyRegen = [ASC](const FGameplayAttribute& ResourceAttribute, const FGameplayAttribute& MaxResourceAttribute, const FGameplayAttribute& RegenAttribute, float RegenMultiplier)
 	{
 		RegenMultiplier = FMath::Clamp(RegenMultiplier, 0.f, 1.f);
 		if (RegenMultiplier <= 0.f)
@@ -2264,14 +2295,14 @@ void ASpellRiseCharacterBase::ApplyResourceRegenTick_Server()
 
 		const float CurrentValue = ASC->GetNumericAttribute(ResourceAttribute);
 		const float MaxValue = ASC->GetNumericAttribute(MaxResourceAttribute);
-		const float RegenPerSecond = ASC->GetNumericAttribute(RegenAttribute) * RegenMultiplier;
+		const float RegenPerTick = ASC->GetNumericAttribute(RegenAttribute) * RegenMultiplier;
 
-		if (MaxValue <= 0.f || CurrentValue >= MaxValue || RegenPerSecond <= 0.f)
+		if (MaxValue <= 0.f || CurrentValue >= MaxValue || RegenPerTick <= 0.f)
 		{
 			return;
 		}
 
-		const float RegenDelta = FMath::Min(RegenPerSecond * TickInterval, MaxValue - CurrentValue);
+		const float RegenDelta = FMath::Min(RegenPerTick, MaxValue - CurrentValue);
 		if (RegenDelta > 0.f)
 		{
 			ASC->ApplyModToAttributeUnsafe(ResourceAttribute, EGameplayModOp::Additive, RegenDelta);

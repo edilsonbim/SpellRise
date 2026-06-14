@@ -48,11 +48,11 @@ Usando bônus sobre baseline:
 ## Regeneração de recursos
 - `HealthRegen`, `ManaRegen` e `StaminaRegen` são atributos de valor final, replicados `OwnerOnly`.
 - O valor base de regen deve ser concedido por GameplayEffect aplicado no servidor, normalmente infinite.
-- `GE` instant também é válido para definir o valor base final de regen, desde que seja aplicado no servidor.
+- `GE` instant também é válido para definir o valor base final de regen, desde que seja aplicado no servidor e represente valor por tick.
 - O `AttributeSet` inicia regen em `0`; sem GE/configuração ativa não há recuperação automática.
 - O servidor aplica o tick real de recuperação usando os atributos de regen; cliente apenas apresenta UI.
 - GEs de regen de bootstrap devem ser idempotentes e não acumular a cada morte/respawn.
-- Tick padrão de regen: `2s`.
+- Tick padrão de regen: `2s`; `HealthRegen`, `ManaRegen` e `StaminaRegen` são aplicados uma vez por tick, sem multiplicar pelo intervalo.
 - Morto não regenera e o timer server-side é parado antes de full loot/respawn.
 - Durante combat lock, regen usa multiplicadores de combate configuráveis no `Character`.
 - `Status.Bleeding` bloqueia regen natural de vida.

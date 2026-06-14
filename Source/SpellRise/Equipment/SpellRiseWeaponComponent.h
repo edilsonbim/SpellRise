@@ -10,13 +10,11 @@
 #include "SpellRiseWeaponComponent.generated.h"
 
 class ASpellRiseWeaponBase;
-class UAnimMontage;
 class UEquippableItem;
 class UGameplayEffect;
 class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
 class USpellRiseWeaponDefinition;
-struct FBranchingPointNotifyPayload;
 
 USTRUCT(BlueprintType)
 struct FSpellRiseWeaponSlotState
@@ -165,12 +163,6 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerAssignQuickSlot(UEquippableItem* Item, int32 SlotIndex);
 
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastPlayWeaponTransition(UAnimMontage* MontageToPlay, bool bDraw);
-
-	UFUNCTION()
-	void HandleMontageNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& BranchingPointPayload);
-
 	UFUNCTION()
 	void OnRep_EquippedWeapon();
 
@@ -195,8 +187,6 @@ private:
 	bool AssignQuickSlot_Server(UEquippableItem* Item, int32 SlotIndex);
 	bool ActivateQuickSlot_Server(int32 SlotIndex);
 	bool SetWeaponDrawn_Server(bool bDraw);
-	bool StartWeaponDrawTransition_Server(bool bDraw);
-	void CompleteWeaponDrawTransition_Server(bool bDraw);
 	void RemoveActiveWeaponGrants_Server();
 	void ApplyActiveWeaponGrants_Server();
 	void RemoveOffHandWeaponGrants_Server();
@@ -205,9 +195,6 @@ private:
 	void RefreshOffHandSuppression_Server();
 	void AttachCurrentWeaponVisual();
 	void AttachWeaponVisual(AActor* WeaponActor, UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, bool bDraw, bool bOffHand);
-	void PlayWeaponTransitionLocally(UAnimMontage* MontageToPlay, bool bDraw);
-	void BindAnimNotifyDelegate();
-	void UnbindAnimNotifyDelegate();
 	void BroadcastWeaponState();
 	void ApplyOverlayState();
 	void ForceOwnerNetUpdate() const;
@@ -232,12 +219,12 @@ private:
 	bool ExtractGrantedEffects(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, TArray<TSubclassOf<UGameplayEffect>>& OutEffects) const;
 	bool ExtractGrantedAbilities(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, TArray<FSpellRiseGrantedAbility>& OutAbilities) const;
 	void ExtractSetByCallerMagnitudes(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, TMap<FGameplayTag, float>& OutMagnitudes) const;
-	bool ResolveWeaponSockets(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const;
-	bool ResolveWeaponSocketsForSlot(const FSpellRiseWeaponSlotState& SlotState, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const;
-	bool ResolveWeaponMontages(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, UAnimMontage*& OutEquipMontage, UAnimMontage*& OutUnequipMontage) const;
-	bool ResolveWeaponMontagesForSlot(const FSpellRiseWeaponSlotState& SlotState, UAnimMontage*& OutEquipMontage, UAnimMontage*& OutUnequipMontage) const;
+	bool ResolveWeaponSocket(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, bool bOffHand, FName& OutEquippedSocket) const;
+	bool ResolveWeaponSocketForSlot(const FSpellRiseWeaponSlotState& SlotState, bool bOffHand, FName& OutEquippedSocket) const;
 	uint8 ResolveOverlayStateValue(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition) const;
 	uint8 ResolveOverlayStateValueForSlot(const FSpellRiseWeaponSlotState& SlotState) const;
+	USkeletalMeshComponent* ResolveVisualOverrideMesh() const;
+	USkeletalMeshComponent* ResolveAnimationMesh() const;
 	USkeletalMeshComponent* ResolveAttachMesh(FName TargetSocket) const;
 	USceneComponent* ResolveWeaponSpawnPoint(AActor* WeaponActor) const;
 	USpellRiseAbilitySystemComponent* ResolveSpellRiseASC() const;
@@ -254,18 +241,6 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Attach")
 	FName DefaultEquippedSocket = TEXT("weaponSocket");
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Attach")
-	FName DefaultStowedSocket = TEXT("stowedSocket");
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Anim")
-	FName EquipNotifyName = TEXT("equip");
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Anim")
-	FName UnequipNotifyName = TEXT("unequip");
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Anim", meta=(ClampMin="0.05", UIMin="0.05"))
-	float AnimNotifyFallbackDelaySeconds = 0.85f;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Security", meta=(ClampMin="0.05", UIMin="0.05"))
 	float WeaponRpcRateLimitWindowSeconds = 0.25f;
@@ -287,14 +262,6 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<FActiveGameplayEffectHandle> OffHandWeaponEffectHandles;
-
-	UPROPERTY(Transient)
-	bool bTransitionInProgress = false;
-
-	UPROPERTY(Transient)
-	bool bPendingDrawState = false;
-
-	FTimerHandle AnimNotifyFallbackTimerHandle;
 
 	UPROPERTY(Transient)
 	FSpellRiseWeaponRpcRateLimitState EquipRpcRateState;

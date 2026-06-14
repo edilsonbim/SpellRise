@@ -7,6 +7,9 @@
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Corrigido input da ability hotbar para respeitar `USpellRiseGameplayAbility::bFireOnAbilityInput`: slots que apontam direto para `AbilityClass` agora apenas armam abilities configuradas para disparar pelo `Primary`, em vez de ativá-las imediatamente.
+- Documentado recorte de correcoes reportadas em 2026-06-14: inventario/vendor/loot fechando aceitavelmente, barra de ability ao morrer, regen de atributos, animacao equip/unequip, camera sem arma, AoE sem dano, `Blizzard` nao entrando mais no solo e `shoot arrow` corrigido. Validacao formal ainda pendente quando nao houver evidencia de build/smoke registrada.
+- Registrados como pendencias ativas: sockets, melhoria de ragdoll, fluxo `dead`/`revive` e revisao de luzes.
 - Movido o contrato de grant/remove/evento de abilities de player para `ASpellRisePlayerState`, mantendo o `Character` apenas como avatar do ASC.
 - Grants persistentes/startup passam a usar source estável no `PlayerState`; grants de equipamento continuam usando item/instância como source.
 - Inventario de player movido para `ASpellRisePlayerState`; resolucao de inventario para pawn/controller passa a priorizar o `PlayerState`, e full loot/persistencia/UI deixam de coletar inventario do `Character` como fonte de verdade.
@@ -40,6 +43,7 @@
 - `Run-Load-NoSteam-Scale.ps1` passa a suportar `-WithInsightsTrace` e `-WithPerfStats` para gerar `.utrace` e coletar stats de rede/gameplay nos cenários de escala.
 - Base C++ da hotbar de abilities 8+8 adicionada: slots `0-7` para weapon abilities e `8-15` para common abilities em componente owner-only no `PlayerState`, com RPC server-side validado/rate-limitado para edição de slots.
 - `USpellRiseGameplayAbility` passa a suportar `AbilitySlotGroup`, `RequiredWeaponTags` e `BlockedWeaponTags`, movendo requisito de arma para validação C++ por tags.
+- `USpellRiseWeaponComponent` remove animação/notify de equip/unequip e visual stowed; apenas arma equipada fica visível, anexada ao socket equipado, priorizando `VisualOverride` válido sem modificar o mesh.
 - Combat log autoritativo com transporte nativo em C++.
 - Fall damage agora resolve causer/instigator como causa ambiental determinística quando o GE é aplicado pelo ASC do próprio alvo, evitando self-causer em chat/combat log/death event.
 - Combat log owner-only limitado para reduzir burst de replicação: buffer replicado padrão reduzido para 50 entradas, snapshot inicial limitado às 30 últimas e `ForceNetUpdate` rate-limitado em spam de dano.
@@ -53,6 +57,7 @@
 - Reward de morte de inimigo passa a usar o maior contribuidor como fallback de `KillerPS` quando o contexto fatal nao resolve PlayerState.
 - Clamp dos primários ajustado para `0..120`; `AttributeSet` inicia em `20`, talentos persistidos podem evoluir até `100` e o teto restante é reservado para boosters.
 - Regen de `Health/Mana/Stamina` passa a usar atributos finais modificados por GE server-side, com tick autoritativo de 2s no `Character`, aplicação idempotente dos GEs de bootstrap, bloqueio por morte/sangramento, multiplicadores de combate, pausa de stamina por ação e penalidade de mana por debuff.
+- Regen de bootstrap agora zera os atributos `HealthRegen/ManaRegen/StaminaRegen` antes de aplicar GE instant/infinite e o tick de 2s aplica o valor do atributo uma vez por tick, evitando acúmulo e escala indevida por segundo.
 - Contrato de grant GAS ajustado: `FSpellRiseGrantedAbility` não carrega mais level; o level editável fica no Blueprint callable do `CharacterBase`, enquanto grants por source/inimigo usam default server-side seguro.
 - Fluxo de death -> full loot -> respawn fechado no recorte atual.
 - Full loot da morte ajustado para spawn com delay de 3s e verificação de piso no servidor (evita bag presa no ar).

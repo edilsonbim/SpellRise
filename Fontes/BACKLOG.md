@@ -51,6 +51,10 @@
 - Alvo: budget de rede, matriz RPC e validação server-side de contexto/alcance/LOS.
 
 ## Alta prioridade
+- Corrigir sockets de equipamento/projeteis: revisar attach points usados por equip/unequip, arma equipada/stowed e spawn de projeteis.
+- Implementar/fechar fluxo de dead e revive: estado de morte, input bloqueado, ragdoll/apresentação, full loot, janela de revive/respawn e reconciliação.
+- Melhorar ragdoll: separar decisão de morte server-side da apresentação client-side e evitar dependência em Dedicated Server.
+- Revisar luzes: ajustar iluminação/custo visual sem impactar DS/headless.
 - balance pass de resist / penetration / crit sob TTK alvo;
 - automação multiplayer em CI;
 - revisão da base GAS para fronteiras explícitas de activation / commit / prediction / replication.

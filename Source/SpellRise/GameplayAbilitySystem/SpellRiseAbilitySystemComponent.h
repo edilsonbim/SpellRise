@@ -87,6 +87,9 @@ public:
 	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForInputTag(FGameplayTag InputTag) const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	USpellRiseGameplayAbility* SR_GetSpellRiseAbilityForAbilityClass(TSubclassOf<UGameplayAbility> AbilityClass) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	USpellRiseGameplayAbility* SR_GetSelectedSpellAbility() const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")

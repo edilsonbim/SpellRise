@@ -2,9 +2,8 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
-#include "Animation/AnimInstance.h"
-#include "Animation/AnimMontage.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/ChildActorComponent.h"
 #include "Engine/ActorChannel.h"
 #include "Engine/World.h"
 #include "EquippableItem.h"
@@ -13,7 +12,6 @@
 #include "GameplayEffect.h"
 #include "InventoryComponent.h"
 #include "Net/UnrealNetwork.h"
-#include "TimerManager.h"
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UnrealType.h"
 
@@ -173,16 +171,10 @@ void USpellRiseWeaponComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	QuickWeaponSlots.SetNum(FMath::Max(QuickSlotCount, 1));
-	BindAnimNotifyDelegate();
 }
 
 void USpellRiseWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	UnbindAnimNotifyDelegate();
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(AnimNotifyFallbackTimerHandle);
-	}
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -279,23 +271,10 @@ bool USpellRiseWeaponComponent::AssignQuickSlot(UEquippableItem* Item, int32 Slo
 
 void USpellRiseWeaponComponent::HandleWeaponAnimNotify(FName NotifyName)
 {
-	const FString ReceivedNotifyName = NotifyName.ToString();
-	if (ReceivedNotifyName.Equals(EquipNotifyName.ToString(), ESearchCase::IgnoreCase))
-	{
-		if (GetOwner() && GetOwner()->HasAuthority())
-		{
-			CompleteWeaponDrawTransition_Server(true);
-		}
-		return;
-	}
-
-	if (ReceivedNotifyName.Equals(UnequipNotifyName.ToString(), ESearchCase::IgnoreCase))
-	{
-		if (GetOwner() && GetOwner()->HasAuthority())
-		{
-			CompleteWeaponDrawTransition_Server(false);
-		}
-	}
+	UE_LOG(LogSpellRiseWeaponComponent, Verbose,
+		TEXT("[Weapon][AnimNotifyIgnored] Owner=%s Notify=%s Reason=equip_unequip_animation_disabled"),
+		*GetNameSafe(GetOwner()),
+		*NotifyName.ToString());
 }
 
 bool USpellRiseWeaponComponent::IsWeaponItem(UEquippableItem* Item) const
@@ -449,21 +428,6 @@ void USpellRiseWeaponComponent::ServerAssignQuickSlot_Implementation(UEquippable
 	}
 
 	AssignQuickSlot_Server(Item, SlotIndex);
-}
-
-void USpellRiseWeaponComponent::MulticastPlayWeaponTransition_Implementation(UAnimMontage* MontageToPlay, bool bDraw)
-{
-	if (GetOwner() && GetOwner()->HasAuthority())
-	{
-		return;
-	}
-
-	PlayWeaponTransitionLocally(MontageToPlay, bDraw);
-}
-
-void USpellRiseWeaponComponent::HandleMontageNotifyBegin(FName NotifyName, const FBranchingPointNotifyPayload& BranchingPointPayload)
-{
-	HandleWeaponAnimNotify(NotifyName);
 }
 
 void USpellRiseWeaponComponent::OnRep_EquippedWeapon()
@@ -632,9 +596,27 @@ bool USpellRiseWeaponComponent::UnequipWeapon_Server(UEquippableItem* Item)
 
 	if (!Item)
 	{
-		if (bWeaponDrawn)
+		if (QuickWeaponSlots.IsValidIndex(ActiveQuickSlotIndex))
 		{
-			return SetWeaponDrawn_Server(false);
+			FSpellRiseWeaponSlotState& ActiveSlot = QuickWeaponSlots[ActiveQuickSlotIndex];
+			RemoveActiveWeaponGrants_Server();
+			AttachWeaponVisual(ActiveSlot.WeaponActor, ActiveSlot.Item, ActiveSlot.WeaponDefinition, false, false);
+			DestroyWeaponActor(ActiveSlot.WeaponActor);
+			if (ActiveSlot.Item)
+			{
+				ActiveSlot.Item->SetActive(false);
+			}
+			ActiveSlot = FSpellRiseWeaponSlotState();
+			bWeaponDrawn = false;
+			ActiveWeaponItem = nullptr;
+			EquippedWeapon = nullptr;
+			ActiveQuickSlotIndex = INDEX_NONE;
+			RefreshOffHandSuppression_Server();
+			ApplyOverlayState();
+			BroadcastWeaponState();
+			OnQuickSlotsChanged.Broadcast();
+			ForceOwnerNetUpdate();
+			return true;
 		}
 		return true;
 	}
@@ -662,6 +644,7 @@ bool USpellRiseWeaponComponent::UnequipWeapon_Server(UEquippableItem* Item)
 	if (bWasActive)
 	{
 		RemoveActiveWeaponGrants_Server();
+		AttachWeaponVisual(QuickWeaponSlots[SlotIndex].WeaponActor, QuickWeaponSlots[SlotIndex].Item, QuickWeaponSlots[SlotIndex].WeaponDefinition, false, false);
 		bWeaponDrawn = false;
 		ActiveWeaponItem = nullptr;
 		EquippedWeapon = nullptr;
@@ -675,6 +658,8 @@ bool USpellRiseWeaponComponent::UnequipWeapon_Server(UEquippableItem* Item)
 		Item->SetActive(false);
 	}
 	RefreshEquippedWeaponReference_Server();
+	RefreshOffHandSuppression_Server();
+	ApplyOverlayState();
 	BroadcastWeaponState();
 	OnQuickSlotsChanged.Broadcast();
 	ForceOwnerNetUpdate();
@@ -718,6 +703,7 @@ bool USpellRiseWeaponComponent::AssignQuickSlot_Server(UEquippableItem* Item, in
 		if (ExistingSlot == ActiveQuickSlotIndex)
 		{
 			RemoveActiveWeaponGrants_Server();
+			AttachWeaponVisual(QuickWeaponSlots[ExistingSlot].WeaponActor, QuickWeaponSlots[ExistingSlot].Item, QuickWeaponSlots[ExistingSlot].WeaponDefinition, false, false);
 			bWeaponDrawn = false;
 			ActiveQuickSlotIndex = INDEX_NONE;
 			ActiveWeaponItem = nullptr;
@@ -732,6 +718,7 @@ bool USpellRiseWeaponComponent::AssignQuickSlot_Server(UEquippableItem* Item, in
 		if (SlotIndex == ActiveQuickSlotIndex)
 		{
 			RemoveActiveWeaponGrants_Server();
+			AttachWeaponVisual(QuickWeaponSlots[SlotIndex].WeaponActor, QuickWeaponSlots[SlotIndex].Item, QuickWeaponSlots[SlotIndex].WeaponDefinition, false, false);
 			bWeaponDrawn = false;
 			ActiveQuickSlotIndex = INDEX_NONE;
 			ActiveWeaponItem = nullptr;
@@ -742,6 +729,17 @@ bool USpellRiseWeaponComponent::AssignQuickSlot_Server(UEquippableItem* Item, in
 
 	NewSlotState.WeaponActor = GetOrSpawnWeaponActorForSlot(NewSlotState);
 	QuickWeaponSlots[SlotIndex] = NewSlotState;
+	if (QuickWeaponSlots.IsValidIndex(ActiveQuickSlotIndex) && ActiveQuickSlotIndex != SlotIndex)
+	{
+		FSpellRiseWeaponSlotState& PreviousActiveSlot = QuickWeaponSlots[ActiveQuickSlotIndex];
+		RemoveActiveWeaponGrants_Server();
+		AttachWeaponVisual(PreviousActiveSlot.WeaponActor, PreviousActiveSlot.Item, PreviousActiveSlot.WeaponDefinition, false, false);
+		if (PreviousActiveSlot.Item)
+		{
+			PreviousActiveSlot.Item->SetActive(false);
+		}
+	}
+
 	for (UEquippableItem* ReplacedItem : ItemsToDeactivate)
 	{
 		if (ReplacedItem && ReplacedItem->bActive)
@@ -750,25 +748,18 @@ bool USpellRiseWeaponComponent::AssignQuickSlot_Server(UEquippableItem* Item, in
 		}
 	}
 
-	if (ActiveQuickSlotIndex == INDEX_NONE)
+	ActiveQuickSlotIndex = SlotIndex;
+	bWeaponDrawn = true;
+	if (Item)
 	{
-		ActiveQuickSlotIndex = SlotIndex;
-		RefreshEquippedWeaponReference_Server();
-		if (!bWeaponDrawn)
-		{
-			SetWeaponDrawn_Server(true);
-		}
-		else
-		{
-			AttachCurrentWeaponVisual();
-		}
+		Item->SetActive(true);
 	}
-	else
-	{
-		AttachWeaponVisual(NewSlotState.WeaponActor, NewSlotState.Item, NewSlotState.WeaponDefinition, false, false);
-	}
+	RefreshEquippedWeaponReference_Server();
+	AttachCurrentWeaponVisual();
+	ApplyActiveWeaponGrants_Server();
 
 	RefreshOffHandSuppression_Server();
+	ApplyOverlayState();
 	BroadcastWeaponState();
 	OnQuickSlotsChanged.Broadcast();
 	ForceOwnerNetUpdate();
@@ -802,7 +793,7 @@ bool USpellRiseWeaponComponent::ActivateQuickSlot_Server(int32 SlotIndex)
 
 	if (ActiveQuickSlotIndex == SlotIndex)
 	{
-		return SetWeaponDrawn_Server(!bWeaponDrawn);
+		return SetWeaponDrawn_Server(true);
 	}
 
 	if (QuickWeaponSlots.IsValidIndex(ActiveQuickSlotIndex))
@@ -845,84 +836,10 @@ bool USpellRiseWeaponComponent::SetWeaponDrawn_Server(bool bDraw)
 		return false;
 	}
 
-	if (bWeaponDrawn == bDraw && !bTransitionInProgress)
+	if (bWeaponDrawn == bDraw)
 	{
 		AttachCurrentWeaponVisual();
 		return true;
-	}
-
-	return StartWeaponDrawTransition_Server(bDraw);
-}
-
-bool USpellRiseWeaponComponent::StartWeaponDrawTransition_Server(bool bDraw)
-{
-	UAnimMontage* EquipMontage = nullptr;
-	UAnimMontage* UnequipMontage = nullptr;
-	const FSpellRiseWeaponSlotState* ActiveSlot = GetActiveSlotState();
-	UClass* WeaponActorClass = nullptr;
-	if (ActiveSlot)
-	{
-		ResolveWeaponMontagesForSlot(*ActiveSlot, EquipMontage, UnequipMontage);
-		WeaponActorClass = ActiveSlot->WeaponActorClass;
-		if (!WeaponActorClass && ActiveSlot->WeaponActor)
-		{
-			WeaponActorClass = ActiveSlot->WeaponActor->GetClass();
-		}
-		if (!WeaponActorClass && ActiveSlot->Item)
-		{
-			ResolveWeaponActorClassFromItem(ActiveSlot->Item, WeaponActorClass);
-		}
-	}
-
-	UAnimMontage* MontageToPlay = bDraw ? EquipMontage : UnequipMontage;
-	UE_LOG(LogSpellRiseWeaponComponent, Log,
-		TEXT("[Weapon][Transition] Owner=%s Draw=%s Slot=%d WeaponClass=%s EquipMontage=%s UnequipMontage=%s SelectedMontage=%s"),
-		*GetNameSafe(GetOwner()),
-		bDraw ? TEXT("true") : TEXT("false"),
-		ActiveQuickSlotIndex,
-		*GetNameSafe(WeaponActorClass),
-		*GetNameSafe(EquipMontage),
-		*GetNameSafe(UnequipMontage),
-		*GetNameSafe(MontageToPlay));
-	bTransitionInProgress = true;
-	bPendingDrawState = bDraw;
-	PlayWeaponTransitionLocally(MontageToPlay, bDraw);
-	MulticastPlayWeaponTransition(MontageToPlay, bDraw);
-
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(AnimNotifyFallbackTimerHandle);
-		World->GetTimerManager().SetTimer(
-			AnimNotifyFallbackTimerHandle,
-			FTimerDelegate::CreateWeakLambda(this, [this, bDraw]()
-			{
-				if (bTransitionInProgress && bPendingDrawState == bDraw)
-				{
-					UE_LOG(LogSpellRiseWeaponComponent, Warning,
-						TEXT("[Weapon][AnimNotifyFallback] Owner=%s Draw=%s Notify=%s"),
-						*GetNameSafe(GetOwner()),
-						bDraw ? TEXT("true") : TEXT("false"),
-						*(bDraw ? EquipNotifyName : UnequipNotifyName).ToString());
-					CompleteWeaponDrawTransition_Server(bDraw);
-				}
-			}),
-			AnimNotifyFallbackDelaySeconds,
-			false);
-	}
-
-	return true;
-}
-
-void USpellRiseWeaponComponent::CompleteWeaponDrawTransition_Server(bool bDraw)
-{
-	if (!GetOwner() || !GetOwner()->HasAuthority())
-	{
-		return;
-	}
-
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(AnimNotifyFallbackTimerHandle);
 	}
 
 	if (bWeaponDrawn != bDraw)
@@ -930,8 +847,6 @@ void USpellRiseWeaponComponent::CompleteWeaponDrawTransition_Server(bool bDraw)
 		RemoveActiveWeaponGrants_Server();
 	}
 
-	bTransitionInProgress = false;
-	bPendingDrawState = false;
 	bWeaponDrawn = bDraw;
 	RefreshEquippedWeaponReference_Server();
 	AttachCurrentWeaponVisual();
@@ -949,6 +864,8 @@ void USpellRiseWeaponComponent::CompleteWeaponDrawTransition_Server(bool bDraw)
 	ApplyOverlayState();
 	BroadcastWeaponState();
 	ForceOwnerNetUpdate();
+
+	return true;
 }
 
 void USpellRiseWeaponComponent::RemoveActiveWeaponGrants_Server()
@@ -1227,22 +1144,28 @@ void USpellRiseWeaponComponent::AttachWeaponVisual(AActor* WeaponActor, UEquippa
 		return;
 	}
 
+	if (!bDraw)
+	{
+		WeaponActor->SetActorHiddenInGame(true);
+		WeaponActor->SetActorEnableCollision(false);
+		WeaponActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+		return;
+	}
+
 	FName EquippedSocket = NAME_None;
-	FName StowedSocket = NAME_None;
 	USpellRiseWeaponDefinition* EffectiveDefinition = WeaponDefinition;
 	if (!EffectiveDefinition)
 	{
 		ExtractWeaponDefinitionFromObject(WeaponActor, EffectiveDefinition);
 	}
-	ResolveWeaponSockets(Item, EffectiveDefinition, bOffHand, EquippedSocket, StowedSocket);
+	ResolveWeaponSocket(Item, EffectiveDefinition, bOffHand, EquippedSocket);
 	if (!Item)
 	{
 		const UStruct* ConfigStruct = nullptr;
 		const void* ConfigPtr = SpellRiseWeaponComponentPrivate::ResolveWeaponConfigPtr(WeaponActor->GetClass(), ConfigStruct);
 		SpellRiseWeaponComponentPrivate::ReadNameProperty(ConfigPtr, ConfigStruct, { TEXT("EquippedSocket"), TEXT("EquippedSocketName"), TEXT("MainHandEquippedSocketName") }, EquippedSocket);
-		SpellRiseWeaponComponentPrivate::ReadNameProperty(ConfigPtr, ConfigStruct, { TEXT("StowedSocket"), TEXT("StowedSocketName"), TEXT("HolsterSocketName"), TEXT("MainHandStowedSocketName") }, StowedSocket);
 	}
-	const FName TargetSocket = bDraw ? EquippedSocket : StowedSocket;
+	const FName TargetSocket = EquippedSocket;
 	if (TargetSocket == NAME_None)
 	{
 		UE_LOG(LogSpellRiseWeaponComponent, Warning,
@@ -1269,6 +1192,7 @@ void USpellRiseWeaponComponent::AttachWeaponVisual(AActor* WeaponActor, UEquippa
 	}
 
 	WeaponActor->SetActorEnableCollision(false);
+	WeaponActor->SetActorHiddenInGame(false);
 	WeaponRoot->SetMobility(EComponentMobility::Movable);
 	WeaponActor->AttachToComponent(AttachMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TargetSocket);
 	UE_LOG(LogSpellRiseWeaponComponent, Log,
@@ -1279,72 +1203,6 @@ void USpellRiseWeaponComponent::AttachWeaponVisual(AActor* WeaponActor, UEquippa
 		*GetNameSafe(AttachMesh),
 		bDraw ? TEXT("true") : TEXT("false"),
 		bOffHand ? TEXT("true") : TEXT("false"));
-}
-
-void USpellRiseWeaponComponent::PlayWeaponTransitionLocally(UAnimMontage* MontageToPlay, bool bDraw)
-{
-	if (!MontageToPlay)
-	{
-		UE_LOG(LogSpellRiseWeaponComponent, Warning,
-			TEXT("[Weapon][PlayMontageSkipped] Owner=%s Draw=%s Reason=no_montage"),
-			*GetNameSafe(GetOwner()),
-			bDraw ? TEXT("true") : TEXT("false"));
-		return;
-	}
-
-	BindAnimNotifyDelegate();
-
-	if (ACharacter* CharacterOwner = Cast<ACharacter>(GetOwner()))
-	{
-		USkeletalMeshComponent* Mesh = CharacterOwner->GetMesh();
-		UAnimInstance* AnimInstance = Mesh ? Mesh->GetAnimInstance() : nullptr;
-		const float Duration = CharacterOwner->PlayAnimMontage(MontageToPlay);
-		UE_LOG(LogSpellRiseWeaponComponent, Log,
-			TEXT("[Weapon][PlayMontage] Owner=%s Draw=%s Montage=%s Duration=%.3f Mesh=%s AnimInstance=%s"),
-			*GetNameSafe(GetOwner()),
-			bDraw ? TEXT("true") : TEXT("false"),
-			*GetNameSafe(MontageToPlay),
-			Duration,
-			*GetNameSafe(Mesh),
-			*GetNameSafe(AnimInstance));
-	}
-	else
-	{
-		UE_LOG(LogSpellRiseWeaponComponent, Warning,
-			TEXT("[Weapon][PlayMontageSkipped] Owner=%s Draw=%s Reason=owner_not_character Montage=%s"),
-			*GetNameSafe(GetOwner()),
-			bDraw ? TEXT("true") : TEXT("false"),
-			*GetNameSafe(MontageToPlay));
-	}
-}
-
-void USpellRiseWeaponComponent::BindAnimNotifyDelegate()
-{
-	if (ACharacter* CharacterOwner = Cast<ACharacter>(GetOwner()))
-	{
-		if (USkeletalMeshComponent* Mesh = CharacterOwner->GetMesh())
-		{
-			if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-			{
-				AnimInstance->OnPlayMontageNotifyBegin.RemoveDynamic(this, &ThisClass::HandleMontageNotifyBegin);
-				AnimInstance->OnPlayMontageNotifyBegin.AddDynamic(this, &ThisClass::HandleMontageNotifyBegin);
-			}
-		}
-	}
-}
-
-void USpellRiseWeaponComponent::UnbindAnimNotifyDelegate()
-{
-	if (ACharacter* CharacterOwner = Cast<ACharacter>(GetOwner()))
-	{
-		if (USkeletalMeshComponent* Mesh = CharacterOwner->GetMesh())
-		{
-			if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-			{
-				AnimInstance->OnPlayMontageNotifyBegin.RemoveDynamic(this, &ThisClass::HandleMontageNotifyBegin);
-			}
-		}
-	}
 }
 
 void USpellRiseWeaponComponent::BroadcastWeaponState()
@@ -1784,20 +1642,15 @@ void USpellRiseWeaponComponent::ExtractSetByCallerMagnitudes(UEquippableItem* It
 	}
 }
 
-bool USpellRiseWeaponComponent::ResolveWeaponSockets(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const
+bool USpellRiseWeaponComponent::ResolveWeaponSocket(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, bool bOffHand, FName& OutEquippedSocket) const
 {
 	OutEquippedSocket = bOffHand ? TEXT("hand_l") : DefaultEquippedSocket;
-	OutStowedSocket = bOffHand ? TEXT("stowed_l") : DefaultStowedSocket;
 
 	if (WeaponDefinition)
 	{
 		if (WeaponDefinition->EquippedSocket != NAME_None)
 		{
 			OutEquippedSocket = WeaponDefinition->EquippedSocket;
-		}
-		if (WeaponDefinition->StowedSocket != NAME_None)
-		{
-			OutStowedSocket = WeaponDefinition->StowedSocket;
 		}
 		return true;
 	}
@@ -1808,17 +1661,16 @@ bool USpellRiseWeaponComponent::ResolveWeaponSockets(UEquippableItem* Item, USpe
 		const UStruct* ConfigStruct = nullptr;
 		const void* ConfigPtr = SpellRiseWeaponComponentPrivate::ResolveWeaponConfigPtr(WeaponActorClass, ConfigStruct);
 		SpellRiseWeaponComponentPrivate::ReadNameProperty(ConfigPtr, ConfigStruct, { TEXT("EquippedSocket"), TEXT("EquippedSocketName"), TEXT("MainHandEquippedSocketName") }, OutEquippedSocket);
-		SpellRiseWeaponComponentPrivate::ReadNameProperty(ConfigPtr, ConfigStruct, { TEXT("StowedSocket"), TEXT("StowedSocketName"), TEXT("HolsterSocketName"), TEXT("MainHandStowedSocketName") }, OutStowedSocket);
 	}
 
-	return OutEquippedSocket != NAME_None || OutStowedSocket != NAME_None;
+	return OutEquippedSocket != NAME_None;
 }
 
-bool USpellRiseWeaponComponent::ResolveWeaponSocketsForSlot(const FSpellRiseWeaponSlotState& SlotState, bool bOffHand, FName& OutEquippedSocket, FName& OutStowedSocket) const
+bool USpellRiseWeaponComponent::ResolveWeaponSocketForSlot(const FSpellRiseWeaponSlotState& SlotState, bool bOffHand, FName& OutEquippedSocket) const
 {
 	USpellRiseWeaponDefinition* EffectiveDefinition = nullptr;
 	ExtractWeaponDefinitionFromSlot(SlotState, EffectiveDefinition);
-	ResolveWeaponSockets(SlotState.Item, EffectiveDefinition, bOffHand, OutEquippedSocket, OutStowedSocket);
+	ResolveWeaponSocket(SlotState.Item, EffectiveDefinition, bOffHand, OutEquippedSocket);
 
 	UClass* WeaponActorClass = SlotState.WeaponActorClass;
 	if (!WeaponActorClass && SlotState.WeaponActor)
@@ -1835,78 +1687,9 @@ bool USpellRiseWeaponComponent::ResolveWeaponSocketsForSlot(const FSpellRiseWeap
 		const UStruct* ConfigStruct = nullptr;
 		const void* ConfigPtr = SpellRiseWeaponComponentPrivate::ResolveWeaponConfigPtr(WeaponActorClass, ConfigStruct);
 		SpellRiseWeaponComponentPrivate::ReadNameProperty(ConfigPtr, ConfigStruct, { TEXT("EquippedSocket"), TEXT("EquippedSocketName"), TEXT("MainHandEquippedSocketName") }, OutEquippedSocket);
-		SpellRiseWeaponComponentPrivate::ReadNameProperty(ConfigPtr, ConfigStruct, { TEXT("StowedSocket"), TEXT("StowedSocketName"), TEXT("HolsterSocketName"), TEXT("MainHandStowedSocketName") }, OutStowedSocket);
 	}
 
-	return OutEquippedSocket != NAME_None || OutStowedSocket != NAME_None;
-}
-
-bool USpellRiseWeaponComponent::ResolveWeaponMontages(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition, UAnimMontage*& OutEquipMontage, UAnimMontage*& OutUnequipMontage) const
-{
-	OutEquipMontage = nullptr;
-	OutUnequipMontage = nullptr;
-
-	UClass* WeaponActorClass = nullptr;
-	if (!ResolveWeaponActorClassFromItem(Item, WeaponActorClass) || !WeaponActorClass)
-	{
-		return false;
-	}
-
-	const UStruct* ConfigStruct = nullptr;
-	const void* ConfigPtr = SpellRiseWeaponComponentPrivate::ResolveWeaponConfigPtr(WeaponActorClass, ConfigStruct);
-	if (!ConfigPtr || !ConfigStruct)
-	{
-		return false;
-	}
-
-	if (UObject* EquipObject = SpellRiseWeaponComponentPrivate::ReadObjectLikeProperty(ConfigPtr, ConfigStruct, { TEXT("EquipMontage") }))
-	{
-		OutEquipMontage = Cast<UAnimMontage>(EquipObject);
-	}
-	if (UObject* UnequipObject = SpellRiseWeaponComponentPrivate::ReadObjectLikeProperty(ConfigPtr, ConfigStruct, { TEXT("UnequipMontage") }))
-	{
-		OutUnequipMontage = Cast<UAnimMontage>(UnequipObject);
-	}
-
-	return OutEquipMontage != nullptr || OutUnequipMontage != nullptr;
-}
-
-bool USpellRiseWeaponComponent::ResolveWeaponMontagesForSlot(const FSpellRiseWeaponSlotState& SlotState, UAnimMontage*& OutEquipMontage, UAnimMontage*& OutUnequipMontage) const
-{
-	OutEquipMontage = nullptr;
-	OutUnequipMontage = nullptr;
-
-	UClass* WeaponActorClass = SlotState.WeaponActorClass;
-	if (!WeaponActorClass && SlotState.WeaponActor)
-	{
-		WeaponActorClass = SlotState.WeaponActor->GetClass();
-	}
-	if (!WeaponActorClass && SlotState.Item)
-	{
-		ResolveWeaponActorClassFromItem(SlotState.Item, WeaponActorClass);
-	}
-	if (!WeaponActorClass)
-	{
-		return false;
-	}
-
-	const UStruct* ConfigStruct = nullptr;
-	const void* ConfigPtr = SpellRiseWeaponComponentPrivate::ResolveWeaponConfigPtr(WeaponActorClass, ConfigStruct);
-	if (!ConfigPtr || !ConfigStruct)
-	{
-		return false;
-	}
-
-	if (UObject* EquipObject = SpellRiseWeaponComponentPrivate::ReadObjectLikeProperty(ConfigPtr, ConfigStruct, { TEXT("EquipMontage") }))
-	{
-		OutEquipMontage = Cast<UAnimMontage>(EquipObject);
-	}
-	if (UObject* UnequipObject = SpellRiseWeaponComponentPrivate::ReadObjectLikeProperty(ConfigPtr, ConfigStruct, { TEXT("UnequipMontage") }))
-	{
-		OutUnequipMontage = Cast<UAnimMontage>(UnequipObject);
-	}
-
-	return OutEquipMontage != nullptr || OutUnequipMontage != nullptr;
+	return OutEquippedSocket != NAME_None;
 }
 
 uint8 USpellRiseWeaponComponent::ResolveOverlayStateValue(UEquippableItem* Item, USpellRiseWeaponDefinition* WeaponDefinition) const
@@ -1981,25 +1764,79 @@ uint8 USpellRiseWeaponComponent::ResolveOverlayStateValueForSlot(const FSpellRis
 
 USkeletalMeshComponent* USpellRiseWeaponComponent::ResolveAttachMesh(FName TargetSocket) const
 {
-	if (const AActor* OwnerActor = GetOwner())
+	if (USkeletalMeshComponent* VisualOverrideMesh = ResolveVisualOverrideMesh())
 	{
-		TArray<USkeletalMeshComponent*> Meshes;
-		OwnerActor->GetComponents<USkeletalMeshComponent>(Meshes);
-		for (USkeletalMeshComponent* Mesh : Meshes)
+		if (TargetSocket != NAME_None && VisualOverrideMesh->DoesSocketExist(TargetSocket))
 		{
-			if (Mesh && TargetSocket != NAME_None && Mesh->DoesSocketExist(TargetSocket))
-			{
-				return Mesh;
-			}
+			return VisualOverrideMesh;
 		}
 	}
 
 	if (const ACharacter* CharacterOwner = Cast<ACharacter>(GetOwner()))
 	{
-		return CharacterOwner->GetMesh();
+		if (USkeletalMeshComponent* MainMesh = CharacterOwner->GetMesh())
+		{
+			if (TargetSocket != NAME_None && MainMesh->DoesSocketExist(TargetSocket))
+			{
+				return MainMesh;
+			}
+		}
 	}
 
 	return nullptr;
+}
+
+USkeletalMeshComponent* USpellRiseWeaponComponent::ResolveVisualOverrideMesh() const
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor)
+	{
+		return nullptr;
+	}
+
+	TArray<USkeletalMeshComponent*> Meshes;
+	OwnerActor->GetComponents<USkeletalMeshComponent>(Meshes);
+
+	for (USkeletalMeshComponent* Mesh : Meshes)
+	{
+		if (Mesh && Mesh->GetFName() == TEXT("VisualOverride"))
+		{
+			return Mesh;
+		}
+	}
+
+	TArray<UChildActorComponent*> ChildActorComponents;
+	OwnerActor->GetComponents<UChildActorComponent>(ChildActorComponents);
+	for (UChildActorComponent* ChildActorComponent : ChildActorComponents)
+	{
+		if (!ChildActorComponent || ChildActorComponent->GetFName() != TEXT("VisualOverride"))
+		{
+			continue;
+		}
+
+		AActor* ChildActor = ChildActorComponent->GetChildActor();
+		if (!IsValid(ChildActor))
+		{
+			continue;
+		}
+
+		if (USkeletalMeshComponent* ChildMesh = ChildActor->FindComponentByClass<USkeletalMeshComponent>())
+		{
+			return ChildMesh;
+		}
+	}
+
+	return nullptr;
+}
+
+USkeletalMeshComponent* USpellRiseWeaponComponent::ResolveAnimationMesh() const
+{
+	if (const ACharacter* CharacterOwner = Cast<ACharacter>(GetOwner()))
+	{
+		return CharacterOwner->GetMesh();
+	}
+
+	return ResolveVisualOverrideMesh();
 }
 
 USceneComponent* USpellRiseWeaponComponent::ResolveWeaponSpawnPoint(AActor* WeaponActor) const

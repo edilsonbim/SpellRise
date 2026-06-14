@@ -32,6 +32,317 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### BUG-2026-06-14-056
+- Date: 2026-06-14
+- Severity: High
+- Status: Fixed
+- Area: GAS / Ability Hotbar / Input
+- Issue: abilities com `bFireOnAbilityInput=false` passaram a ativar ao pressionar slot da ability hotbar, como se estivessem sempre em modo fire-on-input.
+- Reproduction: colocar uma `USpellRiseGameplayAbility` com `bFireOnAbilityInput=false` em slot da hotbar por `AbilityClass`, pressionar o slot e observar ativacao imediata em vez de apenas armar/selecionar para disparo pelo `InputTag.Ability.Primary`.
+- Expected: slot da hotbar apenas seleciona/arma abilities com `bFireOnAbilityInput=false`; disparo ocorre no `Primary`. Abilities com `bFireOnAbilityInput=true` continuam ativando pelo proprio slot.
+- Actual: caminho novo da hotbar chamava `SR_AbilityInputClassPressed`, que adicionava a spec em `InputPressedSpecHandles/InputHeldSpecHandles` sem respeitar `FiresFromOwnInputTag()`.
+- Root Cause: o caminho antigo por `InputTag` tinha a regra de seleção, mas o caminho novo por `AbilityClass` implantado na hotbar não replicou essa regra. Além disso, release de slot limpava a seleção mesmo para ability apenas armada.
+- Fix: `SR_AbilityInputClassPressed/Released` agora respeitam `FiresFromOwnInputTag()`, selecionando a spec sem ativar quando `bFireOnAbilityInput=false`; `AbilityWheelInputReleased` preserva a seleção nesse caso para permitir disparo pelo `Primary`.
+- Net Scope: GAS | controller
+- Authority Boundary: servidor continua validando activation/commit/cost/cooldown pelo ASC no `PlayerState`; cliente apenas envia input local/prediction.
+- Prediction Path (Client): slot pode armar ability localmente; ativação real segue GAS/prediction no `Primary` ou no slot conforme flag.
+- Server Validation: `CanActivateAbility`, requisitos de arma, custo/cooldown e commit permanecem no fluxo GAS existente.
+- RPCs afetados: nenhum RPC novo; usa eventos de input/activation do GAS existentes.
+- OnRep afetados: hotbar `OwnerOnly` e estado de abilities/GE replicado pelo GAS.
+- Replication Condition envolvida: hotbar `OwnerOnly`; sem propriedade replicada nova.
+- Overflow (`FBitReader::SetOverflowed`): baixo; sem payload novo.
+- Cenário com lag/loss: pendente.
+- Tested On: 2026-06-14, build `SpellRiseEditor Win64 Development` PASS via `C:\UnrealSource\UnrealEngine`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Gameplay/GAS
+
+### BUG-2026-06-14-044
+- Date: 2026-06-14
+- Severity: High
+- Status: Fixed
+- Area: Inventory / Vendor / Loot / UI Input
+- Issue: inventario/vendor/loot nao fechava de forma aceitavel em alguns fluxos de UI.
+- Reproduction: abrir inventory/vendor/loot e tentar fechar por ESC/clear/botao de fechamento em sessao com UI Narrative.
+- Expected: fechar UI, limpar fonte de loot/vendor quando aplicavel, restaurar input de gameplay local e manter decisao de loot server-authoritative.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: alinhado aos problemas ja registrados em `BUG-2026-06-13-042`: foco/input dividido entre BP e C++ e fallback de fechamento insuficiente.
+- Fix: corrigido no recorte atual; manter contrato de fechamento pelo client local apenas como UX e limpeza autoritativa via RPC validado existente.
+- Net Scope: morte/loot
+- Authority Boundary: servidor decide loot/vendor final; cliente apenas fecha apresentacao e solicita limpeza quando aplicavel.
+- Prediction Path (Client): fechamento visual/input local.
+- Server Validation: RPCs existentes de inventory/vendor/loot devem validar owner/contexto/rate-limit.
+- RPCs afetados: `ServerStopLooting` e equivalentes de vendor se existirem.
+- OnRep afetados: `UNarrativeInventoryComponent::OnRep_LootSource` e equivalentes de vendor se existirem.
+- Replication Condition envolvida: `OwnerOnly`.
+- Overflow (`FBitReader::SetOverflowed`): nao validado neste ciclo.
+- Cenário com lag/loss: pendente.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: UI/Inventory
+
+### BUG-2026-06-14-045
+- Date: 2026-06-14
+- Severity: High
+- Status: Fixed
+- Area: GAS / Ability Bar / Death
+- Issue: barra de ability ficava incorreta ao morrer.
+- Reproduction: morrer com abilities equipadas na hotbar e observar disponibilidade/estado visual da barra.
+- Expected: morte bloqueia input/ativacao de ability, limpa estado visual transiente e reconcilia a barra ao revive/respawn sem remover grants persistentes do PlayerState.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: pendente de confirmacao no codigo. Causa provavel: UI/hotbar nao reagia corretamente a tag/estado de morte ou mantinha estado local apos cancelamento de abilities.
+- Fix: corrigido no recorte atual.
+- Net Scope: GAS | morte/loot
+- Authority Boundary: servidor decide morte, grants e bloqueios; cliente apenas apresenta barra e input local.
+- Prediction Path (Client): UI pode desabilitar slots por tag/estado local reconciliado.
+- Server Validation: activation/commit continuam no ASC server-authoritative do PlayerState.
+- RPCs afetados: nenhum novo registrado.
+- OnRep afetados: estado/tag de morte e dados owner-only da hotbar.
+- Replication Condition envolvida: `OwnerOnly` para hotbar.
+- Overflow (`FBitReader::SetOverflowed`): nao validado neste ciclo.
+- Cenário com lag/loss: pendente.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Gameplay/GAS/UI
+
+### BUG-2026-06-14-046
+- Date: 2026-06-14
+- Severity: High
+- Status: Fixed
+- Area: Attributes / Regen / GAS
+- Issue: regen de atributos nao funcionava corretamente.
+- Reproduction: alterar `Health/Mana/Stamina`, entrar/sair de combate/debuff/morte e observar regen.
+- Expected: regen autoritativo no servidor, usando atributos finais modificados por GE, bloqueado por morte/sangramento e reconciliado por replicacao.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: alinhado ao changelog atual: regen precisava usar atributos finais modificados por GE server-side e regras de pausa/bloqueio.
+- Fix: corrigido no recorte atual.
+- Net Scope: atributos | GAS
+- Authority Boundary: servidor aplica regen e GEs; cliente apenas apresenta atributos replicados.
+- Prediction Path (Client): UI pode interpolar/apresentar, sem decidir valor final.
+- Server Validation: tick/GE server-side.
+- RPCs afetados: nenhum.
+- OnRep afetados: atributos replicados de `Health/Mana/Stamina` e maximos relacionados.
+- Replication Condition envolvida: `Health` publico; `Mana/Stamina` owner-only conforme contrato atual.
+- Overflow (`FBitReader::SetOverflowed`): nao validado neste ciclo.
+- Cenário com lag/loss: pendente.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Gameplay/GAS
+
+### BUG-2026-06-14-047
+- Date: 2026-06-14
+- Severity: Medium
+- Status: Fixed
+- Area: Animation / Equipment
+- Issue: animacao de equip/unequip estava incorreta.
+- Reproduction: equipar/desequipar arma e observar montagem, socket e estado visual equipado/stowed.
+- Expected: animacao/apresentacao nao decide gameplay; servidor mantém estado autoritativo de equipamento e clientes apresentam attach correto.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: pendente de confirmacao; possivel divergencia entre anim notify, socket e visibilidade de arma equipada/stowed.
+- Fix: corrigido no recorte atual.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Animation/Equipment
+
+### BUG-2026-06-14-048
+- Date: 2026-06-14
+- Severity: Medium
+- Status: Fixed
+- Area: Camera / Equipment
+- Issue: bug de camera quando personagem fica sem arma.
+- Reproduction: desequipar arma e observar camera/pose local.
+- Expected: camera deve ter fallback valido sem depender de arma equipada e sem afetar Dedicated Server.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: pendente de confirmacao; possivel dependencia de camera/pose em estado visual de arma.
+- Fix: corrigido no recorte atual.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: nao deve depender de camera; validar ausência de ensure/warning em DS/headless quando aplicavel.
+- Owner: Client/Camera
+
+### BUG-2026-06-14-049
+- Date: 2026-06-14
+- Severity: High
+- Status: Fixed
+- Area: Combat / AoE / GAS
+- Issue: AoE nao dava dano.
+- Reproduction: ativar ability AoE contra alvo valido e observar ausencia de dano.
+- Expected: servidor valida alvo/area, commita ability/custo/cooldown e aplica GE de dano autoritativo aos alvos validos.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: pendente de confirmacao; possivel falha em target data/overlap server-side, GE ou ExecCalc.
+- Fix: corrigido no recorte atual; reconfirmado por anotacao operacional `#corrigido` em 2026-06-14.
+- Net Scope: combate | GAS
+- Authority Boundary: servidor decide dano final.
+- Prediction Path (Client): cliente apenas apresenta indicador/VFX e pode prever UX.
+- Server Validation: area, LOS/alcance quando aplicavel, equipe/alvo valido e commit.
+- RPCs afetados: target data/ability RPCs existentes.
+- OnRep afetados: atributos de vida e cues/estado de dano.
+- Replication Condition envolvida: conforme atributos/cues existentes.
+- Overflow (`FBitReader::SetOverflowed`): nao validado neste ciclo.
+- Cenário com lag/loss: pendente.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Combat/GAS
+
+### BUG-2026-06-14-050
+- Date: 2026-06-14
+- Severity: High
+- Status: Fixed
+- Area: Combat / Projectile / Bow
+- Issue: `shoot arrow` precisa ser corrigido.
+- Reproduction: usar arco/ability de tiro e validar disparo, spawn, trajetoria, hit e dano.
+- Expected: fluxo obrigatorio `aim local -> target data -> validacao server -> commit -> spawn replicado -> hit/GE no servidor`.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: pendente de confirmacao; causa provavel envolvia divergencia no fluxo de arco/projetil entre hotbar/input, target data, socket/origem ou spawn replicado.
+- Fix: corrigido no recorte atual.
+- Net Scope: combate | GAS | projétil
+- Authority Boundary: servidor valida target data, commita ability, spawna projetil replicado e aplica dano.
+- Prediction Path (Client): aim trace/intencao e feedback local apenas.
+- Server Validation: ownership, arma equipada/tag exigida, alcance, direcao, rate-limit, custo/cooldown e alvo/hit final.
+- RPCs afetados: target data/ability RPCs existentes; nao criar RPC novo sem contrato completo.
+- OnRep afetados: spawn/estado do projetil, atributos de dano e cues.
+- Replication Condition envolvida: projetil replicado conforme relevancia; atributos conforme contrato atual.
+- Overflow (`FBitReader::SetOverflowed`): risco por burst de projeteis/target data; validar DS+2 normal e lag/loss.
+- Cenário com lag/loss: pendente.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Combat/Projectile
+
+### BUG-2026-06-14-051
+- Date: 2026-06-14
+- Severity: Medium
+- Status: Fixed
+- Area: Combat / AoE / Presentation
+- Issue: `Blizzard` entra no solo.
+- Reproduction: ativar Blizzard em terreno plano/irregular e observar origem/offset/VFX.
+- Expected: area/VFX deve alinhar ao solo validado sem esconder efeito abaixo do terreno; dano continua server-authoritative.
+- Actual: fluxo reportado como corrigido pelo operador em 2026-06-14; sem nova validacao executada neste registro.
+- Root Cause: pendente; causa provavel e offset/socket/origem de spawn ou trace de solo incorreto.
+- Fix: corrigido no recorte atual.
+- Net Scope: combate | GAS | apresentação
+- Authority Boundary: servidor decide area e dano; cliente apresenta VFX.
+- Prediction Path (Client): indicador/VFX local pode prever, reconciliado pelo servidor.
+- Server Validation: area, range, LOS quando aplicavel e commit.
+- RPCs afetados: target data/ability RPCs existentes.
+- OnRep afetados: cues/actor visual se replicado.
+- Replication Condition envolvida: conforme cues/atores existentes.
+- Overflow (`FBitReader::SetOverflowed`): baixo, salvo se spawnar atores/FX replicados demais.
+- Cenário com lag/loss: pendente se alterar target data/replicacao.
+- Tested On: nao executado neste ciclo; status veio de anotacao do operador `#corrigido`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Combat/VFX
+
+### BUG-2026-06-14-052
+- Date: 2026-06-14
+- Severity: High
+- Status: Open
+- Area: Equipment / Socket / Projectile
+- Issue: sockets precisam ser corrigidos.
+- Reproduction: equipar/desequipar armas e disparar projeteis verificando attach points, muzzle/origem e visual em outros clients.
+- Expected: sockets de arma/equipamento/projetil devem ser consistentes no owner, outros clients e Dedicated Server sem decidir gameplay pelo client.
+- Actual: pendente de investigacao.
+- Root Cause: pendente.
+- Fix: pendente.
+- Net Scope: combate | projétil | equipamento
+- Authority Boundary: servidor decide equipamento e spawn de projetil; client apresenta attach.
+- Prediction Path (Client): visual local apenas.
+- Server Validation: arma equipada, tags exigidas e origem/direcao aceitaveis para spawn.
+- RPCs afetados: ability/target data existentes.
+- OnRep afetados: estado de equipamento e spawn de projetil.
+- Replication Condition envolvida: conforme equipamento/projetil existentes.
+- Overflow (`FBitReader::SetOverflowed`): risco medio se correção adicionar payload de socket/transform por RPC; preferir derivar no servidor.
+- Cenário com lag/loss: pendente se tocar projétil/equipamento replicado.
+- Tested On: pendente
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Equipment/Combat
+
+### BUG-2026-06-14-053
+- Date: 2026-06-14
+- Severity: Medium
+- Status: Open
+- Area: Death / Animation / Ragdoll
+- Issue: ragdoll precisa ser melhorado.
+- Reproduction: matar personagem em combate/queda e observar ragdoll, colisao, transicao e retorno no revive/respawn.
+- Expected: servidor decide morte; ragdoll e apresentacao replicada/cosmetica, sem depender de HUD/camera/input local em DS.
+- Actual: pendente de investigacao.
+- Root Cause: pendente.
+- Fix: pendente.
+- Net Scope: morte/loot | apresentação
+- Authority Boundary: servidor decide morte, loot e estado; client apresenta ragdoll.
+- Prediction Path (Client): nenhuma decisao final; apenas pose/apresentacao.
+- Server Validation: estado de morte e permissao de revive/respawn.
+- RPCs afetados: death/respawn/revive existentes ou futuros.
+- OnRep afetados: estado de morte, mesh/physics presentation se replicado.
+- Replication Condition envolvida: pendente.
+- Overflow (`FBitReader::SetOverflowed`): risco se replicar physics/bones em excesso; evitar replicacao pesada.
+- Cenário com lag/loss: pendente.
+- Tested On: pendente
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Animation/Death
+
+### BUG-2026-06-14-054
+- Date: 2026-06-14
+- Severity: High
+- Status: Open
+- Area: Death / Revive / Respawn
+- Issue: implementar/fechar `dead` e `revive`.
+- Reproduction: morrer, aguardar janela de morte, tentar revive/respawn e validar estado final.
+- Expected: estado de morte autoritativo, bloqueio de input/abilities, full loot conforme regra, revive/respawn validado no servidor e reconciliação limpa no client.
+- Actual: pendente de implementacao/revisao final.
+- Root Cause: fluxo ainda nao fechado em contrato de producao.
+- Fix: pendente.
+- Net Scope: morte/loot | GAS | atributos
+- Authority Boundary: servidor decide morte, revive, respawn, recursos, loot e estado final.
+- Prediction Path (Client): UI/tela de morte local apenas.
+- Server Validation: owner/contexto, estado atual, distancia/LOS se revive por outro player, cooldown/custo/item, rate-limit e anti-spam.
+- RPCs afetados: revive/respawn existentes ou futuros devem seguir contrato obrigatório de RPC.
+- OnRep afetados: estado de morte, atributos, tags GAS, inventario/loot quando aplicavel.
+- Replication Condition envolvida: pendente; preferir owner-only para UI privada e replicacao publica apenas do estado necessario.
+- Overflow (`FBitReader::SetOverflowed`): risco medio por burst de morte/loot/respawn; validar DS+2 normal e lag/loss.
+- Cenário com lag/loss: pendente.
+- Tested On: pendente
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Multiplayer/Death
+
+### BUG-2026-06-14-055
+- Date: 2026-06-14
+- Severity: Low
+- Status: Open
+- Area: Lighting / Presentation / Performance
+- Issue: revisar luzes.
+- Reproduction: validar cenas principais em cliente visual e carga headless para custo/warnings.
+- Expected: iluminacao visual aceitavel sem impacto em Dedicated Server/headless e sem spam de logs.
+- Actual: pendente de revisao.
+- Root Cause: pendente.
+- Fix: pendente.
+- Tested On: pendente
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: validar que nao cria dependencia visual no DS
+- Owner: Art/Performance
+
 ### BUG-2026-06-13-043
 - Date: 2026-06-13
 - Severity: High
