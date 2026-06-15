@@ -14,6 +14,79 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseGameplayAbilityRuntime, Log, All);
 
+namespace SpellRiseAbilityProgression
+{
+	static FGameplayTag ResolveWeaponProgressionTagFromWeaponTag(const FGameplayTag& WeaponTag)
+	{
+		if (!WeaponTag.IsValid())
+		{
+			return FGameplayTag();
+		}
+
+		const FString WeaponTagName = WeaponTag.ToString();
+		if (WeaponTagName.EndsWith(TEXT(".TwoHandSword"), ESearchCase::IgnoreCase) ||
+			WeaponTagName.EndsWith(TEXT(".Katana"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.TwoHandSword"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".TwoHandHammer"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.TwoHandHammer"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".TwoHandAxe"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.TwoHandAxe"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".Sword"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Sword"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".Hammer"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Hammer"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".Axe"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Axe"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".Bow"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Bow"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".Shield"), ESearchCase::IgnoreCase) || WeaponTagName == TEXT("Weapon.Shield"))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Shield"), false);
+		}
+		if (WeaponTagName.EndsWith(TEXT(".Staff"), ESearchCase::IgnoreCase))
+		{
+			return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Staff"), false);
+		}
+
+		return FGameplayTag();
+	}
+
+	static bool EquippedWeaponTagsContainProgressionTag(
+		const FGameplayTagContainer& EquippedWeaponTags,
+		const FGameplayTag& RequiredProgressionTag)
+	{
+		if (!RequiredProgressionTag.IsValid())
+		{
+			return true;
+		}
+
+		for (const FGameplayTag& EquippedWeaponTag : EquippedWeaponTags)
+		{
+			const FGameplayTag ResolvedProgressionTag = ResolveWeaponProgressionTagFromWeaponTag(EquippedWeaponTag);
+			if (ResolvedProgressionTag.IsValid() && ResolvedProgressionTag == RequiredProgressionTag)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
 USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
@@ -127,7 +200,7 @@ bool USpellRiseGameplayAbility::AreWeaponRequirementsMet() const
 
 bool USpellRiseGameplayAbility::AreWeaponRequirementsMetForActorInfo(const FGameplayAbilityActorInfo* ActorInfo) const
 {
-	if (RequiredWeaponTags.IsEmpty() && BlockedWeaponTags.IsEmpty())
+	if (!WeaponProgressionTag.IsValid())
 	{
 		return true;
 	}
@@ -136,7 +209,7 @@ bool USpellRiseGameplayAbility::AreWeaponRequirementsMetForActorInfo(const FGame
 	AActor* AvatarActor = EffectiveActorInfo ? EffectiveActorInfo->AvatarActor.Get() : GetAvatarActorFromActorInfo();
 	if (!AvatarActor)
 	{
-		return RequiredWeaponTags.IsEmpty();
+		return false;
 	}
 
 	const USpellRiseWeaponComponent* WeaponComponent = AvatarActor->FindComponentByClass<USpellRiseWeaponComponent>();
@@ -146,17 +219,9 @@ bool USpellRiseGameplayAbility::AreWeaponRequirementsMetForActorInfo(const FGame
 		WeaponComponent->GetActiveWeaponTags(EquippedWeaponTags);
 	}
 
-	if (!RequiredWeaponTags.IsEmpty() && !EquippedWeaponTags.HasAll(RequiredWeaponTags))
-	{
-		return false;
-	}
-
-	if (!BlockedWeaponTags.IsEmpty() && EquippedWeaponTags.HasAny(BlockedWeaponTags))
-	{
-		return false;
-	}
-
-	return true;
+	return SpellRiseAbilityProgression::EquippedWeaponTagsContainProgressionTag(
+		EquippedWeaponTags,
+		WeaponProgressionTag);
 }
 
 USpellRiseAbilitySystemComponent* USpellRiseGameplayAbility::GetSpellRiseAbilitySystemComponentFromActorInfo() const

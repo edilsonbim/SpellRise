@@ -74,11 +74,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input", meta=(Categories="InputTag"))
 	FGameplayTag AbilityInputTag;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon", meta=(Categories="Weapon"))
-	FGameplayTagContainer RequiredWeaponTags;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Progression", meta=(Categories="Progression.Weapon"))
+	FGameplayTag WeaponProgressionTag;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Weapon", meta=(Categories="Weapon"))
-	FGameplayTagContainer BlockedWeaponTags;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Progression", meta=(Categories="Progression.School"))
+	FGameplayTag SchoolProgressionTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Damage", meta=(Categories="DamageChannel"))
+	FGameplayTag DamageChannelTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Damage", meta=(Categories="DamageType"))
+	FGameplayTag DamageTypeTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Damage")
+	bool bUsesEquippedWeaponDamage = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
 	ESpellRiseAbilityCastType CastType = ESpellRiseAbilityCastType::Instant;

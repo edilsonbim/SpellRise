@@ -16,6 +16,12 @@ namespace SR_Combat
 
 	constexpr float MOVESPEEDMULT_MIN = 0.1f;
 	constexpr float MOVESPEEDMULT_MAX = 3.0f;
+
+	constexpr float LIFESTEAL_MIN = 0.f;
+	constexpr float LIFESTEAL_MAX = 1.0f;
+
+	constexpr float EQUIPPED_WEAPON_BASE_DAMAGE_MIN = 0.f;
+	constexpr float EQUIPPED_WEAPON_BASE_DAMAGE_MAX = 10000.f;
 }
 
 UCombatAttributeSet::UCombatAttributeSet()
@@ -24,6 +30,8 @@ UCombatAttributeSet::UCombatAttributeSet()
 
 	MoveSpeed = 0.f;
 	MoveSpeedMultiplier = 1.f;
+	LifestealPercent = 0.f;
+	EquippedWeaponBaseDamage = 0.f;
 
 	SlashingRes = 0.f;
 	BashingRes = 0.f;
@@ -49,6 +57,8 @@ void UCombatAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, MoveSpeed, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, MoveSpeedMultiplier, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, LifestealPercent, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, EquippedWeaponBaseDamage, COND_OwnerOnly, REPNOTIFY_Always);
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, SlashingRes, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UCombatAttributeSet, BashingRes, COND_OwnerOnly, REPNOTIFY_Always);
@@ -89,6 +99,18 @@ void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute
 		return;
 	}
 
+	if (Attribute == GetLifestealPercentAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, SR_Combat::LIFESTEAL_MIN, SR_Combat::LIFESTEAL_MAX);
+		return;
+	}
+
+	if (Attribute == GetEquippedWeaponBaseDamageAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, SR_Combat::EQUIPPED_WEAPON_BASE_DAMAGE_MIN, SR_Combat::EQUIPPED_WEAPON_BASE_DAMAGE_MAX);
+		return;
+	}
+
 	if (Attribute == GetSlashingResAttribute()) NewValue = ClampRes(NewValue);
 	else if (Attribute == GetBashingResAttribute()) NewValue = ClampRes(NewValue);
 	else if (Attribute == GetPiercingResAttribute()) NewValue = ClampRes(NewValue);
@@ -113,6 +135,8 @@ void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 
     if (A == GetMoveSpeedAttribute()) SetMoveSpeed(FMath::Clamp(GetMoveSpeed(), SR_Combat::MOVESPEED_MIN, SR_Combat::MOVESPEED_MAX));
     else if (A == GetMoveSpeedMultiplierAttribute()) SetMoveSpeedMultiplier(FMath::Clamp(GetMoveSpeedMultiplier(), SR_Combat::MOVESPEEDMULT_MIN, SR_Combat::MOVESPEEDMULT_MAX));
+    else if (A == GetLifestealPercentAttribute()) SetLifestealPercent(FMath::Clamp(GetLifestealPercent(), SR_Combat::LIFESTEAL_MIN, SR_Combat::LIFESTEAL_MAX));
+    else if (A == GetEquippedWeaponBaseDamageAttribute()) SetEquippedWeaponBaseDamage(FMath::Clamp(GetEquippedWeaponBaseDamage(), SR_Combat::EQUIPPED_WEAPON_BASE_DAMAGE_MIN, SR_Combat::EQUIPPED_WEAPON_BASE_DAMAGE_MAX));
 
 	else if (A == GetSlashingResAttribute()) SetSlashingRes(ClampRes(GetSlashingRes()));
 	else if (A == GetBashingResAttribute()) SetBashingRes(ClampRes(GetBashingRes()));
@@ -132,6 +156,8 @@ void UCombatAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCall
 
 void UCombatAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, MoveSpeed, OldValue); }
 void UCombatAttributeSet::OnRep_MoveSpeedMultiplier(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, MoveSpeedMultiplier, OldValue); }
+void UCombatAttributeSet::OnRep_LifestealPercent(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, LifestealPercent, OldValue); }
+void UCombatAttributeSet::OnRep_EquippedWeaponBaseDamage(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, EquippedWeaponBaseDamage, OldValue); }
 
 void UCombatAttributeSet::OnRep_SlashingRes(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, SlashingRes, OldValue); }
 void UCombatAttributeSet::OnRep_BashingRes(const FGameplayAttributeData& OldValue){ GAMEPLAYATTRIBUTE_REPNOTIFY(UCombatAttributeSet, BashingRes, OldValue); }

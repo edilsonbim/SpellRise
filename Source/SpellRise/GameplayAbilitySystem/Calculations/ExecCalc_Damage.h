@@ -18,16 +18,12 @@ public:
 	{
 		FCaptureDefs();
 
-
-		FGameplayEffectAttributeCaptureDefinition MeleeDamageMultiplierDef;
-		FGameplayEffectAttributeCaptureDefinition BowDamageMultiplierDef;
-		FGameplayEffectAttributeCaptureDefinition SpellDamageMultiplierDef;
-
 		FGameplayEffectAttributeCaptureDefinition CritChanceDef;
 		FGameplayEffectAttributeCaptureDefinition CritDamageDef;
 
 		FGameplayEffectAttributeCaptureDefinition ArmorPenetrationDef;
 
+		FGameplayEffectAttributeCaptureDefinition EquippedWeaponBaseDamageDef;
 
 		FGameplayEffectAttributeCaptureDefinition SlashingResDef;
 		FGameplayEffectAttributeCaptureDefinition BashingResDef;

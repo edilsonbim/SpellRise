@@ -9,11 +9,6 @@ namespace SpellRiseDerivedStats
 	constexpr float MULTIPLIER_MIN = 0.f;
 	constexpr float MULTIPLIER_MAX = 10.f;
 
-	constexpr float MELEE_DAMAGE_MULTIPLIER_BASE = 1.f;
-	constexpr float BOW_DAMAGE_MULTIPLIER_BASE = 1.f;
-	constexpr float SPELL_DAMAGE_MULTIPLIER_BASE = 1.f;
-	constexpr float HEALING_MULTIPLIER_BASE = 1.f;
-
 	constexpr float CRIT_CHANCE_MIN = 0.f;
 	constexpr float CRIT_CHANCE_MAX = 0.25f;
 	constexpr float CRIT_CHANCE_BASE = 0.05f;
@@ -29,10 +24,6 @@ namespace SpellRiseDerivedStats
 
 UDerivedStatsAttributeSet::UDerivedStatsAttributeSet()
 {
-	InitMeleeDamageMultiplier(SpellRiseDerivedStats::MELEE_DAMAGE_MULTIPLIER_BASE);
-	InitBowDamageMultiplier(SpellRiseDerivedStats::BOW_DAMAGE_MULTIPLIER_BASE);
-	InitSpellDamageMultiplier(SpellRiseDerivedStats::SPELL_DAMAGE_MULTIPLIER_BASE);
-	InitHealingMultiplier(SpellRiseDerivedStats::HEALING_MULTIPLIER_BASE);
 	InitCritChance(SpellRiseDerivedStats::CRIT_CHANCE_BASE);
 	InitCritDamage(SpellRiseDerivedStats::CRIT_DAMAGE_BASE);
 	InitArmorPenetration(SpellRiseDerivedStats::ARMOR_PENETRATION_BASE);
@@ -41,11 +32,6 @@ UDerivedStatsAttributeSet::UDerivedStatsAttributeSet()
 void UDerivedStatsAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, MeleeDamageMultiplier, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, BowDamageMultiplier,   COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, SpellDamageMultiplier, COND_OwnerOnly, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, HealingMultiplier,     COND_OwnerOnly, REPNOTIFY_Always);
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, CritChance,            COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UDerivedStatsAttributeSet, CritDamage,            COND_OwnerOnly, REPNOTIFY_Always);
@@ -57,14 +43,7 @@ void UDerivedStatsAttributeSet::PreAttributeChange(const FGameplayAttribute& Att
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
-	if (Attribute == GetMeleeDamageMultiplierAttribute()
-		|| Attribute == GetBowDamageMultiplierAttribute()
-		|| Attribute == GetSpellDamageMultiplierAttribute()
-		|| Attribute == GetHealingMultiplierAttribute())
-	{
-		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX);
-	}
-	else if (Attribute == GetCritChanceAttribute())
+	if (Attribute == GetCritChanceAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, SpellRiseDerivedStats::CRIT_CHANCE_MIN, SpellRiseDerivedStats::CRIT_CHANCE_MAX);
 	}
@@ -84,23 +63,7 @@ void UDerivedStatsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectM
 
 	const FGameplayAttribute& Attribute = Data.EvaluatedData.Attribute;
 
-	if (Attribute == GetMeleeDamageMultiplierAttribute())
-	{
-		SetMeleeDamageMultiplier(FMath::Clamp(GetMeleeDamageMultiplier(), SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX));
-	}
-	else if (Attribute == GetBowDamageMultiplierAttribute())
-	{
-		SetBowDamageMultiplier(FMath::Clamp(GetBowDamageMultiplier(), SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX));
-	}
-	else if (Attribute == GetSpellDamageMultiplierAttribute())
-	{
-		SetSpellDamageMultiplier(FMath::Clamp(GetSpellDamageMultiplier(), SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX));
-	}
-	else if (Attribute == GetHealingMultiplierAttribute())
-	{
-		SetHealingMultiplier(FMath::Clamp(GetHealingMultiplier(), SpellRiseDerivedStats::MULTIPLIER_MIN, SpellRiseDerivedStats::MULTIPLIER_MAX));
-	}
-	else if (Attribute == GetCritChanceAttribute())
+	if (Attribute == GetCritChanceAttribute())
 	{
 		SetCritChance(FMath::Clamp(GetCritChance(), SpellRiseDerivedStats::CRIT_CHANCE_MIN, SpellRiseDerivedStats::CRIT_CHANCE_MAX));
 	}
@@ -112,26 +75,6 @@ void UDerivedStatsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectM
 	{
 		SetArmorPenetration(FMath::Clamp(GetArmorPenetration(), SpellRiseDerivedStats::ARMOR_PENETRATION_MIN, SpellRiseDerivedStats::ARMOR_PENETRATION_MAX));
 	}
-}
-
-void UDerivedStatsAttributeSet::OnRep_MeleeDamageMultiplier(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, MeleeDamageMultiplier, OldValue);
-}
-
-void UDerivedStatsAttributeSet::OnRep_BowDamageMultiplier(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, BowDamageMultiplier, OldValue);
-}
-
-void UDerivedStatsAttributeSet::OnRep_SpellDamageMultiplier(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, SpellDamageMultiplier, OldValue);
-}
-
-void UDerivedStatsAttributeSet::OnRep_HealingMultiplier(const FGameplayAttributeData& OldValue)
-{
-	GAMEPLAYATTRIBUTE_REPNOTIFY(UDerivedStatsAttributeSet, HealingMultiplier, OldValue);
 }
 
 void UDerivedStatsAttributeSet::OnRep_CritChance(const FGameplayAttributeData& OldValue)

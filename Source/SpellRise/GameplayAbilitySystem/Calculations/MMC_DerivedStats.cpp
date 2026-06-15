@@ -87,34 +87,6 @@ float UMMC_PrimaryBase::Normalize01_FromBaseline(float PrimaryValue) const
 	return SR_Primary::Normalize01_FromBaseline(PrimaryValue);
 }
 
-UMMC_MeleeDamageMultiplier::UMMC_MeleeDamageMultiplier() = default;
-float UMMC_MeleeDamageMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
-{
-	const float T = Normalize01_FromBaseline(GetStrength(Spec));
-	return FMath::Clamp(1.f + (0.50f * T), 0.f, 10.f);
-}
-
-UMMC_BowDamageMultiplier::UMMC_BowDamageMultiplier() = default;
-float UMMC_BowDamageMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
-{
-	const float T = Normalize01_FromBaseline(GetAgility(Spec));
-	return FMath::Clamp(1.f + (0.50f * T), 0.f, 10.f);
-}
-
-UMMC_SpellDamageMultiplier::UMMC_SpellDamageMultiplier() = default;
-float UMMC_SpellDamageMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
-{
-	const float T = Normalize01_FromBaseline(GetIntelligence(Spec));
-	return FMath::Clamp(1.f + (0.50f * T), 0.f, 10.f);
-}
-
-UMMC_HealingMultiplier::UMMC_HealingMultiplier() = default;
-float UMMC_HealingMultiplier::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
-{
-	const float T = Normalize01_FromBaseline(GetWisdom(Spec));
-	return FMath::Clamp(1.f + (0.40f * T), 0.f, 10.f);
-}
-
 UMMC_CritChance::UMMC_CritChance() = default;
 float UMMC_CritChance::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {

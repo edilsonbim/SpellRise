@@ -1,5 +1,8 @@
 # Backlog
 
+## Progressao
+- Implementar integração entre TalentTreeComponent e `USpellRiseProgressionComponent`: ao desbloquear talento de arma/escola, adicionar/ativar a entrada correspondente nos arrays `WeaponSkillLevels`/`SchoolLevels` do `PlayerState` e permitir evolução de nível server-side.
+
 ## Foco atual
 1. Fechar persistência de produção.
 2. Corrigir overflow de replicação no `PlayerController`.

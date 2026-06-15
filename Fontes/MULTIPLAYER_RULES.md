@@ -17,9 +17,12 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 |---|---|---|---|---|---|---|
 | GA Instant/Cast/Channel | Input local -> `SR_ProcessAbilityInput` | `CanActivate/Commit` + tags/cost/cooldown | Servidor | estado de ability + GE/cues | Sim (UX) | desync de confirmação com RTT alto |
 | Ability Hotbar 8+8 | input local -> slot lógico -> `InputTag` | servidor valida alteração de slot, grupo Weapon/Common e rate-limit | GAS ativa ability já concedida | slots `OwnerOnly` no `PlayerState` | só UX/seleção | slot stale após troca de arma ou OnRep fora de ordem |
+| Progressao arma/escola | servidor/persistencia | servidor valida tag e nivel `1..100` | Servidor | `PlayerState` owner-only | nao | cliente tentar forcar nivel ou UI stale |
 | Target Data (spell/projétil) | trace local como intenção | payload/alcance/LOS/ownership | Servidor | resultado autoritativo | Sim (pré-visual) | cliente tentar forçar hit inválido |
 | Projétil | após validação do cast | spawn + trajetória inicial | Servidor | actor replicado + hit no servidor | opcional visual local | hit fantasma por ordem de eventos |
 | Atributos/Recursos | n/a | ExecCalc/MMC/GE no servidor | Servidor | `Health/MaxHealth` público; `Mana/Stamina/Regen/CarryWeight` `OwnerOnly` | não | trust indevido no cliente |
+| Cura GAS | input local/evento autorizado | servidor valida alvo, tags, custo, cooldown, contexto e ownership | Servidor | `Health/MaxHealth` público; cues/feedback conforme GAS | Sim, apenas UX | cliente tentar forçar valor/alvo de cura ou desync visual com RTT alto |
+| Lifesteal | GE duration/buff no atacante | servidor calcula após dano real aplicado | Servidor | `LifestealPercent` owner-only; cura via `Health` público | só UX/tag de estado | dupla escala, lifesteal recursivo ou cura baseada em dano mitigado incorreto |
 | Morte/Loot/Respawn | dano autoritativo | estado de morte + regras de loot | Servidor | tags/estado/atores de loot | só UI | corrida de OnRep e apresentação |
 | Inventario/Loot UI | UI local -> componente de inventario do `PlayerState` | servidor valida owner, source de loot, quantidade e rate-limit | Servidor | inventario/loot source no `PlayerState`, `LootSource` `OwnerOnly` | só UX | source stale se resolver pelo pawn durante respawn |
 | Building Mode | input local | contexto/material/range/LOS/RPC rate | Servidor | estado mínimo necessário | opcional ghost local | abuso de RPC/payload |
@@ -51,12 +54,15 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 - Chat público é apresentação e não deve usar reliable.
 - Death/corpse/equipment visual multicast é apresentação e não deve usar reliable; autoridade vem de GE/tag/estado replicado pelo servidor.
 - Eventos de gameplay server-side: manter rate-limit por tag.
+- Cura usa o mesmo contrato de atributos/recursos: valor final server-side, sem RPC de valor curado vindo do cliente.
+- Lifesteal não usa RPC novo; o buff altera `LifestealPercent` por GE e o pós-dano aplica cura server-side.
 - Mudança de feature só entra se declarar impacto de tráfego esperado.
 
 ## Observabilidade mínima obrigatória
 - Métricas/logs por sessão:
   - ativações de ability: tentativas, sucesso, falha e `FailureTags`;
   - RPC rejeitado por motivo;
+  - cura rejeitada por alvo inválido, custo/cooldown, tag bloqueante ou contexto inválido;
   - contagem de `OnRep` crítico por minuto;
   - erros de overflow (`FBitReader::SetOverflowed`);
   - latência de confirmação cliente->servidor para cast.

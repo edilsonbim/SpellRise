@@ -25,19 +25,40 @@
 
 ## Derivados
 ### STR
-- `MeleeDamageMultiplier = 1.00 + 0.50 * T`
 - `ArmorPenetration = 0.00 + 0.30 * T`
 
 ### AGI
-- `BowDamageMultiplier = 1.00 + 0.50 * T`
 - `CritChance = 0.05 + 0.20 * T`
 
 ### INT
-- `SpellDamageMultiplier = 1.00 + 0.50 * T`
+- Reservado para progressão de magia/escolas e recursos derivados.
 
 ### WIS
-- `HealingMultiplier = 1.00 + 0.40 * T`
 - `CritDamageMultiplier = 1.50 + 0.50 * T`
+
+## Dano e progressao
+- Multiplicadores derivados por canal de arma foram removidos do runtime.
+- Dano deve vir de `AbilityLevel`, dano base da arma equipada, nivel da arma, nivel da escola e atributo primario aplicavel.
+- `EquippedWeaponBaseDamage` vive em `UCombatAttributeSet`, replica `OwnerOnly` e deve ser setado/removido por GE aplicado pelo `WeaponComponent` a partir da `WeaponDefinition`.
+- O SetByCaller padrao para o GE de arma e `Data.EquippedWeaponBaseDamage`.
+- Formula inicial do `ExecCalc_Damage`: `(BaseDaGA + EquippedWeaponBaseDamage quando habilitado) * (1 + AbilityLevel*0.005 + WeaponLevel*0.0025 + SchoolLevel*0.0025) * Data.DamageScaling`.
+- `DamageChannel.*` classifica o fluxo de dano, mas nao aplica multiplicador por si so.
+- `ExecCalc_Damage` continua responsavel por resistencia, penetracao, critico e drains.
+
+## Cura
+- Cura é mutação autoritativa de `Health` e deve ser aplicada pelo servidor via `GameplayEffect`.
+- `ExecCalc_Healing` usa `Data.BaseHeal` com fallback compatível para `Data.Heal` e multiplicador opcional `Data.HealingScaling`.
+- Cliente pode exibir previsão/feedback, mas não envia valor final de cura confiável.
+- Cura é clampada contra `MaxHealth` no `AttributeSet`.
+- Novo código de cura deve usar apenas STR, AGI, INT e WIS conforme a matriz canônica.
+
+## Lifesteal
+- `LifestealPercent` é atributo temporário de sustain em `UCombatAttributeSet`.
+- Faixa efetiva: `0.0..1.0`.
+- GEs duration podem modificar `LifestealPercent` e conceder `Status.Lifesteal` para estado/UX.
+- O servidor calcula cura de lifesteal após dano real aplicado: `ActualDamageApplied * LifestealPercent`.
+- Cura de lifesteal usa `GE_Lifesteal_Healing` e `HealingType.Lifesteal`.
+- A tag `Status.Lifesteal` sozinha não aplica cura.
 
 ## Caps de recurso
 Usando bônus sobre baseline:

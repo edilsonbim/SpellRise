@@ -15,9 +15,9 @@
 
 ## Ordem de dano
 1. Base damage do `SetByCaller`.
-2. Multiplicador do canal (`melee`, `bow`, `spell`).
-3. Escala genérica de dano.
-4. Mitigação por resistência com penetração.
+2. Progressao autoritativa: nivel da GA, dano/skill da arma quando aplicavel, nivel da escola e atributo primario.
+3. Escala generica de dano.
+4. Mitigacao por resistencia com penetracao.
 5. Crit chance + crit multiplier.
 6. Drains de stamina/mana pelo perfil de dano.
 

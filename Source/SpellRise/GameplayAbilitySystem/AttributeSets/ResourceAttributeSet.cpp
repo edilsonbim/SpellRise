@@ -19,6 +19,7 @@
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Characters/SpellRiseEnemyCharacterBase.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/Persistence/SpellRisePersistenceTypes.h"
@@ -42,6 +43,18 @@ namespace SpellRiseTags
 	inline const FGameplayTag& Data_CatalystChargeLegacy()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.CatalystCharge"), false);
+		return Tag;
+	}
+
+	inline const FGameplayTag& Data_BaseHeal()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Data.BaseHeal"), false);
+		return Tag;
+	}
+
+	inline const FGameplayTag& HealingType_Lifesteal()
+	{
+		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("HealingType.Lifesteal"), false);
 		return Tag;
 	}
 
@@ -105,6 +118,79 @@ static void ApplyCatalystChargeIfConfigured(
 	}
 
 	ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+}
+
+static void ApplyLifestealHealingIfConfigured(
+	UAbilitySystemComponent* SourceASC,
+	UAbilitySystemComponent* TargetASC,
+	const FGameplayEffectContextHandle& Context,
+	TSubclassOf<UGameplayEffect> GE_Lifesteal_Healing,
+	float ActualDamageApplied)
+{
+	if (!SourceASC || !TargetASC || SourceASC == TargetASC || !SourceASC->IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+
+	if (ActualDamageApplied <= 0.f)
+	{
+		return;
+	}
+
+	const float LifestealPercent = FMath::Clamp(
+		SourceASC->GetNumericAttribute(UCombatAttributeSet::GetLifestealPercentAttribute()),
+		0.f,
+		1.f);
+
+	if (LifestealPercent <= 0.f)
+	{
+		return;
+	}
+
+	if (!GE_Lifesteal_Healing)
+	{
+		UE_LOG(LogSpellRiseResourceRuntime, Warning,
+			TEXT("Lifesteal rejeitado: GE_Lifesteal_Healing nao configurado. Source=%s Target=%s Percent=%.3f Damage=%.2f"),
+			*GetNameSafe(SourceASC->GetAvatarActor()),
+			*GetNameSafe(TargetASC->GetAvatarActor()),
+			LifestealPercent,
+			ActualDamageApplied);
+		return;
+	}
+
+	const float HealingAmount = ActualDamageApplied * LifestealPercent;
+	if (!FMath::IsFinite(HealingAmount) || HealingAmount <= 0.f)
+	{
+		return;
+	}
+
+	FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(
+		GE_Lifesteal_Healing,
+		1.f,
+		Context.IsValid() ? Context : SourceASC->MakeEffectContext());
+
+	if (!SpecHandle.IsValid() || !SpecHandle.Data.IsValid())
+	{
+		UE_LOG(LogSpellRiseResourceRuntime, Warning,
+			TEXT("Lifesteal rejeitado: falha ao criar spec. Source=%s Target=%s Percent=%.3f Damage=%.2f"),
+			*GetNameSafe(SourceASC->GetAvatarActor()),
+			*GetNameSafe(TargetASC->GetAvatarActor()),
+			LifestealPercent,
+			ActualDamageApplied);
+		return;
+	}
+
+	if (SpellRiseTags::Data_BaseHeal().IsValid())
+	{
+		SpecHandle.Data->SetSetByCallerMagnitude(SpellRiseTags::Data_BaseHeal(), HealingAmount);
+	}
+
+	if (SpellRiseTags::HealingType_Lifesteal().IsValid())
+	{
+		SpecHandle.Data->AddDynamicAssetTag(SpellRiseTags::HealingType_Lifesteal());
+	}
+
+	SourceASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }
 
 static ASpellRisePlayerController* ResolvePlayerControllerFromCharacter(ASpellRiseCharacterBase* Character)
@@ -528,6 +614,9 @@ namespace
 		int64 DamageRejectedNonPositive = 0;
 		int64 DamageApplied = 0;
 		int64 DamageTargetKilled = 0;
+		int64 HealingExecAttempts = 0;
+		int64 HealingRejectedNonPositive = 0;
+		int64 HealingApplied = 0;
 	};
 
 	FResourceCombatRuntimeCounters GResourceCombatRuntimeCounters;
@@ -781,6 +870,8 @@ UResourceAttributeSet::UResourceAttributeSet()
 	StaminaRegen = 0.f;
 
 	Damage = 0.f;
+	DamageWasCritical = 0.f;
+	Healing = 0.f;
 }
 
 void UResourceAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -939,6 +1030,10 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		{
 			SetDamageWasCritical(0.f);
 		}
+		else if (Data.EvaluatedData.Attribute == GetHealingAttribute())
+		{
+			SetHealing(0.f);
+		}
 		return;
 	}
 
@@ -1021,6 +1116,7 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		}
 
 		SetHealth(FMath::Clamp(PreviousHealth - TotalDamage, 0.f, GetMaxHealth()));
+		const float ActualDamageApplied = FMath::Max(0.f, PreviousHealth - GetHealth());
 
 		AActor* InstigatorActor = nullptr;
 		if (UAbilitySystemComponent* SourceASC = Ctx.GetOriginalInstigatorAbilitySystemComponent())
@@ -1103,6 +1199,16 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 			GDeathDamageContributorsByVictim.Remove(TObjectKey<ASpellRiseCharacterBase>(TargetCharacter));
 		}
 
+		if (ActualDamageApplied > 0.f)
+		{
+			ApplyLifestealHealingIfConfigured(
+				Ctx.GetOriginalInstigatorAbilitySystemComponent(),
+				TargetASC,
+				Ctx,
+				GE_Lifesteal_Healing,
+				ActualDamageApplied);
+		}
+
 		const float CatalystChargeAmount = TotalDamage * CatalystScalar;
 		if (GE_Catalyst_AddCharge)
 		{
@@ -1167,6 +1273,29 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 				DamageTypeTag,
 				bWasCritical
 			);
+		}
+
+		return;
+	}
+
+	if (Attr == GetHealingAttribute())
+	{
+		++GResourceCombatRuntimeCounters.HealingExecAttempts;
+		const float TotalHealing = GetHealing();
+		SetHealing(0.f);
+
+		if (TotalHealing <= 0.f)
+		{
+			++GResourceCombatRuntimeCounters.HealingRejectedNonPositive;
+			return;
+		}
+
+		const float PreviousHealth = GetHealth();
+		const float NewHealth = FMath::Clamp(PreviousHealth + TotalHealing, 0.f, GetMaxHealth());
+		if (!FMath::IsNearlyEqual(PreviousHealth, NewHealth))
+		{
+			SetHealth(NewHealth);
+			++GResourceCombatRuntimeCounters.HealingApplied;
 		}
 
 		return;

@@ -23,22 +23,6 @@ class SPELLRISE_API UDerivedStatsAttributeSet : public UAttributeSet
 public:
 	UDerivedStatsAttributeSet();
 
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Multipliers", ReplicatedUsing=OnRep_MeleeDamageMultiplier)
-	FGameplayAttributeData MeleeDamageMultiplier;
-	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, MeleeDamageMultiplier);
-
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Multipliers", ReplicatedUsing=OnRep_BowDamageMultiplier)
-	FGameplayAttributeData BowDamageMultiplier;
-	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, BowDamageMultiplier);
-
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Multipliers", ReplicatedUsing=OnRep_SpellDamageMultiplier)
-	FGameplayAttributeData SpellDamageMultiplier;
-	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, SpellDamageMultiplier);
-
-	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Multipliers", ReplicatedUsing=OnRep_HealingMultiplier)
-	FGameplayAttributeData HealingMultiplier;
-	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, HealingMultiplier);
-
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Derived|Crit", ReplicatedUsing=OnRep_CritChance)
 	FGameplayAttributeData CritChance;
 	ATTRIBUTE_ACCESSORS_DERIVED(UDerivedStatsAttributeSet, CritChance);
@@ -57,11 +41,6 @@ public:
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
 protected:
-	UFUNCTION() void OnRep_MeleeDamageMultiplier(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_BowDamageMultiplier(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_SpellDamageMultiplier(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_HealingMultiplier(const FGameplayAttributeData& OldValue);
-
 	UFUNCTION() void OnRep_CritChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CritDamage(const FGameplayAttributeData& OldValue);
 

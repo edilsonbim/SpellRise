@@ -20,6 +20,7 @@ class UCombatAttributeSet;
 class UResourceAttributeSet;
 class UCatalystAttributeSet;
 class UDerivedStatsAttributeSet;
+class USpellRiseProgressionComponent;
 class UNarrativeInventoryComponent;
 class AActor;
 class AController;
@@ -38,6 +39,7 @@ public:
 
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	USpellRiseAbilityHotbarComponent* GetAbilityHotbarComponent() const { return AbilityHotbarComponent; }
+	USpellRiseProgressionComponent* GetProgressionComponent() const { return ProgressionComponent; }
 	UNarrativeInventoryComponent* GetNarrativeInventoryComponent() const { return NarrativeInventoryComponent; }
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
@@ -116,6 +118,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Hotbar", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USpellRiseAbilityHotbarComponent> AbilityHotbarComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseProgressionComponent> ProgressionComponent = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UNarrativeInventoryComponent> NarrativeInventoryComponent = nullptr;

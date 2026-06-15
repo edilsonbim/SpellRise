@@ -23,6 +23,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "InventoryComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
@@ -293,6 +294,7 @@ ASpellRisePlayerState::ASpellRisePlayerState()
 	AbilitySystemComponent->SetIsReplicated(true);
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	AbilityHotbarComponent = CreateDefaultSubobject<USpellRiseAbilityHotbarComponent>(TEXT("AbilityHotbarComponent"));
+	ProgressionComponent = CreateDefaultSubobject<USpellRiseProgressionComponent>(TEXT("ProgressionComponent"));
 	NarrativeInventoryComponent = CreateDefaultSubobject<UNarrativeInventoryComponent>(TEXT("NarrativeInventoryComponent"));
 
 	BasicAttributeSet = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));

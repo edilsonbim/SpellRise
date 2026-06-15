@@ -29,42 +29,6 @@ private:
 };
 
 UCLASS()
-class SPELLRISE_API UMMC_MeleeDamageMultiplier : public UMMC_PrimaryBase
-{
-	GENERATED_BODY()
-public:
-	UMMC_MeleeDamageMultiplier();
-	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
-};
-
-UCLASS()
-class SPELLRISE_API UMMC_BowDamageMultiplier : public UMMC_PrimaryBase
-{
-	GENERATED_BODY()
-public:
-	UMMC_BowDamageMultiplier();
-	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
-};
-
-UCLASS()
-class SPELLRISE_API UMMC_SpellDamageMultiplier : public UMMC_PrimaryBase
-{
-	GENERATED_BODY()
-public:
-	UMMC_SpellDamageMultiplier();
-	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
-};
-
-UCLASS()
-class SPELLRISE_API UMMC_HealingMultiplier : public UMMC_PrimaryBase
-{
-	GENERATED_BODY()
-public:
-	UMMC_HealingMultiplier();
-	virtual float CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const override;
-};
-
-UCLASS()
 class SPELLRISE_API UMMC_CritChance : public UMMC_PrimaryBase
 {
 	GENERATED_BODY()

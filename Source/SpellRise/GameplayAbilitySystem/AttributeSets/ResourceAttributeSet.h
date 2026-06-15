@@ -73,8 +73,15 @@ public:
 	FGameplayAttributeData DamageWasCritical;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UResourceAttributeSet, DamageWasCritical);
 
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Meta")
+	FGameplayAttributeData Healing;
+	SPELLRISE_ATTRIBUTE_ACCESSORS(UResourceAttributeSet, Healing);
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Catalyst")
 	TSubclassOf<UGameplayEffect> GE_Catalyst_AddCharge;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Healing")
+	TSubclassOf<UGameplayEffect> GE_Lifesteal_Healing;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;

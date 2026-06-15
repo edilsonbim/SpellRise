@@ -93,7 +93,7 @@ Este roadmap separa marcos ja criados, com base no historico Git local e nos doc
 
 - Talentos e death events persistidos server-side.
 - Weapon runtime e equipment flow consolidados.
-- Nenhum novo sistema dependente de VIG/FOC.
+- Nenhum novo sistema dependente de atributos fora da matriz canonica STR/AGI/INT/WIS.
 
 ## 2026-06 - Observabilidade, persistencia de criacao e correcao de burst
 

@@ -40,6 +40,14 @@ public:
 	FGameplayAttributeData MoveSpeedMultiplier;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UCombatAttributeSet, MoveSpeedMultiplier);
 
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Combat|Sustain", ReplicatedUsing=OnRep_LifestealPercent)
+	FGameplayAttributeData LifestealPercent;
+	SPELLRISE_ATTRIBUTE_ACCESSORS(UCombatAttributeSet, LifestealPercent);
+
+	UPROPERTY(BlueprintReadOnly, Category="Attributes|Combat|Weapon", ReplicatedUsing=OnRep_EquippedWeaponBaseDamage)
+	FGameplayAttributeData EquippedWeaponBaseDamage;
+	SPELLRISE_ATTRIBUTE_ACCESSORS(UCombatAttributeSet, EquippedWeaponBaseDamage);
+
 	UPROPERTY(BlueprintReadOnly, Category="Attributes|Combat|Resistance", ReplicatedUsing=OnRep_SlashingRes)
 	FGameplayAttributeData SlashingRes;
 	SPELLRISE_ATTRIBUTE_ACCESSORS(UCombatAttributeSet, SlashingRes);
@@ -106,6 +114,8 @@ protected:
 
 	UFUNCTION() void OnRep_MoveSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MoveSpeedMultiplier(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_LifestealPercent(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_EquippedWeaponBaseDamage(const FGameplayAttributeData& OldValue);
 
 	UFUNCTION() void OnRep_SlashingRes(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_BashingRes(const FGameplayAttributeData& OldValue);

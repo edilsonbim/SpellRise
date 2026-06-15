@@ -38,7 +38,7 @@ Se houver conflito entre codigo legado e documentacao atual, sinalize o conflito
 - O Character consome ASC/ActorInfo do PlayerState.
 - O ASC usa replication mode Mixed.
 - Primarios validos: STR, AGI, INT, WIS.
-- Novo codigo e novos assets nao devem usar aliases legados como VIG e FOC.
+- Novo codigo e novos assets devem usar apenas primarios canonicos STR, AGI, INT e WIS.
 - O cliente nunca e autoridade para dano, recursos, atributos primarios, morte, loot ou resultado final de gameplay.
 - O fluxo de projetil deve permanecer: aim local -> target data -> validacao server -> commit -> spawn replicado -> hit/GE no servidor.
 - Dedicated server nao pode depender de HUD, widget, camera ou logica de UI.
@@ -173,10 +173,10 @@ Mudanca sensivel de gameplay, rede, economia ou persistencia deve ter:
 - flag/config/data asset para desabilitar quando viavel;
 - nota em CHANGELOG quando alterar contrato live.
 
-## Migracao de atributos legados
-- `VIG` e `FOC` so podem existir como compatibilidade passiva.
-- Nenhum novo codigo, asset, GameplayEffect, tag, UI ou formula pode depender desses aliases.
-- Qualquer uso encontrado deve ser classificado como compatibilidade temporaria, divida de migracao ou bug.
+## Atributos canonicos
+- Primarios validos: STR, AGI, INT e WIS.
+- Nenhum novo codigo, asset, GameplayEffect, tag, UI ou formula deve depender de atributos fora da matriz canonica.
+- Qualquer uso fora da matriz canonica deve ser classificado como divida de migracao ou bug.
 
 ## Foco ativo atual
 1. Corrigir overflow de replicacao no PlayerController.

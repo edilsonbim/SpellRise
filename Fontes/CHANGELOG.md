@@ -7,6 +7,16 @@
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Adicionado atributo `EquippedWeaponBaseDamage` em `UCombatAttributeSet` para o dano base da arma equipada, alimentado por GE de equipamento via `Data.EquippedWeaponBaseDamage`.
+- `ExecCalc_Damage` passa a consumir `EquippedWeaponBaseDamage`, `AbilityLevel`, nivel de arma e nivel de escola quando a ability declara os metadados de progressao.
+- Progressao de arma passa a usar `Progression.Weapon.TwoHandSword` no lugar de `Progression.Weapon.Katana`; o mapeamento C++ ainda aceita tag legada `.Katana` como compatibilidade temporaria para assets antigos.
+- `USpellRiseGameplayAbility` passa a declarar metadados de dano/progressao (`DamageChannelTag`, `DamageTypeTag`, `SchoolProgressionTag`, `WeaponProgressionTag`, `bUsesEquippedWeaponDamage`) e remove os campos antigos de requisito/bloqueio por `WeaponTag`.
+- Adicionadas tags de progressao `Progression.Weapon.*` e `Progression.School.*` para o novo componente de progressao no `PlayerState`.
+- Adicionado `USpellRiseProgressionComponent` no `ASpellRisePlayerState` para armazenar niveis owner-only de arma e escola por `GameplayTag`.
+- Removido `HealingMultiplier` do runtime C++; cura passa a depender de base/scaling explicito e futura progressao de escola/GA.
+- Removidos multiplicadores derivados de dano por canal (`MeleeDamageMultiplier`, `BowDamageMultiplier`, `SpellDamageMultiplier`) do runtime C++ para abrir caminho ao modelo baseado em nivel da GA, arma equipada, nivel de arma e escola.
+- Adicionado suporte base de lifesteal server-authoritative: `LifestealPercent` em `UCombatAttributeSet`, `Status.Lifesteal` para estado/UX e cura pós-dano real via `GE_Lifesteal_Healing`.
+- Adicionado contrato de cura GAS server-authoritative: `ExecCalc_Healing` calcula cura por `Data.BaseHeal`/`Data.Heal` e `Data.HealingScaling`; `UResourceAttributeSet` consome meta `Healing` e aplica clamp em `Health <= MaxHealth`.
 - Corrigido input da ability hotbar para respeitar `USpellRiseGameplayAbility::bFireOnAbilityInput`: slots que apontam direto para `AbilityClass` agora apenas armam abilities configuradas para disparar pelo `Primary`, em vez de ativá-las imediatamente.
 - Documentado recorte de correcoes reportadas em 2026-06-14: inventario/vendor/loot fechando aceitavelmente, barra de ability ao morrer, regen de atributos, animacao equip/unequip, camera sem arma, AoE sem dano, `Blizzard` nao entrando mais no solo e `shoot arrow` corrigido. Validacao formal ainda pendente quando nao houver evidencia de build/smoke registrada.
 - Registrados como pendencias ativas: sockets, melhoria de ragdoll, fluxo `dead`/`revive` e revisao de luzes.
@@ -42,7 +52,7 @@
 - RPCs de inventário Narrative receberam rate-limit server-side e limite de quantidade por chamada, com log `InventoryRpcRejected`.
 - `Run-Load-NoSteam-Scale.ps1` passa a suportar `-WithInsightsTrace` e `-WithPerfStats` para gerar `.utrace` e coletar stats de rede/gameplay nos cenários de escala.
 - Base C++ da hotbar de abilities 8+8 adicionada: slots `0-7` para weapon abilities e `8-15` para common abilities em componente owner-only no `PlayerState`, com RPC server-side validado/rate-limitado para edição de slots.
-- `USpellRiseGameplayAbility` passa a suportar `AbilitySlotGroup`, `RequiredWeaponTags` e `BlockedWeaponTags`, movendo requisito de arma para validação C++ por tags.
+- `USpellRiseGameplayAbility` passou a suportar validacao C++ de arma por tags; contrato atual usa `WeaponProgressionTag`.
 - `USpellRiseWeaponComponent` remove animação/notify de equip/unequip e visual stowed; apenas arma equipada fica visível, anexada ao socket equipado, priorizando `VisualOverride` válido sem modificar o mesh.
 - Combat log autoritativo com transporte nativo em C++.
 - Fall damage agora resolve causer/instigator como causa ambiental determinística quando o GE é aplicado pelo ASC do próprio alvo, evitando self-causer em chat/combat log/death event.
