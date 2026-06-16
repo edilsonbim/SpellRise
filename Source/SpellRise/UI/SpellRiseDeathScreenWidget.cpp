@@ -6,6 +6,7 @@
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/SoftObjectPath.h"
+#include "SpellRise/Characters/SpellRiseCharacterBase.h"
 
 void USpellRiseDeathScreenWidget::SetMessage(const FText& InMessage)
 {
@@ -13,16 +14,36 @@ void USpellRiseDeathScreenWidget::SetMessage(const FText& InMessage)
 	Invalidate(EInvalidateWidget::Paint);
 }
 
+void USpellRiseDeathScreenWidget::RequestAcceptDeath()
+{
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(PC->GetPawn()))
+		{
+			if (Character->IsDowned())
+			{
+				Character->ServerAcceptDeath();
+			}
+		}
+	}
+}
+
 void USpellRiseDeathScreenWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	SetVisibility(ESlateVisibility::Visible);
 	SetIsEnabled(true);
 
 	if (Message.IsEmpty())
 	{
 		Message = FText::FromString(TEXT("You are dead."));
 	}
+}
+
+FReply USpellRiseDeathScreenWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	RequestAcceptDeath();
+	return FReply::Handled();
 }
 
 int32 USpellRiseDeathScreenWidget::NativePaint(

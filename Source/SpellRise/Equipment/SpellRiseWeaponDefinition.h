@@ -47,6 +47,9 @@ struct FSpellRiseWeaponLoadoutSlotView
 	FGameplayTag WeaponTag;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Weapon")
+	FGameplayTag WeaponProgressionTag;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Weapon")
 	ESpellRiseWeaponHandPolicy HandPolicy = ESpellRiseWeaponHandPolicy::OneHanded;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Weapon")
@@ -64,6 +67,9 @@ class SPELLRISE_API USpellRiseWeaponDefinition : public UPrimaryDataAsset
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Weapon")
 	FGameplayTag WeaponTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Weapon|Progression", meta=(Categories="Progression.Weapon"))
+	FGameplayTag WeaponProgressionTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Weapon")
 	ESpellRiseWeaponHandPolicy HandPolicy = ESpellRiseWeaponHandPolicy::OneHanded;

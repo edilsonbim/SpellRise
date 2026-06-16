@@ -114,6 +114,9 @@ public:
 	void GetActiveWeaponTags(FGameplayTagContainer& OutWeaponTags) const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Weapon")
+	FGameplayTag GetActiveWeaponProgressionTag() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Weapon")
 	bool GetActiveEquippedWeaponSpawnPointTransform(FTransform& OutTransform) const;
 
 	UPROPERTY(ReplicatedUsing=OnRep_EquippedWeapon, BlueprintReadOnly, Category="SpellRise|Weapon")

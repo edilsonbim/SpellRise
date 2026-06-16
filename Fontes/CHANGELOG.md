@@ -7,12 +7,19 @@
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Implementado fluxo player-only de `State.Downed`: ao zerar vida, o player agoniza por 60s com vida travada em 1, sem input/abilities/regen; morte final, full loot e respawn foram movidos para `FinalizeDeath_Server`.
+- Adicionado `USpellRiseDownedInteractableComponent` para interações Narrative de revive/finish em alvo agonizando; revive server-side retorna com `20% MaxHealth`, `0 Mana` e `0 Stamina`.
+- `USpellRiseDeathScreenWidget` passa a expor `RequestAcceptDeath`, permitindo UI chamar `ServerAcceptDeath` enquanto o player está em `State.Downed`.
+- Ragdoll, fade/camera e tela de morte foram suprimidos temporariamente no fluxo de morte/downed para testar a mecanica server-side limpa.
 - Adicionado atributo `EquippedWeaponBaseDamage` em `UCombatAttributeSet` para o dano base da arma equipada, alimentado por GE de equipamento via `Data.EquippedWeaponBaseDamage`.
 - `ExecCalc_Damage` passa a consumir `EquippedWeaponBaseDamage`, `AbilityLevel`, nivel de arma e nivel de escola quando a ability declara os metadados de progressao.
+- `ExecCalc_Damage` passa a aceitar `USpellRiseProgressionComponent` opcional em actors de AI, configuravel por Blueprint, sem exigir o componente em `EnemyBase`.
 - Progressao de arma passa a usar `Progression.Weapon.TwoHandSword` no lugar de `Progression.Weapon.Katana`; o mapeamento C++ ainda aceita tag legada `.Katana` como compatibilidade temporaria para assets antigos.
 - `USpellRiseGameplayAbility` passa a declarar metadados de dano/progressao (`DamageChannelTag`, `DamageTypeTag`, `SchoolProgressionTag`, `WeaponProgressionTag`, `bUsesEquippedWeaponDamage`) e remove os campos antigos de requisito/bloqueio por `WeaponTag`.
+- Adicionado `USpellRiseAbilityDefinition` como data asset C++ tipado para consolidar dados editaveis de UI/hotbar/grants/effects/progressao de talents e abilities; hotbar passa a ler a classe tipada primeiro e preserva fallback legado por reflection. `DefinitionType` e `DisplayName` passam a ser os campos finais para tipo técnico e nome exibido.
 - Adicionadas tags de progressao `Progression.Weapon.*` e `Progression.School.*` para o novo componente de progressao no `PlayerState`.
 - Adicionado `USpellRiseProgressionComponent` no `ASpellRisePlayerState` para armazenar niveis owner-only de arma e escola por `GameplayTag`.
+- `ASpellRisePlayerState` passa a expor `GetProgressionComponent` para Blueprint, e `USpellRiseProgressionComponent` passa a expor `EnsureWeaponSkillLevelFromTalent_Server` para o `TalentTreeComponent` BP vincular talentos de arma aos niveis autoritativos de progressao.
 - Removido `HealingMultiplier` do runtime C++; cura passa a depender de base/scaling explicito e futura progressao de escola/GA.
 - Removidos multiplicadores derivados de dano por canal (`MeleeDamageMultiplier`, `BowDamageMultiplier`, `SpellDamageMultiplier`) do runtime C++ para abrir caminho ao modelo baseado em nivel da GA, arma equipada, nivel de arma e escola.
 - Adicionado suporte base de lifesteal server-authoritative: `LifestealPercent` em `UCombatAttributeSet`, `Status.Lifesteal` para estado/UX e cura pós-dano real via `GE_Lifesteal_Healing`.

@@ -39,8 +39,10 @@ public:
 
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	USpellRiseAbilityHotbarComponent* GetAbilityHotbarComponent() const { return AbilityHotbarComponent; }
-	USpellRiseProgressionComponent* GetProgressionComponent() const { return ProgressionComponent; }
 	UNarrativeInventoryComponent* GetNarrativeInventoryComponent() const { return NarrativeInventoryComponent; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
+	USpellRiseProgressionComponent* GetProgressionComponent() const { return ProgressionComponent; }
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel = 1);

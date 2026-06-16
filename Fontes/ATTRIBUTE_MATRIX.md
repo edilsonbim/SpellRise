@@ -44,6 +44,8 @@
 - Formula inicial do `ExecCalc_Damage`: `(BaseDaGA + EquippedWeaponBaseDamage quando habilitado) * (1 + AbilityLevel*0.005 + WeaponLevel*0.0025 + SchoolLevel*0.0025) * Data.DamageScaling`.
 - `DamageChannel.*` classifica o fluxo de dano, mas nao aplica multiplicador por si so.
 - `ExecCalc_Damage` continua responsavel por resistencia, penetracao, critico e drains.
+- Para players, `WeaponLevel` e `SchoolLevel` vêm do `USpellRiseProgressionComponent` no `PlayerState`.
+- Para AI especial, o mesmo componente pode ser adicionado manualmente no Blueprint do actor; AI sem componente usa fallback seguro sem progressao propria.
 
 ## Cura
 - Cura é mutação autoritativa de `Health` e deve ser aplicada pelo servidor via `GameplayEffect`.

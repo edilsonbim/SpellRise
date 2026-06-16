@@ -31,6 +31,7 @@ class UAbilitySystemComponent;
 class ASpellRisePlayerState;
 class USpellRiseEquipmentManagerComponent;
 class USpellRiseWeaponComponent;
+class USpellRiseDownedInteractableComponent;
 class UNarrativeInventoryComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
@@ -108,6 +109,18 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
 	bool IsDead() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
+	bool IsDowned() const;
+
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Death")
+	void ServerAcceptDeath();
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Death")
+	bool ReviveFromDowned_Server(ASpellRiseCharacterBase* Reviver);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Death")
+	bool FinishDownedByInteractor_Server(ASpellRiseCharacterBase* Finisher);
+
 	void SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context);
 
 	const UInputMappingContext* GetDefaultInputMappingContext() const { return IMC_Default; }
@@ -120,6 +133,15 @@ public:
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleDeath();
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="SpellRise|Death")
+	void HandleDowned();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MultiHandleDowned();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void MultiHandleRevivedFromDowned();
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleCorpseDespawn();
@@ -335,10 +357,16 @@ public:
 	FGameplayTag DeadStateTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
+	FGameplayTag DownedStateTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
 	TSubclassOf<UGameplayEffect> GE_Death;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
 	bool bIsDead = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
+	bool bIsDowned = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Loot")
 	TSubclassOf<AActor> FullLootBagClass = nullptr;
@@ -348,6 +376,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float RespawnDelaySeconds = 30.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Downed", meta=(ClampMin="1.0"))
+	float DownedDurationSeconds = 60.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Downed", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float DownedReviveHealthPercent = 0.2f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Corpse", meta=(ClampMin="0.0"))
 	float CorpseDespawnDelaySeconds = 20.f;
@@ -403,8 +437,15 @@ public:
 	UPROPERTY(Transient)
 	TObjectPtr<class USpellRiseDeathScreenWidget> LocalDeathScreenWidget = nullptr;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death|Downed")
+	TObjectPtr<USpellRiseDownedInteractableComponent> DownedReviveInteractable = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death|Downed")
+	TObjectPtr<USpellRiseDownedInteractableComponent> DownedFinishInteractable = nullptr;
+
 	FTimerHandle RespawnTimerHandle;
 	FTimerHandle CorpseDespawnTimerHandle;
+	FTimerHandle DownedExpirationTimerHandle;
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
 	FTimerHandle ASCInitializationRetryTimerHandle;
@@ -465,6 +506,14 @@ protected:
 	void StopResourceRegen_Server();
 	void ApplyResourceRegenTick_Server();
 	void SetCharacterInputEnabled(bool bEnabled);
+	void ApplyDownedMovementBlock();
+	void RestoreMovementAfterDowned(bool bForceLocalPresentation = false);
+	void EnterDownedState_Server();
+	void FinalizeDeath_Server(FName Reason, ASpellRiseCharacterBase* Finalizer = nullptr);
+	void ScheduleDownedExpiration_Server();
+	void ExecuteDownedExpiration_Server();
+	void ClearDownedState_Server();
+	void SetDownedInteractablesEnabled(bool bEnabled);
 	void ScheduleRespawn_Server();
 	void ExecuteRespawn_Server();
 	void ScheduleCorpseDespawn_Server();

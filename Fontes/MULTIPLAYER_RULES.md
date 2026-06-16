@@ -23,7 +23,7 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 | Atributos/Recursos | n/a | ExecCalc/MMC/GE no servidor | Servidor | `Health/MaxHealth` público; `Mana/Stamina/Regen/CarryWeight` `OwnerOnly` | não | trust indevido no cliente |
 | Cura GAS | input local/evento autorizado | servidor valida alvo, tags, custo, cooldown, contexto e ownership | Servidor | `Health/MaxHealth` público; cues/feedback conforme GAS | Sim, apenas UX | cliente tentar forçar valor/alvo de cura ou desync visual com RTT alto |
 | Lifesteal | GE duration/buff no atacante | servidor calcula após dano real aplicado | Servidor | `LifestealPercent` owner-only; cura via `Health` público | só UX/tag de estado | dupla escala, lifesteal recursivo ou cura baseada em dano mitigado incorreto |
-| Morte/Loot/Respawn | dano autoritativo | estado de morte + regras de loot | Servidor | tags/estado/atores de loot | só UI | corrida de OnRep e apresentação |
+| Morte/Downed/Loot/Respawn | dano autoritativo | `State.Downed`, revive/finish/accept death e regras de loot | Servidor | tags/estado/atores de loot | só UI | corrida de OnRep e apresentação |
 | Inventario/Loot UI | UI local -> componente de inventario do `PlayerState` | servidor valida owner, source de loot, quantidade e rate-limit | Servidor | inventario/loot source no `PlayerState`, `LootSource` `OwnerOnly` | só UX | source stale se resolver pelo pawn durante respawn |
 | Building Mode | input local | contexto/material/range/LOS/RPC rate | Servidor | estado mínimo necessário | opcional ghost local | abuso de RPC/payload |
 | PlayerController runtime | input/UI local | apenas RPCs permitidos | Servidor | somente dados essenciais | não | overflow de replicação |

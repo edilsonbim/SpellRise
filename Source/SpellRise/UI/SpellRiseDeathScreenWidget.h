@@ -15,8 +15,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Death")
 	void SetMessage(const FText& InMessage);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Death")
+	void RequestAcceptDeath();
+
 protected:
 	virtual void NativeConstruct() override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual int32 NativePaint(
 		const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,

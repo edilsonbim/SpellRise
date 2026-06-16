@@ -8,6 +8,7 @@
 #include "UObject/UnrealType.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
+#include "SpellRise/GameplayAbilitySystem/Data/SpellRiseAbilityDefinition.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseAbilityHotbar, Log, All);
@@ -105,6 +106,11 @@ namespace SpellRiseAbilityHotbarPrivate
 
 	UTexture2D* ResolveAbilityDefinitionIcon(UObject* AbilityDefinition)
 	{
+		if (const USpellRiseAbilityDefinition* TypedDefinition = Cast<USpellRiseAbilityDefinition>(AbilityDefinition))
+		{
+			return TypedDefinition->Icon;
+		}
+
 		return Cast<UTexture2D>(ReadFirstObjectPropertyByNames(AbilityDefinition, {
 			TEXT("Icon"),
 		}));
@@ -112,6 +118,11 @@ namespace SpellRiseAbilityHotbarPrivate
 
 	UTexture2D* ResolveAbilityDefinitionActiveIcon(UObject* AbilityDefinition)
 	{
+		if (const USpellRiseAbilityDefinition* TypedDefinition = Cast<USpellRiseAbilityDefinition>(AbilityDefinition))
+		{
+			return TypedDefinition->ActiveIcon;
+		}
+
 		return Cast<UTexture2D>(ReadFirstObjectPropertyByNames(AbilityDefinition, {
 			TEXT("ActiveIcon"),
 		}));
@@ -153,12 +164,46 @@ namespace SpellRiseAbilityHotbarPrivate
 		return FText::GetEmpty();
 	}
 
+	FText ResolveAbilityDefinitionDisplayName(UObject* AbilityDefinition)
+	{
+		if (const USpellRiseAbilityDefinition* TypedDefinition = Cast<USpellRiseAbilityDefinition>(AbilityDefinition))
+		{
+			if (!TypedDefinition->DisplayName.IsEmpty())
+			{
+				return TypedDefinition->DisplayName;
+			}
+
+			if (!TypedDefinition->DefinitionType.IsNone())
+			{
+				return FText::FromName(TypedDefinition->DefinitionType);
+			}
+		}
+
+		return ReadFirstTextPropertyByNames(AbilityDefinition, {
+			TEXT("DisplayName"),
+			TEXT("AbilityName"),
+			TEXT("TalentName"),
+			TEXT("Name")
+		});
+	}
+
 	bool ExtractFirstAbilityClassFromDefinition(UObject* AbilityDefinition, TSubclassOf<UGameplayAbility>& OutAbilityClass)
 	{
 		OutAbilityClass = nullptr;
 		if (!AbilityDefinition || !AbilityDefinition->GetClass())
 		{
 			return false;
+		}
+
+		if (const USpellRiseAbilityDefinition* TypedDefinition = Cast<USpellRiseAbilityDefinition>(AbilityDefinition))
+		{
+			if (TypedDefinition->AbilitiesToGrant.Num() <= 0)
+			{
+				return false;
+			}
+
+			OutAbilityClass = TypedDefinition->AbilitiesToGrant[0].AbilityClass.LoadSynchronous();
+			return OutAbilityClass != nullptr;
 		}
 
 		const FArrayProperty* AbilitiesProperty = FindFProperty<FArrayProperty>(AbilityDefinition->GetClass(), TEXT("AbilitiesToGrant"));
@@ -184,11 +229,26 @@ namespace SpellRiseAbilityHotbarPrivate
 		return OutAbilityClass != nullptr;
 	}
 
-	bool ResolveAbilityDefinitionSlotGroup(UObject* AbilityDefinition, ESpellRiseAbilityHotbarGroup& OutGroup)
+	bool ResolveAbilityDefinitionSlotGroup(UObject* AbilityDefinition, ESpellRiseAbilityHotbarGroup& OutGroup, bool& bOutExplicitlyNotHotbar)
 	{
+		bOutExplicitlyNotHotbar = false;
 		if (!AbilityDefinition || !AbilityDefinition->GetClass())
 		{
 			return false;
+		}
+
+		if (const USpellRiseAbilityDefinition* TypedDefinition = Cast<USpellRiseAbilityDefinition>(AbilityDefinition))
+		{
+			if (TypedDefinition->SlotGroup == ESpellRiseAbilityDefinitionSlotGroup::None)
+			{
+				bOutExplicitlyNotHotbar = true;
+				return false;
+			}
+
+			OutGroup = TypedDefinition->SlotGroup == ESpellRiseAbilityDefinitionSlotGroup::Weapon
+				? ESpellRiseAbilityHotbarGroup::Weapon
+				: ESpellRiseAbilityHotbarGroup::Common;
+			return true;
 		}
 
 		const FProperty* SlotGroupProperty = FindFProperty<FProperty>(AbilityDefinition->GetClass(), TEXT("SlotGroup"));
@@ -375,12 +435,7 @@ bool USpellRiseAbilityHotbarComponent::GetSlotViewData(
 	UObject* LoadedAbilityDefinition = Slot.AbilityDefinition.LoadSynchronous();
 	if (LoadedAbilityDefinition)
 	{
-		OutViewData.DisplayName = SpellRiseAbilityHotbarPrivate::ReadFirstTextPropertyByNames(LoadedAbilityDefinition, {
-			TEXT("DisplayName"),
-			TEXT("AbilityName"),
-			TEXT("TalentName"),
-			TEXT("Name")
-		});
+		OutViewData.DisplayName = SpellRiseAbilityHotbarPrivate::ResolveAbilityDefinitionDisplayName(LoadedAbilityDefinition);
 		OutViewData.Icon = SpellRiseAbilityHotbarPrivate::ResolveAbilityDefinitionIcon(LoadedAbilityDefinition);
 		OutViewData.ActiveIcon = SpellRiseAbilityHotbarPrivate::ResolveAbilityDefinitionActiveIcon(LoadedAbilityDefinition);
 	}
@@ -835,10 +890,17 @@ bool USpellRiseAbilityHotbarComponent::ValidateAbilityDefinitionPayload(
 		return false;
 	}
 
-	ESpellRiseAbilityHotbarGroup DefinitionGroup = ESpellRiseAbilityHotbarGroup::Common;
-	if (!SpellRiseAbilityHotbarPrivate::ResolveAbilityDefinitionSlotGroup(LoadedAbilityDefinition, DefinitionGroup))
+	if (!ValidateSlotPayload(SlotIndex, SpellRiseAbilityHotbarPrivate::DefaultInputTagForSlot(SlotIndex), OutAbilityClass, OutRejectReason))
 	{
-		OutRejectReason = TEXT("definition_missing_slot_group");
+		OutRejectReason = FString::Printf(TEXT("definition_ability_slot_invalid(%s)"), *OutRejectReason);
+		return false;
+	}
+
+	ESpellRiseAbilityHotbarGroup DefinitionGroup = ESpellRiseAbilityHotbarGroup::Common;
+	bool bDefinitionNotHotbar = false;
+	if (!SpellRiseAbilityHotbarPrivate::ResolveAbilityDefinitionSlotGroup(LoadedAbilityDefinition, DefinitionGroup, bDefinitionNotHotbar))
+	{
+		OutRejectReason = bDefinitionNotHotbar ? TEXT("definition_not_hotbar_assignable") : TEXT("definition_missing_slot_group");
 		return false;
 	}
 

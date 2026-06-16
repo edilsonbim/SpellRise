@@ -38,6 +38,11 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool SetWeaponSkillLevel_Server(FGameplayTag WeaponSkillTag, int32 NewLevel);
 
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression", meta=(ClampMin="1", ClampMax="100", UIMin="1", UIMax="100"))
+	bool EnsureWeaponSkillLevelFromTalent_Server(
+		UPARAM(meta=(Categories="Progression.Weapon")) FGameplayTag WeaponSkillTag,
+		int32 TalentLevel);
+
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool SetSchoolLevel_Server(FGameplayTag SchoolTag, int32 NewLevel);
 
@@ -60,5 +65,7 @@ private:
 
 	static int32 ClampProgressionLevel(int32 Level);
 	static int32 FindLevel(const TArray<FSpellRiseProgressionLevelEntry>& Entries, FGameplayTag Tag);
+	static bool IsChildOfTag(FGameplayTag Tag, const TCHAR* ParentTagName);
 	static bool SetLevel(TArray<FSpellRiseProgressionLevelEntry>& Entries, FGameplayTag Tag, int32 NewLevel);
+	static bool EnsureLevelAtLeast(TArray<FSpellRiseProgressionLevelEntry>& Entries, FGameplayTag Tag, int32 NewLevel);
 };

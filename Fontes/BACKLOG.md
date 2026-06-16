@@ -1,7 +1,10 @@
 # Backlog
 
 ## Progressao
-- Implementar integração entre TalentTreeComponent e `USpellRiseProgressionComponent`: ao desbloquear talento de arma/escola, adicionar/ativar a entrada correspondente nos arrays `WeaponSkillLevels`/`SchoolLevels` do `PlayerState` e permitir evolução de nível server-side.
+- Pendente BP: no `TalentTreeComponent`, chamar `EnsureWeaponSkillLevelFromTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState` quando talento de arma for concedido/restaurado.
+- Próximo recorte: criar função equivalente para escola quando os talentos de escola estiverem prontos.
+- Pendente migração: remover do BP `PDA_AbilityDefinition` os campos legados duplicados (`Type`, `Name`, icons, descrição, regras, GAS e progressão) após copiar os valores para os campos C++ finais de `USpellRiseAbilityDefinition`.
+- Pendente hardening: validar no servidor se a `AbilityDefinition` enviada para hotbar pertence ao catálogo/desbloqueios do jogador antes de aceitar o slot.
 
 ## Foco atual
 1. Fechar persistência de produção.
@@ -54,10 +57,20 @@
 - Alvo: budget de rede, matriz RPC e validação server-side de contexto/alcance/LOS.
 
 ## Alta prioridade
+- Corrigir inventario que nao equipa item: revisar fluxo Narrative Inventory -> equipamento -> grant/remove GAS -> attach visual, mantendo decisão no servidor.
+- Recriar projetil de flecha: restaurar pipeline free-target `aim local -> target data -> validação server -> spawn replicado -> hit/GE no servidor`.
+- Criar menu de settings para hotkeys: permitir remapeamento de inputs/hotbar sem mover estado autoritativo para UI/PlayerController.
 - Corrigir sockets de equipamento/projeteis: revisar attach points usados por equip/unequip, arma equipada/stowed e spawn de projeteis.
-- Implementar/fechar fluxo de dead e revive: estado de morte, input bloqueado, ragdoll/apresentação, full loot, janela de revive/respawn e reconciliação.
+- Corrigir socket de arma no `VisualOverride`: garantir attach correto quando o visual do personagem troca mesh/skeleton, sem depender de lógica de UI.
+- Implementar/fechar fluxo de dead e revive (em progresso): estado `Downed`, aceitar morte, finalizar, levantar/reviver, full loot apenas na morte final, respawn e reconciliação.
 - Melhorar ragdoll: separar decisão de morte server-side da apresentação client-side e evitar dependência em Dedicated Server.
 - Revisar luzes: ajustar iluminação/custo visual sem impactar DS/headless.
+- Configurar cooldown por nivel de ability: curva/data-driven por habilidade, aplicada no fluxo GAS sem depender de UI.
+- Melhorar talent tree: permitir nível setável por talento, curva de gasto de talent points e validação server-side do custo.
+- Criar boosters de atributos base: buffs temporários/persistentes sobre STR/AGI/INT/WIS com limites claros e compatibilidade com persistência.
+- Refazer bônus derivados dos atributos base: revisar o que STR/AGI/INT/WIS concedem e documentar impacto em AttributeSet/MMC/ExecCalc/UI.
+- Refazer cálculo de dano para melhorar TTK: consolidar fórmula com nível da ability, arma equipada, nível da arma, escola, resist/penetration/crit e curvas de balanceamento.
+- Refazer visual da talent tree com animações interativas por escolas, mantendo UI client-only e sem estado autoritativo no widget.
 - balance pass de resist / penetration / crit sob TTK alvo;
 - automação multiplayer em CI;
 - revisão da base GAS para fronteiras explícitas de activation / commit / prediction / replication.
@@ -65,6 +78,7 @@
 ## Média prioridade
 - painel de stats e fórmulas derivadas;
 - tooltip com valores live;
+- refatorar `WBP_TalentTree` para distribuir `TalentTreeComponent` aos `WBP_Talent` por array/loop de filhos, removendo chamadas manuais widget-a-widget e a resolução própria no `WBP_Talent`;
 - testes automatizados de dano, fall damage e autoridade de projétil.
 
 ## Regra de governança

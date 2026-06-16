@@ -5,6 +5,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
@@ -243,9 +244,29 @@ namespace SpellRiseDamageProgression
 			return nullptr;
 		}
 
-		if (ASpellRisePlayerState* SourcePlayerState = Cast<ASpellRisePlayerState>(SourceASC->GetOwnerActor()))
+		AActor* OwnerActor = SourceASC->GetOwnerActor();
+		if (ASpellRisePlayerState* SourcePlayerState = Cast<ASpellRisePlayerState>(OwnerActor))
 		{
 			return SourcePlayerState->GetProgressionComponent();
+		}
+
+		if (OwnerActor)
+		{
+			if (USpellRiseProgressionComponent* OwnerProgression = OwnerActor->FindComponentByClass<USpellRiseProgressionComponent>())
+			{
+				return OwnerProgression;
+			}
+		}
+
+		if (AActor* AvatarActor = SourceASC->GetAvatarActor())
+		{
+			if (AvatarActor != OwnerActor)
+			{
+				if (USpellRiseProgressionComponent* AvatarProgression = AvatarActor->FindComponentByClass<USpellRiseProgressionComponent>())
+				{
+					return AvatarProgression;
+				}
+			}
 		}
 
 		return nullptr;
@@ -266,6 +287,24 @@ namespace SpellRiseDamageProgression
 			: ProgressionComponent->GetSchoolLevel(ProgressionTag);
 
 		return FMath::Clamp(Level, 1, 100);
+	}
+
+	static FGameplayTag ResolveEquippedWeaponProgressionTag(const UAbilitySystemComponent* SourceASC)
+	{
+		if (!SourceASC)
+		{
+			return FGameplayTag();
+		}
+
+		if (AActor* AvatarActor = SourceASC->GetAvatarActor())
+		{
+			if (const USpellRiseWeaponComponent* WeaponComponent = AvatarActor->FindComponentByClass<USpellRiseWeaponComponent>())
+			{
+				return WeaponComponent->GetActiveWeaponProgressionTag();
+			}
+		}
+
+		return FGameplayTag();
 	}
 }
 
@@ -613,6 +652,7 @@ void UExecCalc_Damage::Execute_Implementation(
 	int32 AbilityLevelForDebug = 0;
 	int32 WeaponLevelForDebug = 0;
 	int32 SchoolLevelForDebug = 0;
+	FGameplayTag EffectiveWeaponProgressionTag;
 
 	if (bIsFallDamage)
 	{
@@ -694,9 +734,12 @@ void UExecCalc_Damage::Execute_Implementation(
 		const int32 AbilityLevel = FMath::Clamp(FMath::RoundToInt(Spec.GetLevel()), 1, 100);
 		const USpellRiseProgressionComponent* ProgressionComponent =
 			SpellRiseDamageProgression::ResolveSourceProgressionComponent(SourceASC);
+		EffectiveWeaponProgressionTag = bUsesEquippedWeaponDamage
+			? SpellRiseDamageProgression::ResolveEquippedWeaponProgressionTag(SourceASC)
+			: SourceAbility->WeaponProgressionTag;
 		const int32 WeaponLevel = SpellRiseDamageProgression::GetProgressionLevel(
 			ProgressionComponent,
-			SourceAbility->WeaponProgressionTag,
+			EffectiveWeaponProgressionTag,
 			true);
 		const int32 SchoolLevel = SpellRiseDamageProgression::GetProgressionLevel(
 			ProgressionComponent,
@@ -776,7 +819,7 @@ void UExecCalc_Damage::Execute_Implementation(
 			EquippedWeaponBaseDamage,
 			BaseDamage,
 			AbilityLevelForDebug,
-			SourceAbility ? *SourceAbility->WeaponProgressionTag.ToString() : TEXT("None"),
+			*EffectiveWeaponProgressionTag.ToString(),
 			WeaponLevelForDebug,
 			SourceAbility ? *SourceAbility->SchoolProgressionTag.ToString() : TEXT("None"),
 			SchoolLevelForDebug,

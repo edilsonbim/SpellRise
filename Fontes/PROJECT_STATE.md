@@ -17,7 +17,7 @@
 
 ## Recorte de gameplay 2026-06-14
 - Reportados como corrigidos pelo operador: inventario/vendor/loot fechando aceitavelmente, barra de ability ao morrer, regen de atributos, animacao equip/unequip, camera sem arma, AoE sem dano, `Blizzard` nao entrando mais no solo e `shoot arrow`.
-- Pendentes ativos: sockets, ragdoll, fluxo `dead`/`revive` e revisao de luzes.
+- Pendentes ativos: inventario nao equipando item, recriar projetil de flecha, menu de settings para hotkeys, sockets de arma no `VisualOverride`, ragdoll, fluxo `dead`/`revive` e revisao de luzes.
 - Validacao formal nao foi executada neste registro documental; nao tratar os itens como `Verified` ate passar pelos gates aplicaveis.
 
 ## Regras de validacao

@@ -378,7 +378,8 @@ static void SendCombatLogMessages(
 	AActor* TargetActor,
 	float Damage,
 	const FGameplayTag& DamageTypeTag,
-	bool bTargetDied)
+	bool bTargetDied,
+	bool bWasCritical)
 {
 	if (Damage <= 0.f)
 	{
@@ -400,6 +401,8 @@ static void SendCombatLogMessages(
 	const FString SourceName = ResolveCombatSourceName(SourceActor ? SourceActor : SourceCharacter, TargetActor ? TargetActor : TargetCharacter, DamageTypeTag);
 	const FString TargetName = ResolveCombatDisplayName(TargetActor ? TargetActor : TargetCharacter);
 	const FString DamageTypeLabel = ResolveDamageTypeLabel(DamageTypeTag);
+	const FString CriticalPrefix = bWasCritical ? TEXT("critical ") : TEXT("");
+	const bool bTargetWasDowned = bTargetDied && TargetCharacter && TargetCharacter->GetPlayerState();
 	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
 	UWorld* World = TargetCharacter ? TargetCharacter->GetWorld() : nullptr;
 	if (!World && SourceCharacter)
@@ -445,6 +448,36 @@ static void SendCombatLogMessages(
 
 	ASpellRiseGameState* SRGameState = World ? World->GetGameState<ASpellRiseGameState>() : nullptr;
 	USpellRiseChatComponent* ChatComponent = SRGameState ? SRGameState->GetChatComponent() : nullptr;
+	const auto BuildTargetZeroHealthText = [&]() -> FString
+	{
+		if (bFallSourceIsSelfOrUnknown)
+		{
+			return bTargetWasDowned ? FString(TEXT("You fell and are downed.")) : FString(TEXT("You died from fall damage."));
+		}
+
+		return bTargetWasDowned
+			? FString::Printf(TEXT("You are downed by %s."), *SourceName)
+			: FString::Printf(TEXT("You died. Killed by %s."), *SourceName);
+	};
+	const auto BuildSourceZeroHealthText = [&]() -> FString
+	{
+		return bTargetWasDowned
+			? FString::Printf(TEXT("You downed %s."), *TargetName)
+			: FString::Printf(TEXT("You killed %s."), *TargetName);
+	};
+	const auto BuildPublicZeroHealthText = [&]() -> FString
+	{
+		if (bFallSourceIsSelfOrUnknown)
+		{
+			return bTargetWasDowned
+				? FString::Printf(TEXT("%s fell and is downed."), *TargetName)
+				: FString::Printf(TEXT("%s died from fall damage."), *TargetName);
+		}
+
+		return bTargetWasDowned
+			? FString::Printf(TEXT("%s downed %s."), *SourceName, *TargetName)
+			: FString::Printf(TEXT("%s killed %s."), *SourceName, *TargetName);
+	};
 
 	const auto SendViaControllerFallback = [&]()
 	{
@@ -455,9 +488,7 @@ static void SendCombatLogMessages(
 			{
 				FSpellRiseChatMessage DeathMessage;
 				DeathMessage.Name = FName(TEXT("Combat"));
-				DeathMessage.Text = bFallSourceIsSelfOrUnknown
-					? FText::FromString(TEXT("You died from fall damage."))
-					: FText::FromString(FString::Printf(TEXT("You died. Killed by %s."), *SourceName));
+				DeathMessage.Text = FText::FromString(BuildTargetZeroHealthText());
 				DeathMessage.TimeText = TimeText;
 				DeathMessage.Channel = SpellRiseChatChannel::Combat;
 				TargetController->ClientReceiveChatMessage(DeathMessage);
@@ -472,7 +503,7 @@ static void SendCombatLogMessages(
 			{
 				FSpellRiseChatMessage KillMessage;
 				KillMessage.Name = FName(TEXT("Combat"));
-				KillMessage.Text = FText::FromString(FString::Printf(TEXT("You killed %s."), *TargetName));
+				KillMessage.Text = FText::FromString(BuildSourceZeroHealthText());
 				KillMessage.TimeText = TimeText;
 				KillMessage.Channel = SpellRiseChatChannel::Combat;
 				SourceController->ClientReceiveChatMessage(KillMessage);
@@ -486,9 +517,7 @@ static void SendCombatLogMessages(
 			{
 				FSpellRiseChatMessage DeathMessage;
 				DeathMessage.Name = FName(TEXT("Combat"));
-				DeathMessage.Text = bFallSourceIsSelfOrUnknown
-					? FText::FromString(TEXT("You died from fall damage."))
-					: FText::FromString(FString::Printf(TEXT("You died. Killed by %s."), *SourceName));
+				DeathMessage.Text = FText::FromString(BuildTargetZeroHealthText());
 				DeathMessage.TimeText = TimeText;
 				DeathMessage.Channel = SpellRiseChatChannel::Combat;
 				TargetController->ClientReceiveChatMessage(DeathMessage);
@@ -506,26 +535,22 @@ static void SendCombatLogMessages(
 	{
 		const FString MessageText = bFallSourceIsSelfOrUnknown
 			? FString::Printf(TEXT("You took %d fall damage."), FMath::RoundToInt(Damage))
-			: FString::Printf(TEXT("You took %d %s damage from %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *SourceName);
+			: FString::Printf(TEXT("You took %d %s%s damage from %s."), FMath::RoundToInt(Damage), *CriticalPrefix, *DamageTypeLabel, *SourceName);
 		ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(MessageText), TimeText);
 		if (bTargetDied)
 		{
-			const FString DeathText = bFallSourceIsSelfOrUnknown
-				? TEXT("You died from fall damage.")
-				: FString::Printf(TEXT("You died. Killed by %s."), *SourceName);
-			ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(DeathText), TimeText);
+			ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(BuildTargetZeroHealthText()), TimeText);
 		}
 		return;
 	}
 
 	if (SourceController)
 	{
-		const FString MessageText = FString::Printf(TEXT("You dealt %d %s damage to %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *TargetName);
+		const FString MessageText = FString::Printf(TEXT("You dealt %d %s%s damage to %s."), FMath::RoundToInt(Damage), *CriticalPrefix, *DamageTypeLabel, *TargetName);
 		ChatComponent->SendCombatToPlayer(SourceController, FText::FromString(MessageText), TimeText);
 		if (bTargetDied)
 		{
-			const FString KillText = FString::Printf(TEXT("You killed %s."), *TargetName);
-			ChatComponent->SendCombatToPlayer(SourceController, FText::FromString(KillText), TimeText);
+			ChatComponent->SendCombatToPlayer(SourceController, FText::FromString(BuildSourceZeroHealthText()), TimeText);
 		}
 	}
 
@@ -533,22 +558,17 @@ static void SendCombatLogMessages(
 	{
 		const FString MessageText = bFallSourceIsSelfOrUnknown
 			? FString::Printf(TEXT("You took %d fall damage."), FMath::RoundToInt(Damage))
-			: FString::Printf(TEXT("You took %d %s damage from %s."), FMath::RoundToInt(Damage), *DamageTypeLabel, *SourceName);
+			: FString::Printf(TEXT("You took %d %s%s damage from %s."), FMath::RoundToInt(Damage), *CriticalPrefix, *DamageTypeLabel, *SourceName);
 		ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(MessageText), TimeText);
 		if (bTargetDied)
 		{
-			const FString DeathText = bFallSourceIsSelfOrUnknown
-				? TEXT("You died from fall damage.")
-				: FString::Printf(TEXT("You died. Killed by %s."), *SourceName);
-			ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(DeathText), TimeText);
+			ChatComponent->SendCombatToPlayer(TargetController, FText::FromString(BuildTargetZeroHealthText()), TimeText);
 		}
 	}
 
 	if (bTargetDied && World)
 	{
-		const FString PublicDeathText = bFallSourceIsSelfOrUnknown
-			? FString::Printf(TEXT("%s died from fall damage."), *TargetName)
-			: FString::Printf(TEXT("%s killed %s."), *SourceName, *TargetName);
+		const FString PublicDeathText = BuildPublicZeroHealthText();
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			ASpellRisePlayerController* OtherController = Cast<ASpellRisePlayerController>(It->Get());
@@ -1191,7 +1211,7 @@ void UResourceAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCa
 		{
 			TargetEnemy->MultiPlayHitReactionMontage(1.0f);
 		}
-		SendCombatLogMessages(SourceCharacter, InstigatorActor, TargetCharacter, TargetASC->GetAvatarActor(), TotalDamage, DamageTypeTag, bTargetDied);
+		SendCombatLogMessages(SourceCharacter, InstigatorActor, TargetCharacter, TargetASC->GetAvatarActor(), TotalDamage, DamageTypeTag, bTargetDied, bWasCritical);
 		if (TargetCharacter && bTargetDied)
 		{
 			const FSpellRiseDeathParticipantData TopDamageParticipant = ResolveTopDamageParticipant(TargetCharacter, FatalParticipant);

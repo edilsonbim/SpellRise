@@ -1058,6 +1058,7 @@ TArray<FSpellRiseWeaponLoadoutSlotView> USpellRiseEquipmentManagerComponent::Get
 			if (View.WeaponDefinition)
 			{
 				View.WeaponTag = View.WeaponDefinition->WeaponTag;
+				View.WeaponProgressionTag = View.WeaponDefinition->WeaponProgressionTag;
 				View.HandPolicy = View.WeaponDefinition->HandPolicy;
 			}
 		}
@@ -1070,6 +1071,7 @@ TArray<FSpellRiseWeaponLoadoutSlotView> USpellRiseEquipmentManagerComponent::Get
 		if (OffHandView.WeaponDefinition)
 		{
 			OffHandView.WeaponTag = OffHandView.WeaponDefinition->WeaponTag;
+			OffHandView.WeaponProgressionTag = OffHandView.WeaponDefinition->WeaponProgressionTag;
 			OffHandView.HandPolicy = OffHandView.WeaponDefinition->HandPolicy;
 		}
 		OffHandView.bIsActive = OffHandView.Item && !WeaponComponent->OffHandWeapon.bIsSuppressed;
@@ -1088,6 +1090,7 @@ TArray<FSpellRiseWeaponLoadoutSlotView> USpellRiseEquipmentManagerComponent::Get
 		if (View.WeaponDefinition)
 		{
 			View.WeaponTag = View.WeaponDefinition->WeaponTag;
+			View.WeaponProgressionTag = View.WeaponDefinition->WeaponProgressionTag;
 			View.HandPolicy = View.WeaponDefinition->HandPolicy;
 		}
 		View.bIsActive = ActiveQuickWeaponSlotIndex == SlotIndex;
@@ -1101,6 +1104,7 @@ TArray<FSpellRiseWeaponLoadoutSlotView> USpellRiseEquipmentManagerComponent::Get
 	if (OffHandView.WeaponDefinition)
 	{
 		OffHandView.WeaponTag = OffHandView.WeaponDefinition->WeaponTag;
+		OffHandView.WeaponProgressionTag = OffHandView.WeaponDefinition->WeaponProgressionTag;
 		OffHandView.HandPolicy = OffHandView.WeaponDefinition->HandPolicy;
 	}
 	OffHandView.bIsActive = IsOffHandGameplayActive();

@@ -38,7 +38,17 @@
 - Guarda niveis autoritativos de arma e escola/familia por `GameplayTag`.
 - Replicacao owner-only para UI/UX.
 - `Character` nao e fonte de verdade para progressao.
+- `TalentTreeComponent` em Blueprint deve vincular talentos de arma chamando `EnsureWeaponSkillLevelFromTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState`; o BP nao deve mutar arrays de progressao diretamente.
 - `ExecCalc`/helpers server-side devem consultar este componente para nivel de arma/escola quando o novo pipeline de dano for consolidado.
+- AI pode receber `USpellRiseProgressionComponent` opcionalmente direto no Blueprint do actor quando precisar de progressao propria; `EnemyBase` nao deve ser obrigado a carregar este componente.
+- `ExecCalc_Damage` resolve progressao em ordem: `PlayerState`, componente no owner do ASC, componente no avatar do ASC, fallback sem componente.
+
+### Definicao de abilities
+- `USpellRiseAbilityDefinition` é a fonte tipada de dados editáveis de UI, hotbar, grants, efeitos declarativos e progressão para talents/abilities.
+- Campos finais de identificação/UI da definition: `DefinitionType` para categoria técnica e `DisplayName` para nome exibido; campos BP legados duplicados devem ser removidos após migração dos assets.
+- `USpellRiseGameplayAbility` continua sendo a fonte de comportamento runtime: ativação, commit, prediction, target data, aplicação de GE, cast/channel e validação server-side.
+- A hotbar deve ler `USpellRiseAbilityDefinition` de forma tipada primeiro e manter fallback por reflexão apenas para assets legados durante a migração.
+- O cliente pode enviar intenção de slot/definition, mas o servidor deve validar grants, slot group e futuramente catálogo/desbloqueio antes de aceitar.
 
 ## Contrato de authority
 ### Servidor
@@ -53,6 +63,15 @@
 - prevê apenas UX;
 - faz aim trace local quando necessário;
 - apresenta UI/VFX/SFX.
+
+## Fluxo de morte / agonizando
+1. Player com `Health <= 0` entra em `State.Downed`, trava `Health=1`, cancela abilities, para regen e bloqueia input.
+2. O servidor inicia timer de 60s; ragdoll/tela de morte ficam suprimidos temporariamente para debug da mecanica.
+3. Revive usa Narrative Interaction hold de 5s e chama `ReviveFromDowned_Server`, restaurando `20% MaxHealth`, `0 Mana` e `0 Stamina`.
+4. Finish usa ação server-side `FinishDownedByInteractor_Server`; quando exposta por Blueprint/Narrative, deve validar alvo downed, interactor vivo e distância/trace do Narrative.
+5. Aceitar morte usa `ServerAcceptDeath` chamado pela UI do jogador downed.
+6. Full loot, `State.Dead`, corpse despawn e respawn só acontecem em `FinalizeDeath_Server`.
+7. AI não entra em downed no v1; continua no fluxo de morte direta.
 
 ## Fluxo de combate
 1. Ability prepara spec/SetByCaller.

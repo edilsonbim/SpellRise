@@ -353,6 +353,71 @@ void USpellRiseWeaponComponent::GetActiveWeaponTags(FGameplayTagContainer& OutWe
 	}
 }
 
+static FGameplayTag SR_ResolveWeaponProgressionTagFromWeaponTag(const FGameplayTag& WeaponTag)
+{
+	if (!WeaponTag.IsValid())
+	{
+		return FGameplayTag();
+	}
+
+	const FString WeaponTagName = WeaponTag.ToString();
+	if (WeaponTagName.EndsWith(TEXT(".TwoHandSword"), ESearchCase::IgnoreCase)
+		|| WeaponTagName.EndsWith(TEXT(".Katana"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.TwoHandSword"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".TwoHandHammer"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.TwoHandHammer"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".TwoHandAxe"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.TwoHandAxe"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".Sword"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Sword"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".Hammer"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Hammer"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".Axe"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Axe"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".Bow"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Bow"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".Shield"), ESearchCase::IgnoreCase) || WeaponTagName == TEXT("Weapon.Shield"))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Shield"), false);
+	}
+	if (WeaponTagName.EndsWith(TEXT(".Staff"), ESearchCase::IgnoreCase))
+	{
+		return FGameplayTag::RequestGameplayTag(TEXT("Progression.Weapon.Staff"), false);
+	}
+
+	return FGameplayTag();
+}
+
+FGameplayTag USpellRiseWeaponComponent::GetActiveWeaponProgressionTag() const
+{
+	const FSpellRiseWeaponSlotState* ActiveSlot = GetActiveSlotState();
+	if (!bWeaponDrawn || !ActiveSlot || !ActiveSlot->WeaponDefinition)
+	{
+		return FGameplayTag();
+	}
+
+	if (ActiveSlot->WeaponDefinition->WeaponProgressionTag.IsValid())
+	{
+		return ActiveSlot->WeaponDefinition->WeaponProgressionTag;
+	}
+
+	return SR_ResolveWeaponProgressionTagFromWeaponTag(ActiveSlot->WeaponDefinition->WeaponTag);
+}
+
 bool USpellRiseWeaponComponent::GetActiveEquippedWeaponSpawnPointTransform(FTransform& OutTransform) const
 {
 	if (!bWeaponDrawn || !EquippedWeapon)
