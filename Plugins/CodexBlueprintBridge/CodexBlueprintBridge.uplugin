@@ -1,0 +1,25 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Codex Blueprint Bridge",
+  "Description": "Editor commandlet for safe JSON-based Blueprint inspection and controlled edits.",
+  "Category": "Editor",
+  "CreatedBy": "Codex",
+  "EnabledByDefault": false,
+  "CanContainContent": false,
+  "IsBetaVersion": true,
+  "Plugins": [
+    {
+      "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    }
+  ],
+  "Modules": [
+    {
+      "Name": "CodexBlueprintBridge",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
+}

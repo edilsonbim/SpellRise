@@ -201,6 +201,13 @@
 		{
 			"Name": "AIAssistant",
 			"Enabled": true
+		},
+		{
+			"Name": "CodexBlueprintBridge",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
 		}
 	],
 	"TargetPlatforms": [

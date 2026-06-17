@@ -38,7 +38,7 @@
 - Guarda niveis autoritativos de arma e escola/familia por `GameplayTag`.
 - Replicacao owner-only para UI/UX.
 - `Character` nao e fonte de verdade para progressao.
-- `TalentTreeComponent` em Blueprint deve vincular talentos de arma chamando `EnsureWeaponSkillLevelFromTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState`; o BP nao deve mutar arrays de progressao diretamente.
+- `TalentTreeComponent` em Blueprint deve vincular talentos chamando `EnsureProgressionLevelFromAbilityDefinitionTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState` quando houver `USpellRiseAbilityDefinition`; para fluxos especificos, pode chamar `EnsureWeaponSkillLevelFromTalent_Server` ou `EnsureSchoolLevelFromTalent_Server`. O BP nao deve mutar arrays de progressao diretamente.
 - `ExecCalc`/helpers server-side devem consultar este componente para nivel de arma/escola quando o novo pipeline de dano for consolidado.
 - AI pode receber `USpellRiseProgressionComponent` opcionalmente direto no Blueprint do actor quando precisar de progressao propria; `EnemyBase` nao deve ser obrigado a carregar este componente.
 - `ExecCalc_Damage` resolve progressao em ordem: `PlayerState`, componente no owner do ASC, componente no avatar do ASC, fallback sem componente.

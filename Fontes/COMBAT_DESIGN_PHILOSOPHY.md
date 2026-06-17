@@ -15,11 +15,12 @@
 
 ## Ordem de dano
 1. Base damage do `SetByCaller`.
-2. Progressao autoritativa: nivel da GA, dano/skill da arma quando aplicavel, nivel da escola e atributo primario.
+2. Progressao autoritativa: base da ability escalada por nivel da escola, dano da arma escalado por nivel da arma e atributo primario aplicavel.
 3. Escala generica de dano.
-4. Mitigacao por resistencia com penetracao.
-5. Crit chance + crit multiplier.
-6. Drains de stamina/mana pelo perfil de dano.
+4. Escala por atributo primario: STR melee, AGI bow, INT spell, WIS divine.
+5. Mitigacao por resistencia com penetracao.
+6. Crit chance + crit multiplier.
+7. Drains de stamina/mana pelo perfil de dano.
 
 ## Clamps de balance
 - `CritChance <= 25%`

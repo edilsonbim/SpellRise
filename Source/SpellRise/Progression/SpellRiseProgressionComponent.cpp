@@ -1,6 +1,8 @@
 // Implementacao do componente de progressao persistente do jogador.
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
+#include "SpellRise/GameplayAbilitySystem/Data/SpellRiseAbilityDefinition.h"
+
 #include "Net/UnrealNetwork.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseProgressionComponent, Log, All);
@@ -123,6 +125,80 @@ bool USpellRiseProgressionComponent::SetSchoolLevel_Server(FGameplayTag SchoolTa
 	{
 		GetOwner()->ForceNetUpdate();
 	}
+	return bChanged;
+}
+
+bool USpellRiseProgressionComponent::EnsureSchoolLevelFromTalent_Server(FGameplayTag SchoolTag, int32 TalentLevel)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		UE_LOG(LogSpellRiseProgressionComponent, Warning,
+			TEXT("[Progression][SchoolTalentLevelRejected] Reason=not_authority Owner=%s Tag=%s TalentLevel=%d"),
+			*GetNameSafe(GetOwner()),
+			*SchoolTag.ToString(),
+			TalentLevel);
+		return false;
+	}
+
+	if (!IsChildOfTag(SchoolTag, TEXT("Progression.School")))
+	{
+		UE_LOG(LogSpellRiseProgressionComponent, Warning,
+			TEXT("[Progression][SchoolTalentLevelRejected] Reason=invalid_school_tag Owner=%s Tag=%s TalentLevel=%d"),
+			*GetNameSafe(GetOwner()),
+			*SchoolTag.ToString(),
+			TalentLevel);
+		return false;
+	}
+
+	const int32 PreviousLevel = GetSchoolLevel(SchoolTag);
+	const bool bChanged = EnsureLevelAtLeast(SchoolLevels, SchoolTag, TalentLevel);
+	if (bChanged)
+	{
+		GetOwner()->ForceNetUpdate();
+		UE_LOG(LogSpellRiseProgressionComponent, Log,
+			TEXT("[Progression][SchoolTalentLevelApplied] Owner=%s Tag=%s Previous=%d New=%d TalentLevel=%d"),
+			*GetNameSafe(GetOwner()),
+			*SchoolTag.ToString(),
+			PreviousLevel,
+			GetSchoolLevel(SchoolTag),
+			TalentLevel);
+	}
+	return bChanged;
+}
+
+bool USpellRiseProgressionComponent::EnsureProgressionLevelFromAbilityDefinitionTalent_Server(
+	const USpellRiseAbilityDefinition* AbilityDefinition,
+	int32 TalentLevel)
+{
+	if (!AbilityDefinition)
+	{
+		UE_LOG(LogSpellRiseProgressionComponent, Warning,
+			TEXT("[Progression][DefinitionTalentLevelRejected] Reason=missing_definition Owner=%s TalentLevel=%d"),
+			*GetNameSafe(GetOwner()),
+			TalentLevel);
+		return false;
+	}
+
+	bool bChanged = false;
+	if (AbilityDefinition->WeaponProgressionTag.IsValid())
+	{
+		bChanged |= EnsureWeaponSkillLevelFromTalent_Server(AbilityDefinition->WeaponProgressionTag, TalentLevel);
+	}
+
+	if (AbilityDefinition->SchoolProgressionTag.IsValid())
+	{
+		bChanged |= EnsureSchoolLevelFromTalent_Server(AbilityDefinition->SchoolProgressionTag, TalentLevel);
+	}
+
+	if (!AbilityDefinition->WeaponProgressionTag.IsValid() && !AbilityDefinition->SchoolProgressionTag.IsValid())
+	{
+		UE_LOG(LogSpellRiseProgressionComponent, Warning,
+			TEXT("[Progression][DefinitionTalentLevelRejected] Reason=missing_progression_tag Owner=%s Definition=%s TalentLevel=%d"),
+			*GetNameSafe(GetOwner()),
+			*GetNameSafe(AbilityDefinition),
+			TalentLevel);
+	}
+
 	return bChanged;
 }
 

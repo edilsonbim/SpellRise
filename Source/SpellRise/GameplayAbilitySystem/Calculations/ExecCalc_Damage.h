@@ -24,6 +24,10 @@ public:
 		FGameplayEffectAttributeCaptureDefinition ArmorPenetrationDef;
 
 		FGameplayEffectAttributeCaptureDefinition EquippedWeaponBaseDamageDef;
+		FGameplayEffectAttributeCaptureDefinition StrengthDef;
+		FGameplayEffectAttributeCaptureDefinition AgilityDef;
+		FGameplayEffectAttributeCaptureDefinition IntelligenceDef;
+		FGameplayEffectAttributeCaptureDefinition WisdomDef;
 
 		FGameplayEffectAttributeCaptureDefinition SlashingResDef;
 		FGameplayEffectAttributeCaptureDefinition BashingResDef;

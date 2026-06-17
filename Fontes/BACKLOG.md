@@ -2,7 +2,7 @@
 
 ## Progressao
 - Pendente BP: no `TalentTreeComponent`, chamar `EnsureWeaponSkillLevelFromTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState` quando talento de arma for concedido/restaurado.
-- Próximo recorte: criar função equivalente para escola quando os talentos de escola estiverem prontos.
+- Pendente BP: no `TalentTreeComponent`, trocar o vinculo manual de arma por `EnsureProgressionLevelFromAbilityDefinitionTalent_Server` quando houver `USpellRiseAbilityDefinition`, cobrindo arma e escola com o mesmo fluxo.
 - Pendente migração: remover do BP `PDA_AbilityDefinition` os campos legados duplicados (`Type`, `Name`, icons, descrição, regras, GAS e progressão) após copiar os valores para os campos C++ finais de `USpellRiseAbilityDefinition`.
 - Pendente hardening: validar no servidor se a `AbilityDefinition` enviada para hotbar pertence ao catálogo/desbloqueios do jogador antes de aceitar o slot.
 

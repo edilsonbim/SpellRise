@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "SpellRiseProgressionComponent.generated.h"
 
+class USpellRiseAbilityDefinition;
+
 USTRUCT(BlueprintType)
 struct SPELLRISE_API FSpellRiseProgressionLevelEntry
 {
@@ -45,6 +47,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool SetSchoolLevel_Server(FGameplayTag SchoolTag, int32 NewLevel);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression", meta=(ClampMin="1", ClampMax="100", UIMin="1", UIMax="100"))
+	bool EnsureSchoolLevelFromTalent_Server(
+		UPARAM(meta=(Categories="Progression.School")) FGameplayTag SchoolTag,
+		int32 TalentLevel);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression", meta=(ClampMin="1", ClampMax="100", UIMin="1", UIMax="100"))
+	bool EnsureProgressionLevelFromAbilityDefinitionTalent_Server(
+		const USpellRiseAbilityDefinition* AbilityDefinition,
+		int32 TalentLevel);
 
 protected:
 	UPROPERTY(ReplicatedUsing=OnRep_WeaponSkillLevels, EditAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")

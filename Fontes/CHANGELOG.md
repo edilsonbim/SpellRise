@@ -3,10 +3,14 @@
 ## Unreleased
 ### Build / Tooling
 - Build policy consolidada em Unreal Source.
+- Adicionado plugin Editor-only `CodexBlueprintBridge` para inspecao segura de Blueprints via commandlet JSON; validado com `ListBlueprints` sem alteracao de assets.
 - Compatibilidade UE 5.7 ajustada em pontos críticos de build.
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- `ExecCalc_Damage` passa a aplicar escala final por atributo primario depois de arma/escola e `Data.DamageScaling`: STR para melee, AGI para bow, INT para spell e WIS para divine. `ExecCalc_Healing` passa a aplicar a mesma escala final por WIS.
+- `ExecCalc_Damage` passa a escalar dano da ability por nivel da escola e dano da arma por nivel da arma, cada um com 50% fixo + ate 50% por progressao; `AbilityLevel` deixa de afetar dano e permanece restrito a custo/cooldown. O debug `sr.Damage.Debug` agora registra as contribuicoes separadas de ability e arma.
+- `USpellRiseProgressionComponent` passa a expor `EnsureSchoolLevelFromTalent_Server` e `EnsureProgressionLevelFromAbilityDefinitionTalent_Server`, permitindo que talentos de escola como `DA_Talent_Fire` atualizem `SchoolLevels` autoritativos no `PlayerState` em vez de cair no fluxo de arma com tag vazia.
 - Implementado fluxo player-only de `State.Downed`: ao zerar vida, o player agoniza por 60s com vida travada em 1, sem input/abilities/regen; morte final, full loot e respawn foram movidos para `FinalizeDeath_Server`.
 - Adicionado `USpellRiseDownedInteractableComponent` para interações Narrative de revive/finish em alvo agonizando; revive server-side retorna com `20% MaxHealth`, `0 Mana` e `0 Stamina`.
 - `USpellRiseDeathScreenWidget` passa a expor `RequestAcceptDeath`, permitindo UI chamar `ServerAcceptDeath` enquanto o player está em `State.Downed`.

@@ -4,6 +4,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
@@ -213,9 +214,8 @@ namespace SpellRiseTags
 
 namespace SpellRiseDamageProgression
 {
-	constexpr float WeaponLevelScalePerLevel = 0.0025f;
-	constexpr float SchoolLevelScalePerLevel = 0.0025f;
-	constexpr float AbilityLevelScalePerLevel = 0.0050f;
+	constexpr float MinimumDamageContribution = 0.50f;
+	constexpr float MaximumProgressionBonusContribution = 0.50f;
 
 	static const USpellRiseGameplayAbility* ResolveSpellRiseAbilityFromSpec(const FGameplayEffectSpec& Spec)
 	{
@@ -286,7 +286,28 @@ namespace SpellRiseDamageProgression
 			? ProgressionComponent->GetWeaponSkillLevel(ProgressionTag)
 			: ProgressionComponent->GetSchoolLevel(ProgressionTag);
 
-		return FMath::Clamp(Level, 1, 100);
+		return FMath::Clamp(Level, 0, 100);
+	}
+
+	static float GetProgressionDamageContribution(float RawDamage, int32 ProgressionLevel)
+	{
+		const float ClampedRawDamage = FMath::Max(0.f, RawDamage);
+		const float BaseContribution = ClampedRawDamage * MinimumDamageContribution;
+		const float ProgressionAlpha = FMath::Clamp(static_cast<float>(ProgressionLevel) / 100.f, 0.f, 1.f);
+		const float ProgressionBonus = FMath::Clamp(
+			ClampedRawDamage * MaximumProgressionBonusContribution * ProgressionAlpha,
+			0.f,
+			ClampedRawDamage * MaximumProgressionBonusContribution);
+
+		return BaseContribution + ProgressionBonus;
+	}
+
+	static float ApplyPrimaryAttributeContribution(float Damage, float PrimaryAttribute)
+	{
+		const float ClampedDamage = FMath::Max(0.f, Damage);
+		const float PrimaryAlpha = FMath::Clamp(PrimaryAttribute, 0.f, 100.f) / 100.f;
+		return (ClampedDamage * MinimumDamageContribution)
+			+ (ClampedDamage * MaximumProgressionBonusContribution * PrimaryAlpha);
 	}
 
 	static FGameplayTag ResolveEquippedWeaponProgressionTag(const UAbilitySystemComponent* SourceASC)
@@ -327,6 +348,26 @@ UExecCalc_Damage::FCaptureDefs::FCaptureDefs()
 
 	EquippedWeaponBaseDamageDef = FGameplayEffectAttributeCaptureDefinition(
 		UCombatAttributeSet::GetEquippedWeaponBaseDamageAttribute(),
+		EGameplayEffectAttributeCaptureSource::Source,
+		false);
+
+	StrengthDef = FGameplayEffectAttributeCaptureDefinition(
+		UBasicAttributeSet::GetStrengthAttribute(),
+		EGameplayEffectAttributeCaptureSource::Source,
+		false);
+
+	AgilityDef = FGameplayEffectAttributeCaptureDefinition(
+		UBasicAttributeSet::GetAgilityAttribute(),
+		EGameplayEffectAttributeCaptureSource::Source,
+		false);
+
+	IntelligenceDef = FGameplayEffectAttributeCaptureDefinition(
+		UBasicAttributeSet::GetIntelligenceAttribute(),
+		EGameplayEffectAttributeCaptureSource::Source,
+		false);
+
+	WisdomDef = FGameplayEffectAttributeCaptureDefinition(
+		UBasicAttributeSet::GetWisdomAttribute(),
 		EGameplayEffectAttributeCaptureSource::Source,
 		false);
 
@@ -415,6 +456,10 @@ UExecCalc_Damage::UExecCalc_Damage()
 	RelevantAttributesToCapture.Add(C.CritDamageDef);
 	RelevantAttributesToCapture.Add(C.ArmorPenetrationDef);
 	RelevantAttributesToCapture.Add(C.EquippedWeaponBaseDamageDef);
+	RelevantAttributesToCapture.Add(C.StrengthDef);
+	RelevantAttributesToCapture.Add(C.AgilityDef);
+	RelevantAttributesToCapture.Add(C.IntelligenceDef);
+	RelevantAttributesToCapture.Add(C.WisdomDef);
 
 	RelevantAttributesToCapture.Add(C.SlashingResDef);
 	RelevantAttributesToCapture.Add(C.BashingResDef);
@@ -626,6 +671,10 @@ void UExecCalc_Damage::Execute_Implementation(
 	float CritDamageMult = 1.5f;
 	float ArmorPenPct = 0.f;
 	float EquippedWeaponBaseDamage = 0.f;
+	float Strength = 20.f;
+	float Agility = 20.f;
+	float Intelligence = 20.f;
+	float Wisdom = 20.f;
 
 	{
 		float Tmp = 0.f;
@@ -633,6 +682,10 @@ void UExecCalc_Damage::Execute_Implementation(
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, Tmp)) CritDamageMult = Tmp;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, Tmp)) ArmorPenPct = Tmp;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.EquippedWeaponBaseDamageDef, Params, Tmp)) EquippedWeaponBaseDamage = Tmp;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.StrengthDef, Params, Tmp)) Strength = Tmp;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.AgilityDef, Params, Tmp)) Agility = Tmp;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.IntelligenceDef, Params, Tmp)) Intelligence = Tmp;
+		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WisdomDef, Params, Tmp)) Wisdom = Tmp;
 	}
 
 	CritChance01 = FMath::Clamp(CritChance01, 0.f, 0.25f);
@@ -648,10 +701,15 @@ void UExecCalc_Damage::Execute_Implementation(
 	float PreMitigationDamage = 0.f;
 	float AppliedResist01 = 0.f;
 	bool bAppliedArmorPenetration = false;
-	float ProgressionMultiplier = 1.f;
 	int32 AbilityLevelForDebug = 0;
 	int32 WeaponLevelForDebug = 0;
 	int32 SchoolLevelForDebug = 0;
+	float AbilityDamageContribution = 0.f;
+	float WeaponDamageContribution = 0.f;
+	float PreAttributeDamage = 0.f;
+	float PrimaryAttributeRawForDebug = 0.f;
+	float PrimaryAttributeClampedForDebug = 0.f;
+	const TCHAR* PrimaryAttributeNameForDebug = TEXT("None");
 	FGameplayTag EffectiveWeaponProgressionTag;
 
 	if (bIsFallDamage)
@@ -715,11 +773,6 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	BaseDamage = SetByCallerBaseDamage;
 
-	if (bUsesEquippedWeaponDamage)
-	{
-		BaseDamage += EquippedWeaponBaseDamage;
-	}
-
 	DamageScaling = FMath::Max(
 		0.f,
 		SpellRiseTags::GetSBC_WithFallback(Spec, SpellRiseTags::Data_DamageScaling(), SpellRiseTags::Data_DamageMultiplier_Legacy(), false, 1.f)
@@ -749,13 +802,52 @@ void UExecCalc_Damage::Execute_Implementation(
 		WeaponLevelForDebug = WeaponLevel;
 		SchoolLevelForDebug = SchoolLevel;
 
-		ProgressionMultiplier += AbilityLevel * SpellRiseDamageProgression::AbilityLevelScalePerLevel;
-		ProgressionMultiplier += WeaponLevel * SpellRiseDamageProgression::WeaponLevelScalePerLevel;
-		ProgressionMultiplier += SchoolLevel * SpellRiseDamageProgression::SchoolLevelScalePerLevel;
-		ProgressionMultiplier = FMath::Clamp(ProgressionMultiplier, 1.f, 2.5f);
+		AbilityDamageContribution = SpellRiseDamageProgression::GetProgressionDamageContribution(SetByCallerBaseDamage, SchoolLevel);
+		if (bUsesEquippedWeaponDamage)
+		{
+			WeaponDamageContribution = SpellRiseDamageProgression::GetProgressionDamageContribution(EquippedWeaponBaseDamage, WeaponLevel);
+		}
+
+		BaseDamage = AbilityDamageContribution + WeaponDamageContribution;
+	}
+	else
+	{
+		AbilityDamageContribution = SetByCallerBaseDamage;
+		WeaponDamageContribution = bUsesEquippedWeaponDamage ? EquippedWeaponBaseDamage : 0.f;
+		BaseDamage = AbilityDamageContribution + WeaponDamageContribution;
 	}
 
-	FinalDamage = BaseDamage * ProgressionMultiplier * DamageScaling;
+	FinalDamage = BaseDamage * DamageScaling;
+	PreAttributeDamage = FinalDamage;
+
+	if (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine()))
+	{
+		PrimaryAttributeRawForDebug = Wisdom;
+		PrimaryAttributeNameForDebug = TEXT("WIS");
+	}
+	else if (Channel == 1)
+	{
+		PrimaryAttributeRawForDebug = Strength;
+		PrimaryAttributeNameForDebug = TEXT("STR");
+	}
+	else if (Channel == 2)
+	{
+		PrimaryAttributeRawForDebug = Agility;
+		PrimaryAttributeNameForDebug = TEXT("AGI");
+	}
+	else if (Channel == 3)
+	{
+		PrimaryAttributeRawForDebug = Intelligence;
+		PrimaryAttributeNameForDebug = TEXT("INT");
+	}
+
+	PrimaryAttributeClampedForDebug = FMath::Clamp(PrimaryAttributeRawForDebug, 0.f, 100.f);
+	if (Channel == 1 || Channel == 2 || Channel == 3
+		|| (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine())))
+	{
+		FinalDamage = SpellRiseDamageProgression::ApplyPrimaryAttributeContribution(FinalDamage, PrimaryAttributeRawForDebug);
+	}
+
 	PreMitigationDamage = FinalDamage;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
 
@@ -809,22 +901,27 @@ void UExecCalc_Damage::Execute_Implementation(
 		UE_LOG(
 			LogSpellRiseDamage,
 			Log,
-			TEXT("[DamageCalc] Source=%s Target=%s Ability=%s Channel=%s SetByCallerBase=%.2f UsesWeapon=%s EquippedWeaponBase=%.2f Base=%.2f AbilityLevel=%d WeaponTag=%s WeaponLevel=%d SchoolTag=%s SchoolLevel=%d Progression=%.3f Scaling=%.3f PreMitigation=%.2f TrueDamage=%s Resist=%.2f ArmorPen=%.2f ArmorPenApplied=%s Crit=%s CritMult=%.2f Final=%.2f"),
+			TEXT("[DamageCalc] Source=%s Target=%s Ability=%s Channel=%s AbilityRaw=%.2f AbilityContribution=%.2f UsesWeapon=%s WeaponRaw=%.2f WeaponContribution=%.2f Base=%.2f AbilityLevel=%d AbilityLevelAffectsDamage=false WeaponTag=%s WeaponLevel=%d SchoolTag=%s SchoolLevel=%d Scaling=%.3f PreAttribute=%.2f PrimaryAttribute=%s PrimaryRaw=%.2f PrimaryClamped=%.2f PreMitigation=%.2f TrueDamage=%s Resist=%.2f ArmorPen=%.2f ArmorPenApplied=%s Crit=%s CritMult=%.2f Final=%.2f"),
 			*GetNameSafe(SourceASC->GetOwnerActor()),
 			*GetNameSafe(TargetASC->GetOwnerActor()),
 			*GetNameSafe(SourceAbility),
 			SR_ChannelToText(Channel),
 			SetByCallerBaseDamage,
+			AbilityDamageContribution,
 			bUsesEquippedWeaponDamage ? TEXT("true") : TEXT("false"),
 			EquippedWeaponBaseDamage,
+			WeaponDamageContribution,
 			BaseDamage,
 			AbilityLevelForDebug,
 			*EffectiveWeaponProgressionTag.ToString(),
 			WeaponLevelForDebug,
 			SourceAbility ? *SourceAbility->SchoolProgressionTag.ToString() : TEXT("None"),
 			SchoolLevelForDebug,
-			ProgressionMultiplier,
 			DamageScaling,
+			PreAttributeDamage,
+			PrimaryAttributeNameForDebug,
+			PrimaryAttributeRawForDebug,
+			PrimaryAttributeClampedForDebug,
 			PreMitigationDamage,
 			bTrueDamage ? TEXT("true") : TEXT("false"),
 			AppliedResist01,

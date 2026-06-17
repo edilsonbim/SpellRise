@@ -26,22 +26,27 @@
 ## Derivados
 ### STR
 - `ArmorPenetration = 0.00 + 0.30 * T`
+- Escala dano melee: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(STR, 0, 100) / 100`
 
 ### AGI
 - `CritChance = 0.05 + 0.20 * T`
+- Escala dano bow: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(AGI, 0, 100) / 100`
 
 ### INT
 - Reservado para progressão de magia/escolas e recursos derivados.
+- Escala dano spell: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(INT, 0, 100) / 100`
 
 ### WIS
 - `CritDamageMultiplier = 1.50 + 0.50 * T`
+- Escala dano divine e cura: `Value = Value * 0.50 + Value * 0.50 * clamp(WIS, 0, 100) / 100`
 
 ## Dano e progressao
 - Multiplicadores derivados por canal de arma foram removidos do runtime.
-- Dano deve vir de `AbilityLevel`, dano base da arma equipada, nivel da arma, nivel da escola e atributo primario aplicavel.
+- Dano deve vir do dano base da ability, dano base da arma equipada, nivel da arma, nivel da escola e atributo primario aplicavel.
 - `EquippedWeaponBaseDamage` vive em `UCombatAttributeSet`, replica `OwnerOnly` e deve ser setado/removido por GE aplicado pelo `WeaponComponent` a partir da `WeaponDefinition`.
 - O SetByCaller padrao para o GE de arma e `Data.EquippedWeaponBaseDamage`.
-- Formula inicial do `ExecCalc_Damage`: `(BaseDaGA + EquippedWeaponBaseDamage quando habilitado) * (1 + AbilityLevel*0.005 + WeaponLevel*0.0025 + SchoolLevel*0.0025) * Data.DamageScaling`.
+- Formula atual do `ExecCalc_Damage`: `((BaseDaGA * 0.50 + clamp(BaseDaGA * 0.50 * SchoolLevel/100, 0, BaseDaGA * 0.50)) + (EquippedWeaponBaseDamage * 0.50 + clamp(EquippedWeaponBaseDamage * 0.50 * WeaponLevel/100, 0, EquippedWeaponBaseDamage * 0.50) quando habilitado)) * Data.DamageScaling`, seguido pela escala do atributo primario aplicavel.
+- `AbilityLevel` nao escala mais dano; nivel da ability deve afetar apenas custo e cooldown.
 - `DamageChannel.*` classifica o fluxo de dano, mas nao aplica multiplicador por si so.
 - `ExecCalc_Damage` continua responsavel por resistencia, penetracao, critico e drains.
 - Para players, `WeaponLevel` e `SchoolLevel` vêm do `USpellRiseProgressionComponent` no `PlayerState`.
@@ -49,7 +54,7 @@
 
 ## Cura
 - Cura é mutação autoritativa de `Health` e deve ser aplicada pelo servidor via `GameplayEffect`.
-- `ExecCalc_Healing` usa `Data.BaseHeal` com fallback compatível para `Data.Heal` e multiplicador opcional `Data.HealingScaling`.
+- `ExecCalc_Healing` usa `Data.BaseHeal` com fallback compatível para `Data.Heal`, multiplicador opcional `Data.HealingScaling` e escala final por WIS.
 - Cliente pode exibir previsão/feedback, mas não envia valor final de cura confiável.
 - Cura é clampada contra `MaxHealth` no `AttributeSet`.
 - Novo código de cura deve usar apenas STR, AGI, INT e WIS conforme a matriz canônica.

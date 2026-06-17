@@ -14,6 +14,15 @@ class SPELLRISE_API UExecCalc_Healing : public UGameplayEffectExecutionCalculati
 public:
 	UExecCalc_Healing();
 
+	struct FCaptureDefs
+	{
+		FCaptureDefs();
+
+		FGameplayEffectAttributeCaptureDefinition WisdomDef;
+	};
+
+	static const FCaptureDefs& Captures();
+
 protected:
 	virtual void Execute_Implementation(
 		const FGameplayEffectCustomExecutionParameters& ExecutionParams,
