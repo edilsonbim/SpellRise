@@ -4,7 +4,7 @@ set "PROJECT=%~dp0..\SpellRise.uproject"
 set "MAP=/Game/Maps/Stylized/Stylized"
 set "PSQL=%SR_PSQL_PATH%"
 set "PGCONN=%SR_PG_CONN%"
-set "PERSISTENT_SEED=77777777"
+set "PERSISTENT_SEED=76561198000000001"
 
 if not exist "%EDITOR%" (
   echo UnrealEditor.exe nao encontrado em: %EDITOR%

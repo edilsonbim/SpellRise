@@ -8,6 +8,15 @@
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Recursos derivados passam a usar base `100` e o valor total dos primarios: `MaxHealth = 100 + 3*STR`, `MaxMana = 100 + INT + 2*WIS`, `MaxStamina = 100 + 3*AGI` e `CarryWeight = 2*STR`. Com os quatro primarios iniciais em `20`, o personagem novo inicia com caps de `160` para vida, mana e stamina.
+- `ExecCalc_Damage` passa a resolver metadados de dano uma unica vez por execucao, priorizar cache/ponte via `PlayerState` para progressao, capturar apenas o atributo primario necessario ao canal e expor `QUICK_SCOPE_CYCLE_COUNTER` para perfil em Unreal Insights.
+- `ExecCalc_Damage` passa a aplicar escala PvP por level efetivo capado em `65` depois da escala de atributo e antes de mitigacao/crit. Levels iguais mantem dano `1:1`; `65 vs 10` usa `Damage * 0.5 + Damage * 0.5 / 65 * 10`; acima de `65`, o level efetivo continua `65`.
+- `USpellRiseProgressionComponent` passa a guardar `Experience`, `CharacterLevel`, `TalentPoints`, `CraftPoints` e `AttributePoints` owner-only no `PlayerState`; personagem novo inicia level 1 com 100 Talent Points, 100 Craft Points, 0 Attribute Points e primarios STR/AGI/INT/WIS em 20. Cada level ate 999 concede +100 Craft Points e +100 Talent Points; Attribute Points concedem +5 apenas ate o level 65, totalizando 320 pontos.
+- `USpellRiseProgressionComponent` passa a expor dispatchers `OnCharacterProgressionChanged`, `OnWeaponSkillLevelsChanged` e `OnSchoolLevelsChanged` para HUD/UI atualizar por evento replicado sem Tick.
+- Progressão/XP foi ajustada para escala 100+ players: RepNotify owner-only agora dispara apenas quando há mudança real, XP comum não força net update imediato e reward de inimigo marca o personagem como dirty para autosave periódico em vez de salvar no storage a cada kill/contributor.
+- Reward de morte de inimigo renomeia `TalentPointsOnKill` para `ExperiencePointOnKill`, com CoreRedirect para preservar valores de assets antigos.
+- Adicionado `USpellRiseProgressionBalanceData` como `PrimaryDataAsset` C++ para tabela data-driven de XP total e rewards por level, com fallback server-side seguro quando o asset nao estiver configurado.
+- Reward de morte de inimigo passa a conceder XP proporcional por contribuicao de dano; `ExperiencePointOnKill` alimenta XP e nao Talent Points diretos.
 - `ExecCalc_Damage` passa a aplicar escala final por atributo primario depois de arma/escola e `Data.DamageScaling`: STR para melee, AGI para bow, INT para spell e WIS para divine. `ExecCalc_Healing` passa a aplicar a mesma escala final por WIS.
 - `ExecCalc_Damage` passa a escalar dano da ability por nivel da escola e dano da arma por nivel da arma, cada um com 50% fixo + ate 50% por progressao; `AbilityLevel` deixa de afetar dano e permanece restrito a custo/cooldown. O debug `sr.Damage.Debug` agora registra as contribuicoes separadas de ability e arma.
 - `USpellRiseProgressionComponent` passa a expor `EnsureSchoolLevelFromTalent_Server` e `EnsureProgressionLevelFromAbilityDefinitionTalent_Server`, permitindo que talentos de escola como `DA_Talent_Fire` atualizem `SchoolLevels` autoritativos no `PlayerState` em vez de cair no fluxo de arma com tag vazia.
@@ -76,7 +85,7 @@
 - `MoveSpeed`/`MoveSpeedMultiplier` agora alimentam `CharacterMovement->MaxWalkSpeed` via Character, permitindo slow/freeze autoritativo por GameplayEffect.
 - Observabilidade de slow/freeze passa a registrar mudanças reais de `MaxWalkSpeed`; logs de persistência com ID `DEV_` em PIE foram reduzidos para `Verbose`.
 - Reward de morte de inimigo passa a usar o maior contribuidor como fallback de `KillerPS` quando o contexto fatal nao resolve PlayerState.
-- Clamp dos primários ajustado para `0..120`; `AttributeSet` inicia em `20`, talentos persistidos podem evoluir até `100` e o teto restante é reservado para boosters.
+- Clamp anterior dos primários havia sido ajustado para `0..120`; schema 8 eleva o teto runtime para `0..140`.
 - Regen de `Health/Mana/Stamina` passa a usar atributos finais modificados por GE server-side, com tick autoritativo de 2s no `Character`, aplicação idempotente dos GEs de bootstrap, bloqueio por morte/sangramento, multiplicadores de combate, pausa de stamina por ação e penalidade de mana por debuff.
 - Regen de bootstrap agora zera os atributos `HealthRegen/ManaRegen/StaminaRegen` antes de aplicar GE instant/infinite e o tick de 2s aplica o valor do atributo uma vez por tick, evitando acúmulo e escala indevida por segundo.
 - Contrato de grant GAS ajustado: `FSpellRiseGrantedAbility` não carrega mais level; o level editável fica no Blueprint callable do `CharacterBase`, enquanto grants por source/inimigo usam default server-side seguro.
@@ -87,6 +96,12 @@
 - Gate multiplayer validado em `DS+2` com reconnect + perfis de lag/loss A (120/1) e B (180/3), sem overflow de replicação no run baseline `2026-04-02_21-03-10`.
 
 ### Persistence / Observability
+- Adicionado `USpellRisePlayerHUDViewModelComponent` no `PlayerState`: Widgets podem consumir um snapshot unico com display name, level, XP/progresso, STR/AGI/INT/WIS e Health/Mana/Stamina, atualizado por delegates de GAS/progressao sem Tick ou replicacao nova.
+- Adicionado override seguro `-SRTestPersistentId=<SteamID64>` para reutilizar o mesmo personagem em testes de progressao; aceita somente ID numerico de 17 digitos em PIE ou NoSteam de teste e e ignorado em contexto de producao.
+- Snapshot de personagem schema 11 passa a persistir hotbar de abilities, itens equipados e loadout de armas/offhand; restore roda server-side depois do inventario ser recriado e só reaplica itens existentes no inventario do `PlayerState`.
+- Snapshot de personagem schema 10 passa a persistir `CharacterLevel`, `Experience`, `TalentPoints`, `CraftPoints` e `AttributePoints`, mantendo schemas 8/9 carregaveis com defaults seguros de progressao.
+- Snapshot de personagem schema 8 passa a persistir `WeaponSkillLevels`, `SchoolLevels` e `AbilityLevel` por talento, mantendo load antigo compativel via fallback para `Level`.
+- Clamp dos primarios ajustado para `0..140`; `AttributeSet` inicia em `20`, talentos podem evoluir ate `100` e boosters podem elevar o atributo ate `140`. A escala de dano/cura por atributo agora usa `clamp(atributo, 0, 140) / 100`.
 - Persistence foundation v1 ativa com snapshots de personagem e inventário.
 - Snapshot de personagem schema 7 passa a persistir `CharacterCreated` e `VisualConfigurationJson`, com colunas auxiliares no PostgreSQL para checagem rápida de criação de personagem por player.
 - Snapshots de personagem/inventário agora exigem SteamID64 real; IDs `DEV_`/`NULL` ficam sem gravação em DB e recebem defaults runtime.

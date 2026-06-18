@@ -18,9 +18,10 @@
 2. Progressao autoritativa: base da ability escalada por nivel da escola, dano da arma escalado por nivel da arma e atributo primario aplicavel.
 3. Escala generica de dano.
 4. Escala por atributo primario: STR melee, AGI bow, INT spell, WIS divine.
-5. Mitigacao por resistencia com penetracao.
-6. Crit chance + crit multiplier.
-7. Drains de stamina/mana pelo perfil de dano.
+5. Escala PvP por diferenca de level efetivo, capado em `65`.
+6. Mitigacao por resistencia com penetracao.
+7. Crit chance + crit multiplier.
+8. Drains de stamina/mana pelo perfil de dano.
 
 ## Clamps de balance
 - `CritChance <= 25%`
@@ -33,6 +34,7 @@
 - crescimento linear;
 - clamps rígidos em crit, penetração e resist;
 - sem scaling exponencial nos primários atuais.
+- diferenca de level em PvP usa cap efetivo `65`; levels acima disso contam como build completa.
 
 ## Regras para novas mecânicas
 - não introduzir aim assist;

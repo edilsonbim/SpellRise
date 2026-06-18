@@ -34,6 +34,7 @@
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 #include "SpellRise/Inventory/SpellRiseLootBagNameComponent.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseEnemyRuntime, Log, All);
 
@@ -281,14 +282,14 @@ namespace
 		return FindTalentTreeComponent(PlayerState);
 	}
 
-	static void SaveTalentProgressionSnapshot(ASpellRisePlayerState* PlayerState)
+	static void MarkTalentProgressionSnapshotDirty(ASpellRisePlayerState* PlayerState)
 	{
-		AController* Controller = ResolveControllerForPlayerState(PlayerState);
 		UGameInstance* GameInstance = PlayerState ? PlayerState->GetGameInstance() : nullptr;
 		USpellRisePersistenceSubsystem* Persistence = GameInstance ? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>() : nullptr;
-		if (Controller && Persistence)
+		FString SteamId64;
+		if (Persistence && Persistence->GetSteamIdFromPlayerState(PlayerState, SteamId64))
 		{
-			Persistence->SaveCharacterForController(Controller);
+			Persistence->MarkPlayerDirtyBySteamId(SteamId64);
 		}
 	}
 }
@@ -433,7 +434,7 @@ void ASpellRiseEnemyCharacterBase::ApplyEnemyAttributeFallbacks_Server()
 		return;
 	}
 
-	const float PrimaryValue = FMath::Clamp(InitialPrimaryValue, 20.0f, 120.0f);
+	const float PrimaryValue = FMath::Clamp(InitialPrimaryValue, 20.0f, 140.0f);
 	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), PrimaryValue);
 	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), PrimaryValue);
 	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), PrimaryValue);
@@ -644,7 +645,7 @@ void ASpellRiseEnemyCharacterBase::OnHealthChanged(const FOnAttributeChangeData&
 
 	const float FatalDamageAmount = FMath::Max(0.0f, Data.OldValue - Data.NewValue);
 	UE_LOG(LogSpellRiseEnemyRuntime, Log,
-		TEXT("[Progression][EnemyDeathRewardEval] Enemy=%s KillerPS=%s OldHealth=%.2f NewHealth=%.2f FatalDamage=%.2f Contributors=%d GrantEnabled=%d PointsOnKill=%.2f MinContribution=%.2f"),
+		TEXT("[Progression][EnemyDeathRewardEval] Enemy=%s KillerPS=%s OldHealth=%.2f NewHealth=%.2f FatalDamage=%.2f Contributors=%d GrantEnabled=%d ExperienceOnKill=%.2f MinContribution=%.2f"),
 		*GetNameSafe(this),
 		*GetNameSafe(KillerPlayerState),
 		Data.OldValue,
@@ -652,7 +653,7 @@ void ASpellRiseEnemyCharacterBase::OnHealthChanged(const FOnAttributeChangeData&
 		FatalDamageAmount,
 		TalentDamageContributions.Num(),
 		bGrantTalentPointsOnDeath ? 1 : 0,
-		TalentPointsOnKill,
+		ExperiencePointOnKill,
 		MinDamageContributionForTalentReward);
 	ApplyEnemyDeathState_Server(KillerPlayerState, FatalDamageAmount);
 }
@@ -692,10 +693,10 @@ void ASpellRiseEnemyCharacterBase::ApplyEnemyDeathState_Server(ASpellRisePlayerS
 	SpawnEnemyLootBag_Server();
 	ScheduleCorpseDespawn_Server();
 
-	// Lógica de concessão de Talent Points
-	if (bGrantTalentPointsOnDeath && TalentPointsOnKill > 0.0f)
+	// Lógica de concessão de XP; nomes legados preservam configuracoes de Blueprint.
+	if (bGrantTalentPointsOnDeath && ExperiencePointOnKill > 0.0f)
 	{
-		GrantTalentPointsFromDamageContributions_Server(KillerPlayerState, FatalDamageAmount);
+		GrantExperienceFromDamageContributions_Server(KillerPlayerState, FatalDamageAmount);
 	}
 
 	TalentDamageContributions.Reset();
@@ -717,14 +718,14 @@ void ASpellRiseEnemyCharacterBase::RecordTalentDamageContribution_Server(ASpellR
 	AccumulatedDamage += DamageAmount;
 }
 
-void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Server(ASpellRisePlayerState* FallbackKillerPlayerState, float FatalDamageAmount)
+void ASpellRiseEnemyCharacterBase::GrantExperienceFromDamageContributions_Server(ASpellRisePlayerState* FallbackKillerPlayerState, float FatalDamageAmount)
 {
 	if (!HasAuthority())
 	{
 		return;
 	}
 
-	TArray<FSpellRiseEnemyTalentDamageContribution> EligibleContributors;
+	TArray<FSpellRiseEnemyExperienceDamageContribution> EligibleContributors;
 	EligibleContributors.Reserve(TalentDamageContributions.Num());
 
 	for (const TPair<TWeakObjectPtr<ASpellRisePlayerState>, float>& Entry : TalentDamageContributions)
@@ -741,7 +742,7 @@ void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Serv
 			continue;
 		}
 
-		FSpellRiseEnemyTalentDamageContribution& Contribution = EligibleContributors.AddDefaulted_GetRef();
+		FSpellRiseEnemyExperienceDamageContribution& Contribution = EligibleContributors.AddDefaulted_GetRef();
 		Contribution.PlayerState = ContributorPlayerState;
 		Contribution.Damage = Damage;
 	}
@@ -752,13 +753,13 @@ void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Serv
 			|| FatalDamageAmount >= MinDamageContributionForTalentReward;
 		if (bMeetsFallbackContribution)
 		{
-			FSpellRiseEnemyTalentDamageContribution& Contribution = EligibleContributors.AddDefaulted_GetRef();
+			FSpellRiseEnemyExperienceDamageContribution& Contribution = EligibleContributors.AddDefaulted_GetRef();
 			Contribution.PlayerState = FallbackKillerPlayerState;
 			Contribution.Damage = FMath::Max(FatalDamageAmount, 1.0f);
 		}
 	}
 
-	EligibleContributors.Sort([](const FSpellRiseEnemyTalentDamageContribution& Left, const FSpellRiseEnemyTalentDamageContribution& Right)
+	EligibleContributors.Sort([](const FSpellRiseEnemyExperienceDamageContribution& Left, const FSpellRiseEnemyExperienceDamageContribution& Right)
 	{
 		return Left.Damage > Right.Damage;
 	});
@@ -769,7 +770,7 @@ void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Serv
 	}
 
 	float TotalEligibleDamage = 0.0f;
-	for (const FSpellRiseEnemyTalentDamageContribution& Contribution : EligibleContributors)
+	for (const FSpellRiseEnemyExperienceDamageContribution& Contribution : EligibleContributors)
 	{
 		TotalEligibleDamage += FMath::Max(0.0f, Contribution.Damage);
 	}
@@ -777,22 +778,22 @@ void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Serv
 	if (EligibleContributors.IsEmpty() || TotalEligibleDamage <= 0.0f)
 	{
 		UE_LOG(LogSpellRiseEnemyRuntime, Warning,
-			TEXT("[Progression][EnemyDeathRewardRejected] Enemy=%s Reason=no_eligible_damage_contributors KillerPS=%s FatalDamage=%.2f MinContribution=%.2f GrantEnabled=%d PointsOnKill=%.2f RawContributors=%d"),
+			TEXT("[Progression][EnemyDeathRewardRejected] Enemy=%s Reason=no_eligible_damage_contributors KillerPS=%s FatalDamage=%.2f MinContribution=%.2f GrantEnabled=%d ExperienceOnKill=%.2f RawContributors=%d"),
 			*GetNameSafe(this),
 			*GetNameSafe(FallbackKillerPlayerState),
 			FatalDamageAmount,
 			MinDamageContributionForTalentReward,
 			bGrantTalentPointsOnDeath ? 1 : 0,
-			TalentPointsOnKill,
+			ExperiencePointOnKill,
 			TalentDamageContributions.Num());
 		return;
 	}
 
 	const int32 ContributorCount = EligibleContributors.Num();
 	const float BonusMultiplier = 1.0f + (0.25f * static_cast<float>(FMath::Max(0, ContributorCount - 1)));
-	const float RewardPool = TalentPointsOnKill * BonusMultiplier;
+	const float RewardPool = ExperiencePointOnKill * BonusMultiplier;
 
-	for (const FSpellRiseEnemyTalentDamageContribution& Contribution : EligibleContributors)
+	for (const FSpellRiseEnemyExperienceDamageContribution& Contribution : EligibleContributors)
 	{
 		ASpellRisePlayerState* ContributorPlayerState = Contribution.PlayerState.Get();
 		if (!ContributorPlayerState)
@@ -801,18 +802,21 @@ void ASpellRiseEnemyCharacterBase::GrantTalentPointsFromDamageContributions_Serv
 		}
 
 		const float DamageShare = Contribution.Damage / TotalEligibleDamage;
-		const float PointsToGrant = RewardPool * DamageShare;
-		ContributorPlayerState->AddTalentPoints_Server(PointsToGrant);
-		SaveTalentProgressionSnapshot(ContributorPlayerState);
+		const int32 ExperienceToGrant = FMath::Max(1, FMath::RoundToInt(RewardPool * DamageShare));
+		if (USpellRiseProgressionComponent* ProgressionComponent = ContributorPlayerState->GetProgressionComponent())
+		{
+			ProgressionComponent->AddExperience_Server(ExperienceToGrant);
+		}
+		MarkTalentProgressionSnapshotDirty(ContributorPlayerState);
 
 		UE_LOG(LogSpellRiseEnemyRuntime, Log,
-			TEXT("[Progression][EnemyDeathRewardGranted] Enemy=%s PlayerState=%s Damage=%.2f TotalDamage=%.2f Share=%.3f Points=%.2f RewardPool=%.2f Contributors=%d BonusMultiplier=%.2f"),
+			TEXT("[Progression][EnemyDeathRewardGranted] Enemy=%s PlayerState=%s Damage=%.2f TotalDamage=%.2f Share=%.3f Experience=%d RewardPool=%.2f Contributors=%d BonusMultiplier=%.2f"),
 			*GetNameSafe(this),
 			*GetNameSafe(ContributorPlayerState),
 			Contribution.Damage,
 			TotalEligibleDamage,
 			DamageShare,
-			PointsToGrant,
+			ExperienceToGrant,
 			RewardPool,
 			ContributorCount,
 			BonusMultiplier);

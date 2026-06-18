@@ -26,6 +26,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Persistence")
 	bool SaveCharacterForController(AController* Controller);
 
+	bool SaveDirtyCharacters(UWorld* World);
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Persistence")
 	bool HasCachedCharacterCreatedForController(AController* Controller) const;
 

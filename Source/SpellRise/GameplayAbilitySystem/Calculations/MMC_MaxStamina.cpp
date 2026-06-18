@@ -38,11 +38,6 @@ float UMMC_MaxStamina::CalculateBaseMagnitude_Implementation(const FGameplayEffe
 		Strength = 20.f;
 	}
 
-	const float ClampedAgility = FMath::Clamp(Agility, 0.f, 120.f);
-	const float ClampedStrength = FMath::Clamp(Strength, 0.f, 120.f);
-	const float AgilityBonus = FMath::Clamp(ClampedAgility - 20.f, 0.f, 100.f);
-	const float StrengthBonus = FMath::Clamp(ClampedStrength - 20.f, 0.f, 100.f);
-
-
-	return FMath::Max(1.f, 180.f + (StrengthBonus * 1.f) + (AgilityBonus * 2.f));
+	const float ClampedAgility = FMath::Clamp(Agility, 0.f, 140.f);
+	return FMath::Max(1.f, 100.f + (ClampedAgility * 3.f));
 }

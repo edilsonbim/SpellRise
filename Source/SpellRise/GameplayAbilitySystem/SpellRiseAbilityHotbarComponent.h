@@ -138,6 +138,8 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Hotbar")
 	static int32 MakeSlotIndex(ESpellRiseAbilityHotbarGroup Group, int32 GroupSlotIndex);
 
+	bool ApplyPersistentSlots_Server(const TArray<FSpellRiseAbilityHotbarSlot>& SavedSlots);
+
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Hotbar|Events")
 	FSpellRiseAbilityHotbarChanged OnHotbarChanged;
 

@@ -56,7 +56,7 @@ namespace SpellRiseHealingProgression
 	static float ApplyWisdomContribution(float Healing, float Wisdom)
 	{
 		const float ClampedHealing = FMath::Max(0.f, Healing);
-		const float WisdomAlpha = FMath::Clamp(Wisdom, 0.f, 100.f) / 100.f;
+		const float WisdomAlpha = FMath::Clamp(Wisdom, 0.f, 140.f) / 100.f;
 		return (ClampedHealing * 0.50f) + (ClampedHealing * 0.50f * WisdomAlpha);
 	}
 }

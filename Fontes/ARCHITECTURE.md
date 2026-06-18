@@ -15,6 +15,7 @@
 - `USpellRiseAbilitySystemComponent` no `PlayerState`.
 - Replication mode: `Mixed`.
 - `USpellRiseAbilityHotbarComponent` vive no `PlayerState` e mapeia 16 slots lógicos (`0-7` Weapon, `8-15` Common) para `InputTag`/classe de ability já concedida.
+- Hotbar de abilities é persistida no snapshot de personagem como slots owner-only do `PlayerState`; restore roda no servidor e revalida payload de slot/definition.
 - Requisitos/contribuicao de arma ficam em `USpellRiseGameplayAbility::WeaponProgressionTag`; Blueprints de ability não devem implementar checagem estrutural de arma por classe.
 - `USpellRiseGameplayAbility` declara `DamageChannelTag`, `DamageTypeTag`, `SchoolProgressionTag` e `bUsesEquippedWeaponDamage` para o pipeline de dano.
 - Grants de abilities persistentes/startup/progressão são responsabilidade do `ASpellRisePlayerState`; o `Character` apenas inicializa `ActorInfo` como avatar atual.
@@ -25,6 +26,7 @@
 - O `Character` pode consumir o inventario do `PlayerState` para capacidade/peso/movimento, mas nao e owner nem source autoritativo do inventario.
 - Resolucao de inventario para pawn/controller deve priorizar `PlayerState`; componentes legados no pawn nao devem ser usados como fonte de verdade de player.
 - Full loot, persistencia e UI devem coletar o inventario de player pelo `PlayerState`, mantendo o source estavel durante morte/respawn.
+- Itens equipados e loadout de armas são persistidos por classe de item + slot; restore só reaplica itens que existem no inventario restaurado do `PlayerState`, sem criar item confiando no cliente.
 
 ### Attribute Sets
 - `UBasicAttributeSet`
@@ -35,8 +37,16 @@
 
 ### Progressao de combate
 - `USpellRiseProgressionComponent` vive no `ASpellRisePlayerState`.
+- Guarda `CharacterLevel`, `Experience`, `TalentPoints`, `CraftPoints` e `AttributePoints` autoritativos do personagem.
+- Personagem novo inicia em level `1`, `Experience=0`, `CraftPoints=100`, `AttributePoints=0` e `TalentPoints=100`.
+- Personagem novo inicia com STR, AGI, INT e WIS em `20` no `UCombatAttributeSet`.
+- Tabela progressiva de XP e level-up ficam no servidor ate o level `999`; ao subir um level, o servidor concede `+100 CraftPoints` e `+100 TalentPoints`. `AttributePoints` concede `+5` apenas ate o level `65`, totalizando `320` pontos, e depois concede `0`.
+- `USpellRiseProgressionBalanceData` pode substituir a tabela fallback C++ de XP/rewards por level; Dedicated Server usa fallback seguro se o asset nao estiver configurado.
+- `OnCharacterProgressionChanged`, `OnWeaponSkillLevelsChanged` e `OnSchoolLevelsChanged` sao dispatchers de apresentacao para HUD/UI reagirem a replicacao sem Tick.
+- XP comum marca o personagem como dirty para autosave periódico; level-up força atualização de rede owner-only imediata, evitando save/replication burst por kill em cenários 100+ players.
 - Guarda niveis autoritativos de arma e escola/familia por `GameplayTag`.
 - Replicacao owner-only para UI/UX.
+- Persistencia de personagem schema 11 salva `CharacterLevel`, `Experience`, `TalentPoints`, `CraftPoints`, `AttributePoints`, `WeaponSkillLevels`, `SchoolLevels`, hotbar de abilities, itens equipados e loadout de armas/offhand no `snapshot_json`; ao carregar, o servidor restaura esses dados depois de recriar inventario e talentos.
 - `Character` nao e fonte de verdade para progressao.
 - `TalentTreeComponent` em Blueprint deve vincular talentos chamando `EnsureProgressionLevelFromAbilityDefinitionTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState` quando houver `USpellRiseAbilityDefinition`; para fluxos especificos, pode chamar `EnsureWeaponSkillLevelFromTalent_Server` ou `EnsureSchoolLevelFromTalent_Server`. O BP nao deve mutar arrays de progressao diretamente.
 - `ExecCalc`/helpers server-side devem consultar este componente para nivel de arma/escola quando o novo pipeline de dano for consolidado.
@@ -99,6 +109,7 @@
 ## Módulos de runtime relevantes
 - `ASpellRisePlayerController`: input de gameplay e glue local de UX.
 - `USpellRiseAbilityHotbarComponent`: loadout owner-only de hotbar, validado no servidor e consumido pelo input local.
+- `USpellRisePlayerHUDViewModelComponent`: componente local/event-driven no `PlayerState` que agrega nome, progressao, primarios e recursos ja replicados para Widgets, sem Tick, RPC ou estado autoritativo duplicado.
 - `USpellRiseConstructionModeComponent`: isola o building mode no controller.
 - Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
 

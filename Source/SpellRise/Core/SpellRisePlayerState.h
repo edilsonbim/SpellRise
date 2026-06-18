@@ -21,6 +21,7 @@ class UResourceAttributeSet;
 class UCatalystAttributeSet;
 class UDerivedStatsAttributeSet;
 class USpellRiseProgressionComponent;
+class USpellRisePlayerHUDViewModelComponent;
 class UNarrativeInventoryComponent;
 class AActor;
 class AController;
@@ -36,10 +37,14 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void SetPlayerName(const FString& NewPlayerName) override;
 
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	USpellRiseAbilityHotbarComponent* GetAbilityHotbarComponent() const { return AbilityHotbarComponent; }
 	UNarrativeInventoryComponent* GetNarrativeInventoryComponent() const { return NarrativeInventoryComponent; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|HUD")
+	USpellRisePlayerHUDViewModelComponent* GetPlayerHUDViewModelComponent() const { return PlayerHUDViewModelComponent; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	USpellRiseProgressionComponent* GetProgressionComponent() const { return ProgressionComponent; }
@@ -98,11 +103,14 @@ public:
 
 	// --- Talent Points ---
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
-	float GetTalentPoints() const { return TalentPoints; }
+	int32 GetTalentPoints() const;
 
-	void AddTalentPoints_Server(float Amount);
+	void SetTalentPoints_Server(int32 NewAmount);
+	void AddTalentPoints_Server(int32 Amount);
 
 protected:
+	virtual void OnRep_PlayerName() override;
+
 	UFUNCTION(Server, Reliable)
 	void ServerSetRespawnBedReferenceData(const FString& InActorName, const FString& InClassPath, const FVector_NetQuantize& InLocation);
 
@@ -112,9 +120,6 @@ protected:
 	UFUNCTION()
 	void OnRep_PersistenceProfileApplied();
 
-	UFUNCTION()
-	void OnRep_TalentPoints();
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
 
@@ -123,6 +128,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USpellRiseProgressionComponent> ProgressionComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|HUD", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRisePlayerHUDViewModelComponent> PlayerHUDViewModelComponent = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UNarrativeInventoryComponent> NarrativeInventoryComponent = nullptr;
@@ -157,8 +165,6 @@ protected:
 	UPROPERTY(Replicated)
 	FSpellRiseCombatLogArray CombatLog;
 
-	UPROPERTY(ReplicatedUsing=OnRep_TalentPoints, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")
-	float TalentPoints = 0.0f;
 	// --- Fim Talent Points ---
 
 	UFUNCTION(Client, Reliable)

@@ -36,11 +36,7 @@ float UMMC_MaxMana::CalculateBaseMagnitude_Implementation(const FGameplayEffectS
 		Wisdom = 20.f;
 	}
 
-	const float ClampedIntelligence = FMath::Clamp(Intelligence, 0.f, 120.f);
-	const float ClampedWisdom = FMath::Clamp(Wisdom, 0.f, 120.f);
-	const float IntelligenceBonus = FMath::Clamp(ClampedIntelligence - 20.f, 0.f, 100.f);
-	const float WisdomBonus = FMath::Clamp(ClampedWisdom - 20.f, 0.f, 100.f);
-
-
-	return FMath::Max(1.f, 180.f + (IntelligenceBonus * 2.f) + (WisdomBonus * 1.f));
+	const float ClampedIntelligence = FMath::Clamp(Intelligence, 0.f, 140.f);
+	const float ClampedWisdom = FMath::Clamp(Wisdom, 0.f, 140.f);
+	return FMath::Max(1.f, 100.f + ClampedIntelligence + (ClampedWisdom * 2.f));
 }

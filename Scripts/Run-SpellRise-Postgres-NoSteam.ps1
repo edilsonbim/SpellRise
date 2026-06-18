@@ -1,7 +1,7 @@
 param(
     [string]$EditorPath = "C:\UnrealSource\UnrealEngine\Engine\Binaries\Win64\UnrealEditor.exe",
     [string]$Map = "/Game/Maps/Stylized/Stylized",
-    [string]$PersistentSeed = "77777777",
+    [string]$PersistentSeed = "76561198000000001",
     [string]$PgConn = "",
     [string]$PsqlPath = ""
 )

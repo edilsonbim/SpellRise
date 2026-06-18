@@ -35,11 +35,6 @@ float UMMC_MaxHealth::CalculateBaseMagnitude_Implementation(const FGameplayEffec
 	{
 		Wisdom = 20.f;
 	}
-	const float ClampedStrength = FMath::Clamp(Strength, 0.f, 120.f);
-	const float ClampedWisdom = FMath::Clamp(Wisdom, 0.f, 120.f);
-	const float StrengthBonus = FMath::Clamp(ClampedStrength - 20.f, 0.f, 100.f);
-	const float WisdomBonus = FMath::Clamp(ClampedWisdom - 20.f, 0.f, 100.f);
-
-
-	return FMath::Max(1.f, 180.f + (StrengthBonus * 2.f) + (WisdomBonus * 1.f));
+	const float ClampedStrength = FMath::Clamp(Strength, 0.f, 140.f);
+	return FMath::Max(1.f, 100.f + (ClampedStrength * 3.f));
 }

@@ -8,44 +8,53 @@
 
 ## Faixa efetiva
 - Baseline: `20`
-- Clamp de runtime: `0..120`
+- Clamp de runtime: `0..140`
 - Talentos persistidos: nivel `1..100`
-- Normalização derivada: bonus acima de `20`, limitado a `100` pontos efetivos
+- Normalização derivada: bonus acima de `20`, limitado a `120` pontos efetivos
 
 ## Normalização
-`T = clamp((Primary - 20) / 100, 0, 1)`
+`T = clamp((Primary - 20) / 120, 0, 1)`
 
 ## Progressão autoritativa
 - Valor inicial do `AttributeSet`: `20`
 - Progressão por talentos autoritativos: até `100`
-- Booster de escolha do jogador: até `+20` em um atributo primário
-- Cap final por primário após baseline/talentos + booster: `120`
+- Boosters podem elevar primários acima do teto de talento até `140`
+- Cap final por primário após baseline/talentos + boosters: `140`
 - Pontos de talento não são `AttributeSet`; são estado persistido de progressão do personagem.
+- Level, Experience, Talent Points, Craft Points e Attribute Points não são `AttributeSet`; vivem no `USpellRiseProgressionComponent` do `PlayerState`.
+- Attribute Points são pontos gastáveis de progressão; sao concedidos em `+5` por level apenas ate o level `65`, totalizando `320` pontos, e depois `0` ate o level `999`. STR, AGI, INT e WIS continuam sendo atributos GAS no `UCombatAttributeSet`.
 - Talentos aplicados por login devem vir da persistência, não de `Default Talents` em `BeginPlay`.
 
 ## Derivados
 ### STR
 - `ArmorPenetration = 0.00 + 0.30 * T`
-- Escala dano melee: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(STR, 0, 100) / 100`
+- Escala dano melee: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(STR, 0, 140) / 100`
+- `MaxHealth = 100 + 3 * STR`
+- `CarryWeight = 2 * STR`
 
 ### AGI
 - `CritChance = 0.05 + 0.20 * T`
-- Escala dano bow: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(AGI, 0, 100) / 100`
+- Escala dano bow: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(AGI, 0, 140) / 100`
+- `MaxStamina = 100 + 3 * AGI`
 
 ### INT
 - Reservado para progressão de magia/escolas e recursos derivados.
-- Escala dano spell: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(INT, 0, 100) / 100`
+- Escala dano spell: `Damage = Damage * 0.50 + Damage * 0.50 * clamp(INT, 0, 140) / 100`
+- Contribuição de mana: `+1 MaxMana` por ponto.
 
 ### WIS
 - `CritDamageMultiplier = 1.50 + 0.50 * T`
-- Escala dano divine e cura: `Value = Value * 0.50 + Value * 0.50 * clamp(WIS, 0, 100) / 100`
+- Escala dano divine e cura: `Value = Value * 0.50 + Value * 0.50 * clamp(WIS, 0, 140) / 100`
+- Contribuição de mana: `+2 MaxMana` por ponto.
 
 ## Dano e progressao
 - Multiplicadores derivados por canal de arma foram removidos do runtime.
 - Dano deve vir do dano base da ability, dano base da arma equipada, nivel da arma, nivel da escola e atributo primario aplicavel.
 - `EquippedWeaponBaseDamage` vive em `UCombatAttributeSet`, replica `OwnerOnly` e deve ser setado/removido por GE aplicado pelo `WeaponComponent` a partir da `WeaponDefinition`.
 - O SetByCaller padrao para o GE de arma e `Data.EquippedWeaponBaseDamage`.
-- Formula atual do `ExecCalc_Damage`: `((BaseDaGA * 0.50 + clamp(BaseDaGA * 0.50 * SchoolLevel/100, 0, BaseDaGA * 0.50)) + (EquippedWeaponBaseDamage * 0.50 + clamp(EquippedWeaponBaseDamage * 0.50 * WeaponLevel/100, 0, EquippedWeaponBaseDamage * 0.50) quando habilitado)) * Data.DamageScaling`, seguido pela escala do atributo primario aplicavel.
+- Formula atual do `ExecCalc_Damage`: `((BaseDaGA * 0.50 + clamp(BaseDaGA * 0.50 * SchoolLevel/100, 0, BaseDaGA * 0.50)) + (EquippedWeaponBaseDamage * 0.50 + clamp(EquippedWeaponBaseDamage * 0.50 * WeaponLevel/100, 0, EquippedWeaponBaseDamage * 0.50) quando habilitado)) * Data.DamageScaling`, seguido pela escala do atributo primario aplicavel com clamp `0..140`.
+- Exemplo: dano pre-atributo `70` com atributo aplicavel `140` resulta em `84`.
+- Em dano player contra player, depois da escala de atributo e antes de mitigacao/crit, aplica-se escala por level efetivo capado em `65`: se os levels efetivos forem iguais, escala `1.0`; se forem diferentes, `Damage *= 0.5 + 0.5 * LowerEffectiveLevel / HigherEffectiveLevel`. Exemplo: `65 vs 10` usa `Damage * 0.5 + Damage * 0.5 / 65 * 10`.
 - `AbilityLevel` nao escala mais dano; nivel da ability deve afetar apenas custo e cooldown.
 - `DamageChannel.*` classifica o fluxo de dano, mas nao aplica multiplicador por si so.
 - `ExecCalc_Damage` continua responsavel por resistencia, penetracao, critico e drains.
@@ -68,10 +77,12 @@
 - A tag `Status.Lifesteal` sozinha não aplica cura.
 
 ## Caps de recurso
-Usando bônus sobre baseline:
-- `MaxHealth = 180 + 2 * STR_bonus + 1 * WIS_bonus`
-- `MaxMana = 180 + 2 * INT_bonus + 1 * WIS_bonus`
-- `MaxStamina = 180 + 1 * STR_bonus + 2 * AGI_bonus`
+- Base de `Health`, `Mana` e `Stamina`: `100`.
+- `MaxHealth = 100 + 3 * STR`
+- `MaxMana = 100 + 1 * INT + 2 * WIS`
+- `MaxStamina = 100 + 3 * AGI`
+- `CarryWeight = 2 * STR`
+- Personagem novo com `STR=AGI=INT=WIS=20`: `160 MaxHealth`, `160 MaxMana`, `160 MaxStamina` e `40 CarryWeight`.
 
 ## Regeneração de recursos
 - `HealthRegen`, `ManaRegen` e `StaminaRegen` são atributos de valor final, replicados `OwnerOnly`.

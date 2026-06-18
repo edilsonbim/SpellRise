@@ -24,6 +24,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
+#include "SpellRise/UI/SpellRisePlayerHUDViewModelComponent.h"
 #include "InventoryComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
@@ -277,6 +278,55 @@ namespace
 		return true;
 	}
 
+	bool SRPS_SetTalentTreeTalentPoints(ASpellRisePlayerState* PlayerState, const int32 NewPoints, int32& OutNewPoints)
+	{
+		OutNewPoints = 0;
+		if (!PlayerState)
+		{
+			return false;
+		}
+
+		UActorComponent* TalentComponent = SRPS_ResolveTalentTreeComponent(PlayerState);
+		if (!TalentComponent || !TalentComponent->GetClass())
+		{
+			UE_LOG(LogSpellRiseProgression, Warning,
+				TEXT("[Progression][TalentPointsSetRejected] Reason=missing_talent_component PlayerState=%s Amount=%d"),
+				*GetNameSafe(PlayerState),
+				NewPoints);
+			return false;
+		}
+
+		FNumericProperty* PointsProperty = SRPS_FindTalentTreeTalentPointsProperty(TalentComponent->GetClass());
+		if (!PointsProperty)
+		{
+			UE_LOG(LogSpellRiseProgression, Warning,
+				TEXT("[Progression][TalentPointsSetRejected] Reason=missing_talent_points Component=%s Class=%s Amount=%d"),
+				*GetNameSafe(TalentComponent),
+				*GetNameSafe(TalentComponent->GetClass()),
+				NewPoints);
+			return false;
+		}
+
+		OutNewPoints = FMath::Clamp(NewPoints, 0, 1000000);
+		if (PointsProperty->IsInteger())
+		{
+			PointsProperty->SetIntPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent), static_cast<int64>(OutNewPoints));
+		}
+		else
+		{
+			PointsProperty->SetFloatingPointPropertyValue(PointsProperty->ContainerPtrToValuePtr<void>(TalentComponent), static_cast<double>(OutNewPoints));
+		}
+
+		SRPS_NotifyTalentTreeTalentPointsChanged(TalentComponent);
+
+		if (AActor* TalentOwner = TalentComponent->GetOwner())
+		{
+			TalentOwner->ForceNetUpdate();
+		}
+
+		return true;
+	}
+
 	const FGameplayTag& SRPS_EventAbilitiesChanged()
 	{
 		static const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("Event.Abilities.Changed"), false);
@@ -295,6 +345,7 @@ ASpellRisePlayerState::ASpellRisePlayerState()
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	AbilityHotbarComponent = CreateDefaultSubobject<USpellRiseAbilityHotbarComponent>(TEXT("AbilityHotbarComponent"));
 	ProgressionComponent = CreateDefaultSubobject<USpellRiseProgressionComponent>(TEXT("ProgressionComponent"));
+	PlayerHUDViewModelComponent = CreateDefaultSubobject<USpellRisePlayerHUDViewModelComponent>(TEXT("PlayerHUDViewModelComponent"));
 	NarrativeInventoryComponent = CreateDefaultSubobject<UNarrativeInventoryComponent>(TEXT("NarrativeInventoryComponent"));
 
 	BasicAttributeSet = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));
@@ -302,6 +353,16 @@ ASpellRisePlayerState::ASpellRisePlayerState()
 	ResourceAttributeSet = CreateDefaultSubobject<UResourceAttributeSet>(TEXT("ResourceAttributeSet"));
 	CatalystAttributeSet = CreateDefaultSubobject<UCatalystAttributeSet>(TEXT("CatalystAttributeSet"));
 	DerivedStatsAttributeSet = CreateDefaultSubobject<UDerivedStatsAttributeSet>(TEXT("DerivedStatsAttributeSet"));
+}
+
+void ASpellRisePlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+
+	if (PlayerHUDViewModelComponent)
+	{
+		PlayerHUDViewModelComponent->RefreshSnapshot();
+	}
 }
 
 UAbilitySystemComponent* ASpellRisePlayerState::GetAbilitySystemComponent() const
@@ -312,6 +373,16 @@ UAbilitySystemComponent* ASpellRisePlayerState::GetAbilitySystemComponent() cons
 USpellRiseAbilitySystemComponent* ASpellRisePlayerState::GetSpellRiseASC() const
 {
 	return AbilitySystemComponent;
+}
+
+void ASpellRisePlayerState::SetPlayerName(const FString& NewPlayerName)
+{
+	Super::SetPlayerName(NewPlayerName);
+
+	if (PlayerHUDViewModelComponent)
+	{
+		PlayerHUDViewModelComponent->RefreshSnapshot();
+	}
 }
 
 TArray<FGameplayAbilitySpecHandle> ASpellRisePlayerState::GrantAbilities(
@@ -611,13 +682,7 @@ void ASpellRisePlayerState::OnRep_PersistenceProfileApplied()
 	RecordOnRepTelemetry(TEXT("PersistenceProfileApplied"));
 }
 
-void ASpellRisePlayerState::OnRep_TalentPoints()
-{
-	RecordOnRepTelemetry(TEXT("TalentPoints"));
-	UE_LOG(LogSpellRiseProgression, Verbose, TEXT("TalentPoints replicado para o cliente. Novo valor: %f"), TalentPoints);
-}
-
-void ASpellRisePlayerState::AddTalentPoints_Server(float Amount)
+void ASpellRisePlayerState::AddTalentPoints_Server(int32 Amount)
 {
 	if (!HasAuthority())
 	{
@@ -625,17 +690,44 @@ void ASpellRisePlayerState::AddTalentPoints_Server(float Amount)
 		return;
 	}
 
-	if (Amount <= 0.0f)
+	if (Amount <= 0)
 	{
 		return;
 	}
 
-	const int32 PointsToAdd = FMath::Max(1, FMath::RoundToInt(Amount));
+	const int32 PointsToAdd = FMath::Max(1, Amount);
+	if (ProgressionComponent)
+	{
+		ProgressionComponent->AddTalentPoints_Server(PointsToAdd);
+	}
 	int32 TalentTreePoints = 0;
-	const bool bUpdatedTalentTree = SRPS_AddTalentTreeTalentPoints(this, PointsToAdd, TalentTreePoints);
-	TalentPoints = bUpdatedTalentTree ? static_cast<float>(TalentTreePoints) : TalentPoints + Amount;
+	SRPS_SetTalentTreeTalentPoints(this, ProgressionComponent ? ProgressionComponent->GetTalentPoints() : PointsToAdd, TalentTreePoints);
 	ForceNetUpdate();
-	UE_LOG(LogSpellRiseProgression, Log, TEXT("Adicionado %f Talent Points para %s. Total: %f"), Amount, *GetNameSafe(this), TalentPoints);
+	UE_LOG(LogSpellRiseProgression, Log, TEXT("Adicionado %d Talent Points para %s. Total: %d"), Amount, *GetNameSafe(this), ProgressionComponent ? ProgressionComponent->GetTalentPoints() : TalentTreePoints);
+}
+
+void ASpellRisePlayerState::SetTalentPoints_Server(int32 NewAmount)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogSpellRiseProgression, Warning, TEXT("Tentativa de definir Talent Points sem autoridade. PlayerState=%s"), *GetNameSafe(this));
+		return;
+	}
+
+	const int32 ClampedPoints = FMath::Clamp(NewAmount, 0, 1000000);
+	if (ProgressionComponent)
+	{
+		ProgressionComponent->SetTalentPoints_Server(ClampedPoints);
+	}
+	int32 TalentTreePoints = 0;
+	SRPS_SetTalentTreeTalentPoints(this, ProgressionComponent ? ProgressionComponent->GetTalentPoints() : ClampedPoints, TalentTreePoints);
+	ForceNetUpdate();
+	UE_LOG(LogSpellRiseProgression, Log, TEXT("Talent Points definidos para %s. Total: %d"), *GetNameSafe(this), ProgressionComponent ? ProgressionComponent->GetTalentPoints() : TalentTreePoints);
+}
+
+int32 ASpellRisePlayerState::GetTalentPoints() const
+{
+	return ProgressionComponent ? ProgressionComponent->GetTalentPoints() : 0;
 }
 
 void ASpellRisePlayerState::AppendCombatLogEvent_Server(
@@ -817,7 +909,6 @@ void ASpellRisePlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, RespawnBedLocation, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, bPersistenceProfileApplied, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, CombatLog, COND_OwnerOnly);
-	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, TalentPoints, COND_OwnerOnly);
 }
 
 bool ASpellRisePlayerState::ValidateRespawnBedPayload(

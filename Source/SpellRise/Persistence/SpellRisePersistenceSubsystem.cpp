@@ -9,6 +9,7 @@
 #include "CollisionShape.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Base64.h"
@@ -26,6 +27,8 @@
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
@@ -33,18 +36,25 @@
 #include "SpellRise/Persistence/SpellRiseBuildPersistenceAdapter.h"
 #include "SpellRise/Persistence/SpellRiseFilePersistenceProvider.h"
 #include "SpellRise/Persistence/SpellRisePostgresPersistenceProvider.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
+#include "EquippableItem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
 namespace
 {
-	constexpr int32 PersistenceCharacterSchemaVersion = 7;
+	constexpr int32 PersistenceCharacterSchemaVersion = 11;
+	constexpr int32 PersistenceCharacterInventorySchemaVersion = 8;
+	constexpr int32 PersistentCharacterLevelMin = 1;
+	constexpr int32 PersistentCharacterLevelMax = 999;
+	constexpr int32 PersistentExperienceMax = 2000000000;
+	constexpr int32 PersistentProgressionCurrencyMax = 1000000;
 	constexpr int32 PersistenceInventorySchemaVersion = 2;
 	constexpr int32 PersistenceWorldSchemaVersion = 1;
 	constexpr int32 LegacyPersistenceWorldSchemaVersion = 5;
 	constexpr int32 MaxVisualConfigurationJsonLength = 64 * 1024;
 	constexpr float PersistentPrimaryAttributeMin = 0.0f;
-	constexpr float PersistentPrimaryAttributeMax = 120.0f;
+	constexpr float PersistentPrimaryAttributeMax = 140.0f;
 	constexpr int32 PersistentTalentLevelMin = 1;
 	constexpr int32 PersistentTalentLevelMax = 100;
 	constexpr uint8 SlotEncodingLegacyRawBase64 = 0;
@@ -384,21 +394,20 @@ namespace
 		return nullptr;
 	}
 
-	int32 ReadTalentLevelFromStruct(const UScriptStruct* StructType, const void* StructMemory)
+	int32 ReadIntLevelFromStruct(
+		const UScriptStruct* StructType,
+		const void* StructMemory,
+		const TArray<FName>& PreferredNames,
+		const bool bAllowFallbackContainsLevel)
 	{
 		if (!StructType || !StructMemory)
 		{
 			return 0;
 		}
 
-		const FProperty* LevelProperty = FindFirstStructPropertyByNames(StructType, {
-			FName(TEXT("Level")),
-			FName(TEXT("TalentLevel")),
-			FName(TEXT("CurrentLevel")),
-			FName(TEXT("GrantedLevel"))
-		});
+		const FProperty* LevelProperty = FindFirstStructPropertyByNames(StructType, PreferredNames);
 
-		if (!LevelProperty)
+		if (!LevelProperty && bAllowFallbackContainsLevel)
 		{
 			for (TFieldIterator<FIntProperty> It(StructType); It; ++It)
 			{
@@ -422,6 +431,24 @@ namespace
 		}
 
 		return 0;
+	}
+
+	int32 ReadTalentLevelFromStruct(const UScriptStruct* StructType, const void* StructMemory)
+	{
+		return ReadIntLevelFromStruct(StructType, StructMemory, {
+			FName(TEXT("Level")),
+			FName(TEXT("TalentLevel")),
+			FName(TEXT("CurrentLevel")),
+			FName(TEXT("GrantedLevel"))
+		}, true);
+	}
+
+	int32 ReadAbilityLevelFromStruct(const UScriptStruct* StructType, const void* StructMemory)
+	{
+		return ReadIntLevelFromStruct(StructType, StructMemory, {
+			FName(TEXT("AbilityLevel")),
+			FName(TEXT("GrantedAbilityLevel"))
+		}, false);
 	}
 
 	UObject* ReadTalentAssetFromStruct(const UScriptStruct* StructType, const void* StructMemory)
@@ -492,10 +519,249 @@ namespace
 			FSpellRiseSavedTalent SavedTalent;
 			SavedTalent.TalentAssetPath = TalentAsset->GetPathName();
 			SavedTalent.Level = ClampPersistentTalentLevel(ReadTalentLevelFromStruct(GrantedTalentStructProperty->Struct, ElementMemory));
+			const int32 ExplicitAbilityLevel = ReadAbilityLevelFromStruct(GrantedTalentStructProperty->Struct, ElementMemory);
+			SavedTalent.AbilityLevel = ClampPersistentTalentLevel(ExplicitAbilityLevel > 0 ? ExplicitAbilityLevel : SavedTalent.Level);
 			OutTalents.Add(MoveTemp(SavedTalent));
 		}
 
 		return true;
+	}
+
+	void CollectProgressionLevels(
+		const TArray<FSpellRiseProgressionLevelEntry>& Entries,
+		TArray<FSpellRiseSavedProgressionLevel>& OutEntries)
+	{
+		OutEntries.Reset();
+		for (const FSpellRiseProgressionLevelEntry& Entry : Entries)
+		{
+			if (!Entry.ProgressionTag.IsValid())
+			{
+				continue;
+			}
+
+			FSpellRiseSavedProgressionLevel SavedEntry;
+			SavedEntry.ProgressionTag = Entry.ProgressionTag;
+			SavedEntry.Level = ClampPersistentTalentLevel(Entry.Level);
+			OutEntries.Add(MoveTemp(SavedEntry));
+		}
+	}
+
+	void CollectProgressionData(
+		const ASpellRisePlayerState* PlayerState,
+		int32& OutCharacterLevel,
+		int32& OutExperience,
+		int32& OutTalentPoints,
+		int32& OutCraftPoints,
+		int32& OutAttributePoints,
+		TArray<FSpellRiseSavedProgressionLevel>& OutWeaponSkillLevels,
+		TArray<FSpellRiseSavedProgressionLevel>& OutSchoolLevels)
+	{
+		OutCharacterLevel = 1;
+		OutExperience = 0;
+		OutTalentPoints = 100;
+		OutCraftPoints = 100;
+		OutAttributePoints = 0;
+		OutWeaponSkillLevels.Reset();
+		OutSchoolLevels.Reset();
+		if (!PlayerState)
+		{
+			return;
+		}
+
+		const USpellRiseProgressionComponent* ProgressionComponent = PlayerState->GetProgressionComponent();
+		if (!ProgressionComponent)
+		{
+			return;
+		}
+
+		OutCharacterLevel = FMath::Clamp(ProgressionComponent->GetCharacterLevel(), PersistentCharacterLevelMin, PersistentCharacterLevelMax);
+		OutExperience = FMath::Clamp(ProgressionComponent->GetExperience(), 0, PersistentExperienceMax);
+		OutTalentPoints = FMath::Clamp(ProgressionComponent->GetTalentPoints(), 0, PersistentProgressionCurrencyMax);
+		OutCraftPoints = FMath::Clamp(ProgressionComponent->GetCraftPoints(), 0, PersistentProgressionCurrencyMax);
+		OutAttributePoints = FMath::Clamp(ProgressionComponent->GetAttributePoints(), 0, PersistentProgressionCurrencyMax);
+		CollectProgressionLevels(ProgressionComponent->GetWeaponSkillLevels(), OutWeaponSkillLevels);
+		CollectProgressionLevels(ProgressionComponent->GetSchoolLevels(), OutSchoolLevels);
+	}
+
+	void CollectAbilityHotbarData(
+		const ASpellRisePlayerState* PlayerState,
+		TArray<FSpellRiseSavedAbilityHotbarSlot>& OutSlots)
+	{
+		OutSlots.Reset();
+		if (!PlayerState)
+		{
+			return;
+		}
+
+		const USpellRiseAbilityHotbarComponent* HotbarComponent = PlayerState->GetAbilityHotbarComponent();
+		if (!HotbarComponent)
+		{
+			return;
+		}
+
+		for (const FSpellRiseAbilityHotbarSlot& Slot : HotbarComponent->GetSlots())
+		{
+			if (Slot.SlotIndex == INDEX_NONE)
+			{
+				continue;
+			}
+
+			FSpellRiseSavedAbilityHotbarSlot SavedSlot;
+			SavedSlot.SlotIndex = Slot.SlotIndex;
+			SavedSlot.AbilityInputTag = Slot.AbilityInputTag;
+			SavedSlot.AbilityClassPath = Slot.AbilityClass.ToSoftObjectPath().ToString();
+			SavedSlot.AbilityDefinitionPath = Slot.AbilityDefinition.ToSoftObjectPath().ToString();
+			OutSlots.Add(MoveTemp(SavedSlot));
+		}
+	}
+
+	void ApplyAbilityHotbarData(ASpellRisePlayerState* PlayerState, const TArray<FSpellRiseSavedAbilityHotbarSlot>& SavedSlots)
+	{
+		if (!PlayerState || SavedSlots.Num() == 0)
+		{
+			return;
+		}
+
+		USpellRiseAbilityHotbarComponent* HotbarComponent = PlayerState->GetAbilityHotbarComponent();
+		if (!HotbarComponent)
+		{
+			return;
+		}
+
+		TArray<FSpellRiseAbilityHotbarSlot> RuntimeSlots;
+		RuntimeSlots.Reserve(SavedSlots.Num());
+		for (const FSpellRiseSavedAbilityHotbarSlot& SavedSlot : SavedSlots)
+		{
+			if (SavedSlot.SlotIndex == INDEX_NONE)
+			{
+				continue;
+			}
+
+			FSpellRiseAbilityHotbarSlot RuntimeSlot;
+			RuntimeSlot.SlotIndex = SavedSlot.SlotIndex;
+			RuntimeSlot.AbilityInputTag = SavedSlot.AbilityInputTag;
+			if (!SavedSlot.AbilityClassPath.IsEmpty())
+			{
+				RuntimeSlot.AbilityClass = TSoftClassPtr<UGameplayAbility>(FSoftObjectPath(SavedSlot.AbilityClassPath));
+			}
+			if (!SavedSlot.AbilityDefinitionPath.IsEmpty())
+			{
+				RuntimeSlot.AbilityDefinition = TSoftObjectPtr<UObject>(FSoftObjectPath(SavedSlot.AbilityDefinitionPath));
+			}
+			RuntimeSlots.Add(MoveTemp(RuntimeSlot));
+		}
+
+		HotbarComponent->ApplyPersistentSlots_Server(RuntimeSlots);
+	}
+
+	TSubclassOf<UEquippableItem> LoadEquippableItemClass(const FString& ClassPath)
+	{
+		if (ClassPath.IsEmpty())
+		{
+			return nullptr;
+		}
+
+		return LoadObject<UClass>(nullptr, *ClassPath);
+	}
+
+	void CollectEquipmentData(
+		const ASpellRiseCharacterBase* Character,
+		TArray<FSpellRiseSavedEquippedItem>& OutEquippedItems,
+		TArray<FSpellRiseSavedWeaponLoadoutSlot>& OutWeaponLoadoutSlots,
+		int32& OutActiveWeaponQuickSlotIndex,
+		FString& OutOffHandItemClassPath)
+	{
+		OutEquippedItems.Reset();
+		OutWeaponLoadoutSlots.Reset();
+		OutActiveWeaponQuickSlotIndex = INDEX_NONE;
+		OutOffHandItemClassPath.Reset();
+		if (!Character)
+		{
+			return;
+		}
+
+		const USpellRiseEquipmentManagerComponent* EquipmentManager = Character->GetSpellRiseEquipmentManager();
+		if (!EquipmentManager)
+		{
+			return;
+		}
+
+		for (const FSpellRiseHUDEquipmentSlotView& SlotView : EquipmentManager->GetHUDEquipmentSlotViews())
+		{
+			if (!SlotView.Item || !SlotView.Item->GetClass())
+			{
+				continue;
+			}
+
+			FSpellRiseSavedEquippedItem SavedItem;
+			SavedItem.SlotName = SlotView.SlotName.ToString();
+			SavedItem.ItemClassPath = SlotView.Item->GetClass()->GetPathName();
+			OutEquippedItems.Add(MoveTemp(SavedItem));
+		}
+
+		OutActiveWeaponQuickSlotIndex = EquipmentManager->GetActiveQuickWeaponSlotIndex();
+		for (int32 QuickSlotIndex = 0; QuickSlotIndex < 2; ++QuickSlotIndex)
+		{
+			const UEquippableItem* QuickSlotItem = EquipmentManager->GetQuickWeaponItemByIndex(QuickSlotIndex);
+			if (!QuickSlotItem || !QuickSlotItem->GetClass())
+			{
+				continue;
+			}
+
+			FSpellRiseSavedWeaponLoadoutSlot SavedSlot;
+			SavedSlot.QuickSlotIndex = QuickSlotIndex;
+			SavedSlot.ItemClassPath = QuickSlotItem->GetClass()->GetPathName();
+			OutWeaponLoadoutSlots.Add(MoveTemp(SavedSlot));
+		}
+
+		if (const UEquippableItem* OffHandItem = EquipmentManager->GetActiveOffHandItem())
+		{
+			if (OffHandItem->GetClass())
+			{
+				OutOffHandItemClassPath = OffHandItem->GetClass()->GetPathName();
+			}
+		}
+	}
+
+	void ApplyEquipmentData(ASpellRiseCharacterBase* Character, const FSpellRiseCharacterSaveData& Data)
+	{
+		if (!Character)
+		{
+			return;
+		}
+
+		USpellRiseEquipmentManagerComponent* EquipmentManager = Character->GetSpellRiseEquipmentManager();
+		if (!EquipmentManager)
+		{
+			return;
+		}
+
+		TArray<TSubclassOf<UEquippableItem>> EquippedItemClasses;
+		EquippedItemClasses.Reserve(Data.EquippedItems.Num());
+		for (const FSpellRiseSavedEquippedItem& SavedItem : Data.EquippedItems)
+		{
+			if (TSubclassOf<UEquippableItem> ItemClass = LoadEquippableItemClass(SavedItem.ItemClassPath))
+			{
+				EquippedItemClasses.Add(ItemClass);
+			}
+		}
+
+		TArray<TSubclassOf<UEquippableItem>> QuickWeaponSlotClasses;
+		QuickWeaponSlotClasses.SetNum(2);
+		for (const FSpellRiseSavedWeaponLoadoutSlot& SavedSlot : Data.WeaponLoadoutSlots)
+		{
+			if (!QuickWeaponSlotClasses.IsValidIndex(SavedSlot.QuickSlotIndex))
+			{
+				continue;
+			}
+			QuickWeaponSlotClasses[SavedSlot.QuickSlotIndex] = LoadEquippableItemClass(SavedSlot.ItemClassPath);
+		}
+
+		EquipmentManager->ApplyPersistentEquipment_Server(
+			EquippedItemClasses,
+			QuickWeaponSlotClasses,
+			Data.ActiveWeaponQuickSlotIndex,
+			LoadEquippableItemClass(Data.OffHandItemClassPath));
 	}
 
 	void SetTalentTreeTalentPoints(UActorComponent* TalentComponent, const int32 TalentPoints)
@@ -552,7 +818,32 @@ namespace
 			*GetNameSafe(TalentComponent));
 	}
 
-	bool InvokeGrantTalent(UActorComponent* TalentComponent, UObject* TalentAsset, const int32 Level)
+	void ApplyDefaultProgressionForMissingPersistence(AController* Controller, const TCHAR* Context)
+	{
+		if (!Controller)
+		{
+			return;
+		}
+
+		ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
+		if (!PlayerState)
+		{
+			return;
+		}
+
+		if (USpellRiseProgressionComponent* ProgressionComponent = PlayerState->GetProgressionComponent())
+		{
+			ProgressionComponent->InitializeCharacterProgressionDefaults_Server(true);
+		}
+
+		PlayerState->SetTalentPoints_Server(100);
+		UE_LOG(LogSpellRisePersistence, Log,
+			TEXT("[Persistence][ProgressionDefaultsApplied] Context=%s PlayerState=%s Level=1 Experience=0 TalentPoints=100 CraftPoints=100 AttributePoints=0"),
+			Context ? Context : TEXT("unknown"),
+			*GetNameSafe(PlayerState));
+	}
+
+	bool InvokeGrantTalent(UActorComponent* TalentComponent, UObject* TalentAsset, const int32 TalentLevel, const int32 AbilityLevel)
 	{
 		if (!TalentComponent || !TalentAsset)
 		{
@@ -584,9 +875,13 @@ namespace
 			}
 			else if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
 			{
-				if (Property->GetName().Contains(TEXT("Level"), ESearchCase::IgnoreCase))
+				if (Property->GetName().Contains(TEXT("AbilityLevel"), ESearchCase::IgnoreCase))
 				{
-					IntProperty->SetPropertyValue(ValuePtr, ClampPersistentTalentLevel(Level));
+					IntProperty->SetPropertyValue(ValuePtr, ClampPersistentTalentLevel(AbilityLevel));
+				}
+				else if (Property->GetName().Contains(TEXT("Level"), ESearchCase::IgnoreCase))
+				{
+					IntProperty->SetPropertyValue(ValuePtr, ClampPersistentTalentLevel(TalentLevel));
 				}
 			}
 			else if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
@@ -630,7 +925,8 @@ namespace
 			}
 
 			UObject* TalentAsset = LoadObject<UObject>(nullptr, *SavedTalent.TalentAssetPath);
-			if (!TalentAsset || !InvokeGrantTalent(TalentComponent, TalentAsset, SavedTalent.Level))
+			const int32 SavedAbilityLevel = SavedTalent.AbilityLevel > 0 ? SavedTalent.AbilityLevel : SavedTalent.Level;
+			if (!TalentAsset || !InvokeGrantTalent(TalentComponent, TalentAsset, SavedTalent.Level, SavedAbilityLevel))
 			{
 				++SkippedTalents;
 				continue;
@@ -640,12 +936,84 @@ namespace
 		}
 
 		SetTalentTreeTalentPoints(TalentComponent, Data.TalentPoints);
+		if (ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(Controller ? Controller->PlayerState : nullptr))
+		{
+			PlayerState->SetTalentPoints_Server(Data.TalentPoints);
+		}
 		UE_LOG(LogSpellRisePersistence, Log,
 			TEXT("[Persistence][TalentsApplied] Component=%s Applied=%d Skipped=%d TalentPoints=%d"),
 			*GetNameSafe(TalentComponent),
 			AppliedTalents,
 			SkippedTalents,
 			FMath::Max(0, Data.TalentPoints));
+	}
+
+	void ApplyProgressionData(ASpellRisePlayerState* PlayerState, const FSpellRiseCharacterSaveData& Data)
+	{
+		if (!PlayerState)
+		{
+			return;
+		}
+
+		USpellRiseProgressionComponent* ProgressionComponent = PlayerState->GetProgressionComponent();
+		if (!ProgressionComponent)
+		{
+			UE_LOG(LogSpellRisePersistence, Warning,
+				TEXT("[Persistence][ProgressionApplyRejected] Reason=missing_component PlayerState=%s"),
+				*GetNameSafe(PlayerState));
+			return;
+		}
+
+		const int32 SavedCharacterLevel = Data.SchemaVersion >= 9
+			? FMath::Clamp(Data.CharacterLevel, PersistentCharacterLevelMin, PersistentCharacterLevelMax)
+			: 1;
+		const int32 SavedExperience = Data.SchemaVersion >= 9
+			? FMath::Clamp(Data.Experience, 0, PersistentExperienceMax)
+			: 0;
+		const int32 SavedTalentPoints = Data.SchemaVersion >= 10
+			? FMath::Clamp(Data.TalentPoints, 0, PersistentProgressionCurrencyMax)
+			: FMath::Clamp(Data.TalentPoints, 0, PersistentProgressionCurrencyMax);
+		const int32 SavedCraftPoints = Data.SchemaVersion >= 9
+			? FMath::Clamp(Data.CraftPoints, 0, PersistentProgressionCurrencyMax)
+			: 100;
+		const int32 SavedAttributePoints = Data.SchemaVersion >= 9
+			? FMath::Clamp(Data.AttributePoints, 0, PersistentProgressionCurrencyMax)
+			: 0;
+		ProgressionComponent->SetCharacterProgression_Server(SavedCharacterLevel, SavedExperience, SavedTalentPoints, SavedCraftPoints, SavedAttributePoints);
+		PlayerState->SetTalentPoints_Server(SavedTalentPoints);
+
+		ProgressionComponent->ResetProgressionLevels_Server();
+
+		int32 AppliedWeaponLevels = 0;
+		int32 AppliedSchoolLevels = 0;
+		for (const FSpellRiseSavedProgressionLevel& SavedLevel : Data.WeaponSkillLevels)
+		{
+			if (SavedLevel.ProgressionTag.IsValid()
+				&& ProgressionComponent->SetWeaponSkillLevel_Server(SavedLevel.ProgressionTag, SavedLevel.Level))
+			{
+				++AppliedWeaponLevels;
+			}
+		}
+
+		for (const FSpellRiseSavedProgressionLevel& SavedLevel : Data.SchoolLevels)
+		{
+			if (SavedLevel.ProgressionTag.IsValid()
+				&& ProgressionComponent->SetSchoolLevel_Server(SavedLevel.ProgressionTag, SavedLevel.Level))
+			{
+				++AppliedSchoolLevels;
+			}
+		}
+
+		UE_LOG(LogSpellRisePersistence, Log,
+			TEXT("[Persistence][ProgressionApplied] PlayerState=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d WeaponLevels=%d SchoolLevels=%d"),
+			*GetNameSafe(PlayerState),
+			SavedCharacterLevel,
+			SavedExperience,
+			SavedTalentPoints,
+			SavedCraftPoints,
+			SavedAttributePoints,
+			AppliedWeaponLevels,
+			AppliedSchoolLevels);
 	}
 
 	bool IsValidPersistentId(const FString& PersistentId)
@@ -839,13 +1207,99 @@ namespace
 			return false;
 		}
 
+		if (Data.CharacterLevel < PersistentCharacterLevelMin || Data.CharacterLevel > PersistentCharacterLevelMax)
+		{
+			OutReason = TEXT("invalid_character_level");
+			return false;
+		}
+
+		if (Data.Experience < 0 || Data.Experience > PersistentExperienceMax)
+		{
+			OutReason = TEXT("invalid_character_experience");
+			return false;
+		}
+
+		if (Data.CraftPoints < 0 || Data.CraftPoints > PersistentProgressionCurrencyMax
+			|| Data.AttributePoints < 0 || Data.AttributePoints > PersistentProgressionCurrencyMax)
+		{
+			OutReason = TEXT("invalid_character_progression");
+			return false;
+		}
+
 		for (const FSpellRiseSavedTalent& Talent : Data.Talents)
 		{
-			if (Talent.TalentAssetPath.IsEmpty() || Talent.Level < PersistentTalentLevelMin || Talent.Level > PersistentTalentLevelMax)
+			const int32 EffectiveAbilityLevel = Talent.AbilityLevel > 0 ? Talent.AbilityLevel : Talent.Level;
+			if (Talent.TalentAssetPath.IsEmpty()
+				|| Talent.Level < PersistentTalentLevelMin
+				|| Talent.Level > PersistentTalentLevelMax
+				|| EffectiveAbilityLevel < PersistentTalentLevelMin
+				|| EffectiveAbilityLevel > PersistentTalentLevelMax)
 			{
 				OutReason = TEXT("invalid_talent_state");
 				return false;
 			}
+		}
+
+		auto ValidateProgressionLevels = [&OutReason](const TArray<FSpellRiseSavedProgressionLevel>& Levels) -> bool
+		{
+			for (const FSpellRiseSavedProgressionLevel& Level : Levels)
+			{
+				if (!Level.ProgressionTag.IsValid()
+					|| Level.Level < PersistentTalentLevelMin
+					|| Level.Level > PersistentTalentLevelMax)
+				{
+					OutReason = TEXT("invalid_progression_state");
+					return false;
+				}
+			}
+
+			return true;
+		};
+
+		if (!ValidateProgressionLevels(Data.WeaponSkillLevels)
+			|| !ValidateProgressionLevels(Data.SchoolLevels))
+		{
+			return false;
+		}
+
+		for (const FSpellRiseSavedAbilityHotbarSlot& Slot : Data.AbilityHotbarSlots)
+		{
+			if (Slot.SlotIndex < 0 || Slot.SlotIndex >= 16)
+			{
+				OutReason = TEXT("invalid_hotbar_slot");
+				return false;
+			}
+			if ((!Slot.AbilityClassPath.IsEmpty() && Slot.AbilityClassPath.Len() > 512)
+				|| (!Slot.AbilityDefinitionPath.IsEmpty() && Slot.AbilityDefinitionPath.Len() > 512))
+			{
+				OutReason = TEXT("invalid_hotbar_path");
+				return false;
+			}
+		}
+
+		for (const FSpellRiseSavedEquippedItem& Item : Data.EquippedItems)
+		{
+			if (Item.ItemClassPath.IsEmpty() || Item.ItemClassPath.Len() > 512 || Item.SlotName.Len() > 64)
+			{
+				OutReason = TEXT("invalid_equipped_item");
+				return false;
+			}
+		}
+
+		for (const FSpellRiseSavedWeaponLoadoutSlot& Slot : Data.WeaponLoadoutSlots)
+		{
+			if (Slot.QuickSlotIndex < 0 || Slot.QuickSlotIndex > 1 || Slot.ItemClassPath.IsEmpty() || Slot.ItemClassPath.Len() > 512)
+			{
+				OutReason = TEXT("invalid_weapon_loadout");
+				return false;
+			}
+		}
+
+		if ((!Data.OffHandItemClassPath.IsEmpty() && Data.OffHandItemClassPath.Len() > 512)
+			|| (Data.ActiveWeaponQuickSlotIndex != INDEX_NONE && (Data.ActiveWeaponQuickSlotIndex < 0 || Data.ActiveWeaponQuickSlotIndex > 1)))
+		{
+			OutReason = TEXT("invalid_equipment_state");
+			return false;
 		}
 
 		return true;
@@ -1486,6 +1940,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 		if (Controller)
 		{
 			EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("nosteam_mode"));
+			ApplyDefaultProgressionForMissingPersistence(Controller, TEXT("nosteam_mode"));
 			if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 			{
 				SRPlayerState->SetPersistenceProfileApplied(true);
@@ -1506,6 +1961,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	{
 		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("invalid_or_non_steam_persistent_id"));
 		ResetTalentTreeDataForMissingPersistence(Controller, TEXT("invalid_or_non_steam_persistent_id"));
+		ApplyDefaultProgressionForMissingPersistence(Controller, TEXT("invalid_or_non_steam_persistent_id"));
 		if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 		{
 			SRPlayerState->SetPersistenceProfileApplied(true);
@@ -1519,6 +1975,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	{
 		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("no_cached_data"));
 		ResetTalentTreeDataForMissingPersistence(Controller, TEXT("no_cached_data"));
+		ApplyDefaultProgressionForMissingPersistence(Controller, TEXT("no_cached_data"));
 		if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
 		{
 			SRPlayerState->SetPersistenceProfileApplied(true);
@@ -1648,6 +2105,33 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 
 	RecordPersistenceTelemetry(TEXT("SaveCharacter"), true, SaveLatencyMs, TEXT("saved"));
 	return true;
+}
+
+bool USpellRisePersistenceSubsystem::SaveDirtyCharacters(UWorld* World)
+{
+	if (!World || DirtyCharacterIds.IsEmpty())
+	{
+		return false;
+	}
+
+	bool bSavedAny = false;
+	for (APlayerController* PlayerController : TActorRange<APlayerController>(World))
+	{
+		if (!PlayerController || !PlayerController->PlayerState)
+		{
+			continue;
+		}
+
+		const FString SteamId64 = ResolveSteamIdFromController(PlayerController);
+		if (!DirtyCharacterIds.Contains(SteamId64))
+		{
+			continue;
+		}
+
+		bSavedAny |= SaveCharacterForController(PlayerController);
+	}
+
+	return bSavedAny;
 }
 
 bool USpellRisePersistenceSubsystem::HasCachedCharacterCreatedForController(AController* Controller) const
@@ -2212,7 +2696,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 		}
 	}
 	ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState);
-	if (!Character || !SRPlayerState)
+	if (!SRPlayerState)
 	{
 		return false;
 	}
@@ -2228,8 +2712,38 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	OutData.SteamId64 = SteamId64;
 	OutData.PlayerDisplayName = Controller->PlayerState->GetPlayerName();
 	OutData.bCharacterCreated = true;
-	OutData.CharacterTransform = Character->GetActorTransform();
-	OutData.ArchetypeValue = static_cast<uint8>(Character->Archetype);
+	if (Character)
+	{
+		OutData.CharacterTransform = Character->GetActorTransform();
+		OutData.ArchetypeValue = static_cast<uint8>(Character->Archetype);
+	}
+	else if (const FSpellRiseCharacterSaveData* CachedData = CachedCharacterDataBySteamId.Find(SteamId64))
+	{
+		OutData.CharacterTransform = CachedData->CharacterTransform;
+		OutData.ArchetypeValue = CachedData->ArchetypeValue;
+		OutData.RespawnBedActorName = CachedData->RespawnBedActorName;
+		OutData.RespawnBedClassPath = CachedData->RespawnBedClassPath;
+		OutData.RespawnBedLocation = CachedData->RespawnBedLocation;
+		OutData.EquippedItems = CachedData->EquippedItems;
+		OutData.WeaponLoadoutSlots = CachedData->WeaponLoadoutSlots;
+		OutData.ActiveWeaponQuickSlotIndex = CachedData->ActiveWeaponQuickSlotIndex;
+		OutData.OffHandItemClassPath = CachedData->OffHandItemClassPath;
+
+		UE_LOG(LogSpellRisePersistence, Warning,
+			TEXT("[Persistence][CollectCharacterDataFallback] Reason=missing_pawn Controller=%s PlayerState=%s SteamId64=%s"),
+			*GetNameSafe(Controller),
+			*GetNameSafe(SRPlayerState),
+			*SteamId64);
+	}
+	else
+	{
+		UE_LOG(LogSpellRisePersistence, Warning,
+			TEXT("[Persistence][CollectCharacterDataRejected] Reason=missing_pawn_no_cached_transform Controller=%s PlayerState=%s SteamId64=%s"),
+			*GetNameSafe(Controller),
+			*GetNameSafe(SRPlayerState),
+			*SteamId64);
+		return false;
+	}
 
 	if (const UObject* GameInstanceObject = ResolveGameInstanceObject(Controller))
 	{
@@ -2271,6 +2785,27 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	if (UActorComponent* TalentComponent = ResolveTalentTreeComponent(Controller))
 	{
 		CollectTalentTreeData(TalentComponent, OutData.TalentPoints, OutData.Talents);
+	}
+
+	CollectProgressionData(
+		SRPlayerState,
+		OutData.CharacterLevel,
+		OutData.Experience,
+		OutData.TalentPoints,
+		OutData.CraftPoints,
+		OutData.AttributePoints,
+		OutData.WeaponSkillLevels,
+		OutData.SchoolLevels);
+
+	CollectAbilityHotbarData(SRPlayerState, OutData.AbilityHotbarSlots);
+	if (Character)
+	{
+		CollectEquipmentData(
+			Character,
+			OutData.EquippedItems,
+			OutData.WeaponLoadoutSlots,
+			OutData.ActiveWeaponQuickSlotIndex,
+			OutData.OffHandItemClassPath);
 	}
 
 	if (!SRPlayerState->GetRespawnBedActorName().IsEmpty())
@@ -2388,6 +2923,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	ASC->SetNumericAttributeBase(UCatalystAttributeSet::GetCatalystLevelAttribute(), Data.CatalystLevel);
 
 	ApplyTalentTreeData(Controller, Data);
+	ApplyProgressionData(SRPlayerState, Data);
 
 	if (!Data.RespawnBedActorName.IsEmpty() || !Data.RespawnBedClassPath.IsEmpty())
 	{
@@ -2435,7 +2971,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	int32 SkippedInvalidStacks = 0;
 	int32 SkippedUnmatchedComponents = 0;
 
-	if (Data.SchemaVersion < PersistenceCharacterSchemaVersion)
+	if (Data.SchemaVersion < PersistenceCharacterInventorySchemaVersion)
 	{
 		SkippedLegacyComponents = Data.InventoryComponents.Num();
 	}
@@ -2514,6 +3050,8 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 	}
 
 	Character->SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("AfterPersistenceInventoryApply"));
+	ApplyAbilityHotbarData(SRPlayerState, Data.AbilityHotbarSlots);
+	ApplyEquipmentData(Character, Data);
 
 	const bool bShouldEnsureDefaults =
 		(Data.InventoryComponents.Num() == 0) ||

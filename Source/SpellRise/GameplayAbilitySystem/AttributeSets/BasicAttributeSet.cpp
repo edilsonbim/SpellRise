@@ -7,7 +7,7 @@
 namespace SpellRiseBasic
 {
 	constexpr float PRIMARY_MIN = 0.f;
-	constexpr float PRIMARY_MAX = 120.f;
+	constexpr float PRIMARY_MAX = 140.f;
 	constexpr float PRIMARY_INITIAL = 20.f;
 }
 

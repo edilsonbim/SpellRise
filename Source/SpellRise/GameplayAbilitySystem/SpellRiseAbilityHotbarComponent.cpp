@@ -645,6 +645,54 @@ int32 USpellRiseAbilityHotbarComponent::MakeSlotIndex(
 		: GroupSlotIndex;
 }
 
+bool USpellRiseAbilityHotbarComponent::ApplyPersistentSlots_Server(const TArray<FSpellRiseAbilityHotbarSlot>& SavedSlots)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
+	InitializeDefaultSlots();
+
+	bool bAnyChanged = false;
+	for (const FSpellRiseAbilityHotbarSlot& SavedSlot : SavedSlots)
+	{
+		if (!SpellRiseAbilityHotbarPrivate::IsValidSlotIndex(SavedSlot.SlotIndex) || !Slots.IsValidIndex(SavedSlot.SlotIndex))
+		{
+			continue;
+		}
+
+		FString RejectReason;
+		if (!SavedSlot.AbilityDefinition.IsNull())
+		{
+			bAnyChanged |= SetSlotFromAbilityDefinition_Server(SavedSlot.SlotIndex, SavedSlot.AbilityDefinition, RejectReason);
+			if (!RejectReason.IsEmpty())
+			{
+				AuditRejectedHotbarRpc(TEXT("ApplyPersistentSlotDefinition"), RejectReason);
+			}
+			continue;
+		}
+
+		UClass* AbilityClass = SavedSlot.AbilityClass.LoadSynchronous();
+		bAnyChanged |= SetSlot_Server(SavedSlot.SlotIndex, SavedSlot.AbilityInputTag, AbilityClass, RejectReason);
+		if (!RejectReason.IsEmpty())
+		{
+			AuditRejectedHotbarRpc(TEXT("ApplyPersistentSlot"), RejectReason);
+		}
+	}
+
+	if (bAnyChanged)
+	{
+		OnHotbarChanged.Broadcast();
+		if (AActor* OwnerActor = GetOwner())
+		{
+			OwnerActor->ForceNetUpdate();
+		}
+	}
+
+	return bAnyChanged;
+}
+
 void USpellRiseAbilityHotbarComponent::ServerSetSlot_Implementation(
 	const int32 SlotIndex,
 	const FGameplayTag AbilityInputTag,

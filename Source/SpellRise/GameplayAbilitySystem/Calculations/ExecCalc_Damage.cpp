@@ -16,6 +16,7 @@
 #include "GameplayTagContainer.h"
 #include "HAL/IConsoleManager.h"
 #include "Math/UnrealMathUtility.h"
+#include "Stats/Stats.h"
 #include "Engine/Engine.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDamage, Log, All);
@@ -217,6 +218,18 @@ namespace SpellRiseDamageProgression
 	constexpr float MinimumDamageContribution = 0.50f;
 	constexpr float MaximumProgressionBonusContribution = 0.50f;
 
+	struct FResolvedDamageMetadata
+	{
+		const USpellRiseGameplayAbility* SourceAbility = nullptr;
+		FGameplayTagContainer EffectiveDamageTags;
+		int32 Channel = 0;
+		bool bIsFallDamage = false;
+		bool bTrueDamage = false;
+		bool bLegacySpell = false;
+		bool bLegacyBow = false;
+		bool bUsesEquippedWeaponDamage = false;
+	};
+
 	static const USpellRiseGameplayAbility* ResolveSpellRiseAbilityFromSpec(const FGameplayEffectSpec& Spec)
 	{
 		const FGameplayEffectContextHandle& Context = Spec.GetContext();
@@ -237,7 +250,7 @@ namespace SpellRiseDamageProgression
 		return nullptr;
 	}
 
-	static USpellRiseProgressionComponent* ResolveSourceProgressionComponent(const UAbilitySystemComponent* SourceASC)
+	static USpellRiseProgressionComponent* ResolveSourceProgressionComponent(const UAbilitySystemComponent* SourceASC, const UObject* SourceObject)
 	{
 		if (!SourceASC)
 		{
@@ -248,6 +261,14 @@ namespace SpellRiseDamageProgression
 		if (ASpellRisePlayerState* SourcePlayerState = Cast<ASpellRisePlayerState>(OwnerActor))
 		{
 			return SourcePlayerState->GetProgressionComponent();
+		}
+
+		if (SourceObject)
+		{
+			if (USpellRiseProgressionComponent* SourceProgression = Cast<USpellRiseProgressionComponent>(const_cast<UObject*>(SourceObject)))
+			{
+				return SourceProgression;
+			}
 		}
 
 		if (OwnerActor)
@@ -270,6 +291,110 @@ namespace SpellRiseDamageProgression
 		}
 
 		return nullptr;
+	}
+
+	static FResolvedDamageMetadata ResolveDamageMetadata(const FGameplayEffectSpec& Spec)
+	{
+		FResolvedDamageMetadata Metadata;
+		Metadata.SourceAbility = ResolveSpellRiseAbilityFromSpec(Spec);
+		Metadata.EffectiveDamageTags = Spec.GetDynamicAssetTags();
+
+		if (Metadata.SourceAbility)
+		{
+			if (Metadata.SourceAbility->DamageChannelTag.IsValid())
+			{
+				Metadata.EffectiveDamageTags.AddTag(Metadata.SourceAbility->DamageChannelTag);
+			}
+			if (Metadata.SourceAbility->DamageTypeTag.IsValid())
+			{
+				Metadata.EffectiveDamageTags.AddTag(Metadata.SourceAbility->DamageTypeTag);
+			}
+
+			Metadata.bUsesEquippedWeaponDamage = Metadata.SourceAbility->bUsesEquippedWeaponDamage;
+		}
+
+		const float FallTagMagnitude = SpellRiseTags::Data_DamageType_Fall().IsValid()
+			? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_DamageType_Fall(), false, -1.f)
+			: -1.f;
+
+		const bool bChanMelee = SpellRiseTags::DamageChannel_Melee().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Melee());
+		const bool bChanBow = SpellRiseTags::DamageChannel_Bow().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Bow());
+		const bool bChanSpell = SpellRiseTags::DamageChannel_Spell().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Spell());
+		const bool bChanEnv = SpellRiseTags::DamageChannel_Environment().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Environment());
+
+		Metadata.bLegacySpell = SpellRiseTags::DamageType_Spell().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Spell());
+		Metadata.bLegacyBow = SpellRiseTags::DamageType_Bow().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Bow());
+		Metadata.bTrueDamage = SpellRiseTags::DamageRule_TrueDamage().IsValid()
+			&& Metadata.EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageRule_TrueDamage());
+		Metadata.bIsFallDamage = FallTagMagnitude > 0.f;
+
+		if (Metadata.bIsFallDamage) Metadata.Channel = 4;
+		else if (bChanSpell) Metadata.Channel = 3;
+		else if (bChanBow) Metadata.Channel = 2;
+		else if (bChanMelee) Metadata.Channel = 1;
+		else if (bChanEnv) Metadata.Channel = 4;
+		else if (Metadata.bLegacySpell) Metadata.Channel = 3;
+		else if (Metadata.bLegacyBow) Metadata.Channel = 2;
+
+		return Metadata;
+	}
+
+	static USpellRiseProgressionComponent* ResolvePlayerProgressionComponent(const UAbilitySystemComponent* ASC)
+	{
+		if (!ASC)
+		{
+			return nullptr;
+		}
+
+		if (ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(ASC->GetOwnerActor()))
+		{
+			return PlayerState->GetProgressionComponent();
+		}
+
+		return nullptr;
+	}
+
+	static float GetPlayerLevelDamageScale(
+		const UAbilitySystemComponent* SourceASC,
+		const UAbilitySystemComponent* TargetASC,
+		int32& OutSourceLevel,
+		int32& OutTargetLevel,
+		int32& OutLowerEffectiveLevel,
+		int32& OutHigherEffectiveLevel)
+	{
+		constexpr int32 CombatLevelCap = 65;
+
+		OutSourceLevel = 0;
+		OutTargetLevel = 0;
+		OutLowerEffectiveLevel = 0;
+		OutHigherEffectiveLevel = 0;
+
+		const USpellRiseProgressionComponent* SourceProgression = ResolvePlayerProgressionComponent(SourceASC);
+		const USpellRiseProgressionComponent* TargetProgression = ResolvePlayerProgressionComponent(TargetASC);
+		if (!SourceProgression || !TargetProgression)
+		{
+			return 1.f;
+		}
+
+		OutSourceLevel = FMath::Max(1, SourceProgression->GetCharacterLevel());
+		OutTargetLevel = FMath::Max(1, TargetProgression->GetCharacterLevel());
+
+		const int32 SourceEffectiveLevel = FMath::Clamp(OutSourceLevel, 1, CombatLevelCap);
+		const int32 TargetEffectiveLevel = FMath::Clamp(OutTargetLevel, 1, CombatLevelCap);
+		OutLowerEffectiveLevel = FMath::Min(SourceEffectiveLevel, TargetEffectiveLevel);
+		OutHigherEffectiveLevel = FMath::Max(SourceEffectiveLevel, TargetEffectiveLevel);
+		if (OutLowerEffectiveLevel >= OutHigherEffectiveLevel)
+		{
+			return 1.f;
+		}
+
+		return 0.5f + (0.5f * static_cast<float>(OutLowerEffectiveLevel) / static_cast<float>(OutHigherEffectiveLevel));
 	}
 
 	static int32 GetProgressionLevel(
@@ -305,7 +430,7 @@ namespace SpellRiseDamageProgression
 	static float ApplyPrimaryAttributeContribution(float Damage, float PrimaryAttribute)
 	{
 		const float ClampedDamage = FMath::Max(0.f, Damage);
-		const float PrimaryAlpha = FMath::Clamp(PrimaryAttribute, 0.f, 100.f) / 100.f;
+		const float PrimaryAlpha = FMath::Clamp(PrimaryAttribute, 0.f, 140.f) / 100.f;
 		return (ClampedDamage * MinimumDamageContribution)
 			+ (ClampedDamage * MaximumProgressionBonusContribution * PrimaryAlpha);
 	}
@@ -604,6 +729,8 @@ void UExecCalc_Damage::Execute_Implementation(
 	const FGameplayEffectCustomExecutionParameters& ExecutionParams,
 	FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_SpellRise_ExecCalc_Damage);
+
 	const FCaptureDefs& C = Captures();
 	const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
 
@@ -614,24 +741,10 @@ void UExecCalc_Damage::Execute_Implementation(
 		return;
 	}
 
-	const FGameplayTagContainer& SpecDynTags = Spec.GetDynamicAssetTags();
-	const USpellRiseGameplayAbility* SourceAbility = SpellRiseDamageProgression::ResolveSpellRiseAbilityFromSpec(Spec);
-	FGameplayTagContainer EffectiveDamageTags = SpecDynTags;
-	if (SourceAbility)
-	{
-		if (SourceAbility->DamageChannelTag.IsValid())
-		{
-			EffectiveDamageTags.AddTag(SourceAbility->DamageChannelTag);
-		}
-		if (SourceAbility->DamageTypeTag.IsValid())
-		{
-			EffectiveDamageTags.AddTag(SourceAbility->DamageTypeTag);
-		}
-	}
-
-	const float FallTagMagnitude = SpellRiseTags::Data_DamageType_Fall().IsValid()
-		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_DamageType_Fall(), false, -1.f)
-		: -1.f;
+	const SpellRiseDamageProgression::FResolvedDamageMetadata DamageMetadata =
+		SpellRiseDamageProgression::ResolveDamageMetadata(Spec);
+	const FGameplayTagContainer& EffectiveDamageTags = DamageMetadata.EffectiveDamageTags;
+	const USpellRiseGameplayAbility* SourceAbility = DamageMetadata.SourceAbility;
 
 	const float FallSeverity = SpellRiseTags::Data_FallSeverity().IsValid()
 		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_FallSeverity(), false, -1.f)
@@ -641,27 +754,9 @@ void UExecCalc_Damage::Execute_Implementation(
 		? Spec.GetSetByCallerMagnitude(SpellRiseTags::Data_Damage(), false, -1.f)
 		: -1.f;
 
-	const bool bIsFallDamage = FallTagMagnitude > 0.f;
-
-	const bool bChanMelee = SpellRiseTags::DamageChannel_Melee().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Melee());
-	const bool bChanBow = SpellRiseTags::DamageChannel_Bow().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Bow());
-	const bool bChanSpell = SpellRiseTags::DamageChannel_Spell().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Spell());
-	const bool bChanEnv = SpellRiseTags::DamageChannel_Environment().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageChannel_Environment());
-
-	const bool bLegacySpell = SpellRiseTags::DamageType_Spell().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Spell());
-	const bool bLegacyBow = SpellRiseTags::DamageType_Bow().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Bow());
-
-	const bool bTrueDamage = SpellRiseTags::DamageRule_TrueDamage().IsValid()
-		&& EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageRule_TrueDamage());
-
-	int32 Channel = 0;
-	if (bIsFallDamage) Channel = 4;
-	else if (bChanSpell) Channel = 3;
-	else if (bChanBow) Channel = 2;
-	else if (bChanMelee) Channel = 1;
-	else if (bChanEnv) Channel = 4;
-	else if (bLegacySpell) Channel = 3;
-	else if (bLegacyBow) Channel = 2;
+	const bool bIsFallDamage = DamageMetadata.bIsFallDamage;
+	const bool bTrueDamage = DamageMetadata.bTrueDamage;
+	const int32 Channel = DamageMetadata.Channel;
 
 	FAggregatorEvaluateParameters Params;
 	Params.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
@@ -671,10 +766,6 @@ void UExecCalc_Damage::Execute_Implementation(
 	float CritDamageMult = 1.5f;
 	float ArmorPenPct = 0.f;
 	float EquippedWeaponBaseDamage = 0.f;
-	float Strength = 20.f;
-	float Agility = 20.f;
-	float Intelligence = 20.f;
-	float Wisdom = 20.f;
 
 	{
 		float Tmp = 0.f;
@@ -682,10 +773,6 @@ void UExecCalc_Damage::Execute_Implementation(
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.CritDamageDef, Params, Tmp)) CritDamageMult = Tmp;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.ArmorPenetrationDef, Params, Tmp)) ArmorPenPct = Tmp;
 		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.EquippedWeaponBaseDamageDef, Params, Tmp)) EquippedWeaponBaseDamage = Tmp;
-		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.StrengthDef, Params, Tmp)) Strength = Tmp;
-		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.AgilityDef, Params, Tmp)) Agility = Tmp;
-		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.IntelligenceDef, Params, Tmp)) Intelligence = Tmp;
-		if (ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WisdomDef, Params, Tmp)) Wisdom = Tmp;
 	}
 
 	CritChance01 = FMath::Clamp(CritChance01, 0.f, 0.25f);
@@ -707,6 +794,12 @@ void UExecCalc_Damage::Execute_Implementation(
 	float AbilityDamageContribution = 0.f;
 	float WeaponDamageContribution = 0.f;
 	float PreAttributeDamage = 0.f;
+	float PreLevelScaleDamage = 0.f;
+	float PlayerLevelDamageScale = 1.f;
+	int32 SourceCharacterLevelForDebug = 0;
+	int32 TargetCharacterLevelForDebug = 0;
+	int32 LowerEffectiveCharacterLevelForDebug = 0;
+	int32 HigherEffectiveCharacterLevelForDebug = 0;
 	float PrimaryAttributeRawForDebug = 0.f;
 	float PrimaryAttributeClampedForDebug = 0.f;
 	const TCHAR* PrimaryAttributeNameForDebug = TEXT("None");
@@ -763,7 +856,7 @@ void UExecCalc_Damage::Execute_Implementation(
 	}
 
 	const bool bUseSpellBase = (Channel == 3);
-	const bool bUsesEquippedWeaponDamage = SourceAbility && SourceAbility->bUsesEquippedWeaponDamage;
+	const bool bUsesEquippedWeaponDamage = DamageMetadata.bUsesEquippedWeaponDamage;
 	const float SetByCallerBaseDamage = FMath::Max(
 		0.f,
 		bUseSpellBase
@@ -786,7 +879,7 @@ void UExecCalc_Damage::Execute_Implementation(
 	{
 		const int32 AbilityLevel = FMath::Clamp(FMath::RoundToInt(Spec.GetLevel()), 1, 100);
 		const USpellRiseProgressionComponent* ProgressionComponent =
-			SpellRiseDamageProgression::ResolveSourceProgressionComponent(SourceASC);
+			SpellRiseDamageProgression::ResolveSourceProgressionComponent(SourceASC, Spec.GetContext().GetSourceObject());
 		EffectiveWeaponProgressionTag = bUsesEquippedWeaponDamage
 			? SpellRiseDamageProgression::ResolveEquippedWeaponProgressionTag(SourceASC)
 			: SourceAbility->WeaponProgressionTag;
@@ -822,31 +915,45 @@ void UExecCalc_Damage::Execute_Implementation(
 
 	if (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine()))
 	{
-		PrimaryAttributeRawForDebug = Wisdom;
+		PrimaryAttributeRawForDebug = 20.f;
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WisdomDef, Params, PrimaryAttributeRawForDebug);
 		PrimaryAttributeNameForDebug = TEXT("WIS");
 	}
 	else if (Channel == 1)
 	{
-		PrimaryAttributeRawForDebug = Strength;
+		PrimaryAttributeRawForDebug = 20.f;
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.StrengthDef, Params, PrimaryAttributeRawForDebug);
 		PrimaryAttributeNameForDebug = TEXT("STR");
 	}
 	else if (Channel == 2)
 	{
-		PrimaryAttributeRawForDebug = Agility;
+		PrimaryAttributeRawForDebug = 20.f;
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.AgilityDef, Params, PrimaryAttributeRawForDebug);
 		PrimaryAttributeNameForDebug = TEXT("AGI");
 	}
 	else if (Channel == 3)
 	{
-		PrimaryAttributeRawForDebug = Intelligence;
+		PrimaryAttributeRawForDebug = 20.f;
+		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.IntelligenceDef, Params, PrimaryAttributeRawForDebug);
 		PrimaryAttributeNameForDebug = TEXT("INT");
 	}
 
-	PrimaryAttributeClampedForDebug = FMath::Clamp(PrimaryAttributeRawForDebug, 0.f, 100.f);
+	PrimaryAttributeClampedForDebug = FMath::Clamp(PrimaryAttributeRawForDebug, 0.f, 140.f);
 	if (Channel == 1 || Channel == 2 || Channel == 3
 		|| (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine())))
 	{
 		FinalDamage = SpellRiseDamageProgression::ApplyPrimaryAttributeContribution(FinalDamage, PrimaryAttributeRawForDebug);
 	}
+
+	PreLevelScaleDamage = FinalDamage;
+	PlayerLevelDamageScale = SpellRiseDamageProgression::GetPlayerLevelDamageScale(
+		SourceASC,
+		TargetASC,
+		SourceCharacterLevelForDebug,
+		TargetCharacterLevelForDebug,
+		LowerEffectiveCharacterLevelForDebug,
+		HigherEffectiveCharacterLevelForDebug);
+	FinalDamage *= PlayerLevelDamageScale;
 
 	PreMitigationDamage = FinalDamage;
 	if (!FMath::IsFinite(FinalDamage) || FinalDamage < 0.f) FinalDamage = 0.f;
@@ -901,7 +1008,7 @@ void UExecCalc_Damage::Execute_Implementation(
 		UE_LOG(
 			LogSpellRiseDamage,
 			Log,
-			TEXT("[DamageCalc] Source=%s Target=%s Ability=%s Channel=%s AbilityRaw=%.2f AbilityContribution=%.2f UsesWeapon=%s WeaponRaw=%.2f WeaponContribution=%.2f Base=%.2f AbilityLevel=%d AbilityLevelAffectsDamage=false WeaponTag=%s WeaponLevel=%d SchoolTag=%s SchoolLevel=%d Scaling=%.3f PreAttribute=%.2f PrimaryAttribute=%s PrimaryRaw=%.2f PrimaryClamped=%.2f PreMitigation=%.2f TrueDamage=%s Resist=%.2f ArmorPen=%.2f ArmorPenApplied=%s Crit=%s CritMult=%.2f Final=%.2f"),
+			TEXT("[DamageCalc] Source=%s Target=%s Ability=%s Channel=%s AbilityRaw=%.2f AbilityContribution=%.2f UsesWeapon=%s WeaponRaw=%.2f WeaponContribution=%.2f Base=%.2f AbilityLevel=%d AbilityLevelAffectsDamage=false WeaponTag=%s WeaponLevel=%d SchoolTag=%s SchoolLevel=%d Scaling=%.3f PreAttribute=%.2f PrimaryAttribute=%s PrimaryRaw=%.2f PrimaryClamped=%.2f PreLevelScale=%.2f SourceLevel=%d TargetLevel=%d LevelLower=%d LevelHigher=%d LevelScale=%.3f PreMitigation=%.2f TrueDamage=%s Resist=%.2f ArmorPen=%.2f ArmorPenApplied=%s Crit=%s CritMult=%.2f Final=%.2f"),
 			*GetNameSafe(SourceASC->GetOwnerActor()),
 			*GetNameSafe(TargetASC->GetOwnerActor()),
 			*GetNameSafe(SourceAbility),
@@ -922,6 +1029,12 @@ void UExecCalc_Damage::Execute_Implementation(
 			PrimaryAttributeNameForDebug,
 			PrimaryAttributeRawForDebug,
 			PrimaryAttributeClampedForDebug,
+			PreLevelScaleDamage,
+			SourceCharacterLevelForDebug,
+			TargetCharacterLevelForDebug,
+			LowerEffectiveCharacterLevelForDebug,
+			HigherEffectiveCharacterLevelForDebug,
+			PlayerLevelDamageScale,
 			PreMitigationDamage,
 			bTrueDamage ? TEXT("true") : TEXT("false"),
 			AppliedResist01,

@@ -28,7 +28,7 @@ class UNarrativeInventoryComponent;
 class ASpellRisePlayerState;
 class USpellRiseWeaponComponent;
 
-struct FSpellRiseEnemyTalentDamageContribution
+struct FSpellRiseEnemyExperienceDamageContribution
 {
 	TWeakObjectPtr<ASpellRisePlayerState> PlayerState;
 	float Damage = 0.0f;
@@ -196,16 +196,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Enemy|GAS|Fallback", meta=(ClampMin="0.0"))
 	float InitialMaxStamina = 180.0f;
 
-	// --- Propriedades de Progressão (Talent Points) ---
+	// --- Propriedades de Progressao (XP) ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression", meta=(ClampMin="0.0"))
-	float TalentPointsOnKill = 0.0f;
+	float ExperiencePointOnKill = 0.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression")
 	bool bGrantTalentPointsOnDeath = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression", meta=(ClampMin="0.0"))
 	float MinDamageContributionForTalentReward = 0.0f;
-	// --- Fim das Propriedades de Progressão ---
+	// --- Fim das Propriedades de Progressao ---
 
 	UPROPERTY(Transient)
 	TArray<FGameplayAbilitySpecHandle> StartupGrantedAbilityHandles;
@@ -228,7 +228,7 @@ protected:
 	virtual void ApplyEnemyAttributeFallbacks_Server();
 	virtual void ApplyGameplayEffectToSelf_Server(TSubclassOf<UGameplayEffect> EffectClass);
 	virtual void ApplyEnemyDeathState_Server(ASpellRisePlayerState* KillerPlayerState, float FatalDamageAmount);
-	virtual void GrantTalentPointsFromDamageContributions_Server(ASpellRisePlayerState* FallbackKillerPlayerState, float FatalDamageAmount);
+	virtual void GrantExperienceFromDamageContributions_Server(ASpellRisePlayerState* FallbackKillerPlayerState, float FatalDamageAmount);
 	virtual void SpawnEnemyLootBag_Server();
 	virtual FVector ResolveEnemyLootBagSpawnLocation_Server() const;
 	virtual void ScheduleCorpseDespawn_Server();

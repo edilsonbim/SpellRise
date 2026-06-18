@@ -876,14 +876,14 @@ namespace
 
 UResourceAttributeSet::UResourceAttributeSet()
 {
-	Health = 180.f;
-	MaxHealth = 180.f;
+	Health = 100.f;
+	MaxHealth = 100.f;
 
-	Mana = 180.f;
-	MaxMana = 180.f;
+	Mana = 100.f;
+	MaxMana = 100.f;
 
-	Stamina = 180.f;
-	MaxStamina = 180.f;
+	Stamina = 100.f;
+	MaxStamina = 100.f;
 
 	HealthRegen = 0.f;
 	ManaRegen = 0.f;

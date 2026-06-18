@@ -8,7 +8,7 @@ namespace SR_Primary
 {
 	constexpr float MIN = 0.f;
 	constexpr float BASE = 20.f;
-	constexpr float EFFECTIVE_MAX = 120.f;
+	constexpr float EFFECTIVE_MAX = 140.f;
 	constexpr float BONUS_RANGE = 100.f;
 
 	static float ClampPrimary(float V)
@@ -112,12 +112,7 @@ UMMC_MaxHealthFromPrimaries::UMMC_MaxHealthFromPrimaries() = default;
 float UMMC_MaxHealthFromPrimaries::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
 	const float Str = SR_Primary::ClampPrimary(GetStrength(Spec));
-	const float Wis = SR_Primary::ClampPrimary(GetWisdom(Spec));
-
-	const float StrBonus = FMath::Clamp(Str - SR_Primary::BASE, 0.f, 100.f);
-	const float WisBonus = FMath::Clamp(Wis - SR_Primary::BASE, 0.f, 100.f);
-
-	return FMath::Max(1.f, 180.f + (StrBonus * 2.f) + (WisBonus * 1.f));
+	return FMath::Max(1.f, 100.f + (Str * 3.f));
 }
 
 UMMC_MaxManaFromPrimaries::UMMC_MaxManaFromPrimaries() = default;
@@ -125,32 +120,19 @@ float UMMC_MaxManaFromPrimaries::CalculateBaseMagnitude_Implementation(const FGa
 {
 	const float Int = SR_Primary::ClampPrimary(GetIntelligence(Spec));
 	const float Wis = SR_Primary::ClampPrimary(GetWisdom(Spec));
-
-	const float IntBonus = FMath::Clamp(Int - SR_Primary::BASE, 0.f, 100.f);
-	const float WisBonus = FMath::Clamp(Wis - SR_Primary::BASE, 0.f, 100.f);
-
-	return FMath::Max(1.f, 180.f + (IntBonus * 2.f) + (WisBonus * 1.f));
+	return FMath::Max(1.f, 100.f + Int + (Wis * 2.f));
 }
 
 UMMC_MaxStaminaFromPrimaries::UMMC_MaxStaminaFromPrimaries() = default;
 float UMMC_MaxStaminaFromPrimaries::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-	const float Str = SR_Primary::ClampPrimary(GetStrength(Spec));
 	const float Agi = SR_Primary::ClampPrimary(GetAgility(Spec));
-
-	const float StrBonus = FMath::Clamp(Str - SR_Primary::BASE, 0.f, 100.f);
-	const float AgiBonus = FMath::Clamp(Agi - SR_Primary::BASE, 0.f, 100.f);
-
-	return FMath::Max(1.f, 180.f + (StrBonus * 1.f) + (AgiBonus * 2.f));
+	return FMath::Max(1.f, 100.f + (Agi * 3.f));
 }
 
 UMMC_CarryWeightFromPrimaries::UMMC_CarryWeightFromPrimaries() = default;
 float UMMC_CarryWeightFromPrimaries::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
 	const float Str = SR_Primary::ClampPrimary(GetStrength(Spec));
-	const float StrBonus = FMath::Clamp(Str - SR_Primary::BASE, 0.f, 100.f);
-
-
-
-	return FMath::Max(1.f, 45.f + (StrBonus * 0.75f));
+	return Str * 2.f;
 }

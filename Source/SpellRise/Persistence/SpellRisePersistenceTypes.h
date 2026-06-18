@@ -3,6 +3,7 @@
 // Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "SpellRisePersistenceTypes.generated.h"
 
 UENUM()
@@ -78,6 +79,63 @@ struct FSpellRiseSavedTalent
 
 	UPROPERTY()
 	int32 Level = 0;
+
+	UPROPERTY()
+	int32 AbilityLevel = 0;
+};
+
+USTRUCT()
+struct FSpellRiseSavedProgressionLevel
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGameplayTag ProgressionTag;
+
+	UPROPERTY()
+	int32 Level = 0;
+};
+
+USTRUCT()
+struct FSpellRiseSavedAbilityHotbarSlot
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	int32 SlotIndex = INDEX_NONE;
+
+	UPROPERTY()
+	FGameplayTag AbilityInputTag;
+
+	UPROPERTY()
+	FString AbilityClassPath;
+
+	UPROPERTY()
+	FString AbilityDefinitionPath;
+};
+
+USTRUCT()
+struct FSpellRiseSavedEquippedItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString SlotName;
+
+	UPROPERTY()
+	FString ItemClassPath;
+};
+
+USTRUCT()
+struct FSpellRiseSavedWeaponLoadoutSlot
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	int32 QuickSlotIndex = INDEX_NONE;
+
+	UPROPERTY()
+	FString ItemClassPath;
 };
 
 USTRUCT()
@@ -86,7 +144,7 @@ struct FSpellRiseCharacterSaveData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 SchemaVersion = 7;
+	int32 SchemaVersion = 11;
 
 	UPROPERTY()
 	FString SteamId64;
@@ -149,7 +207,40 @@ struct FSpellRiseCharacterSaveData
 	int32 TalentPoints = 0;
 
 	UPROPERTY()
+	int32 CharacterLevel = 1;
+
+	UPROPERTY()
+	int32 Experience = 0;
+
+	UPROPERTY()
+	int32 CraftPoints = 100;
+
+	UPROPERTY()
+	int32 AttributePoints = 0;
+
+	UPROPERTY()
 	TArray<FSpellRiseSavedTalent> Talents;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedProgressionLevel> WeaponSkillLevels;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedProgressionLevel> SchoolLevels;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedAbilityHotbarSlot> AbilityHotbarSlots;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedEquippedItem> EquippedItems;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedWeaponLoadoutSlot> WeaponLoadoutSlots;
+
+	UPROPERTY()
+	int32 ActiveWeaponQuickSlotIndex = INDEX_NONE;
+
+	UPROPERTY()
+	FString OffHandItemClassPath;
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedInventoryComponent> InventoryComponents;

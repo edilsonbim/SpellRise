@@ -31,3 +31,4 @@ O servidor e a unica autoridade para dano, custos, cooldowns, recursos, atributo
 - Persistencia de producao deve ser server-side.
 - Cliente nao pode enviar snapshot final confiavel nem substituir validacao do servidor.
 - Eventos sensiveis devem ser auditaveis quando afetarem economia, inventario, loot ou progressao.
+- `-SRTestPersistentId=<SteamID64>` pode fixar a identidade apenas em PIE ou quando o modo NoSteam de teste estiver explicitamente habilitado; fora desses contextos o servidor ignora o parâmetro.

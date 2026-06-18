@@ -231,6 +231,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	UEquippableItem* GetActiveOffHandItem() const { return ActiveOffHandItem; }
 
+	bool ApplyPersistentEquipment_Server(
+		const TArray<TSubclassOf<UEquippableItem>>& EquippedItemClasses,
+		const TArray<TSubclassOf<UEquippableItem>>& QuickWeaponSlotClasses,
+		int32 SavedActiveQuickWeaponSlotIndex,
+		TSubclassOf<UEquippableItem> SavedOffHandItemClass);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	bool IsOffHandSuppressedByTwoHandedWeapon() const { return bOffHandSuppressedByTwoHandedWeapon; }
 
@@ -369,6 +375,7 @@ private:
 	bool IsOffHandGameplayActive() const;
 	void RefreshOffHandSuppression_Server();
 	int32 FindQuickSlotByItem(UEquippableItem* Item) const;
+	UEquippableItem* FindOwnedEquippableItemByClass(TSubclassOf<UEquippableItem> ItemClass) const;
 	int32 FindFirstFreeQuickSlot() const;
 	int32 GetPreferredQuickWeaponSlotForItem(UEquippableItem* Item) const;
 	bool HandleWeaponEquipIntent(UEquippableItem* Item);

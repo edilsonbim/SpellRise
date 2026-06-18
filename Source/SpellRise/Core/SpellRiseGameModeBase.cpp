@@ -98,6 +98,11 @@ namespace
 		return NetId.IsValid() && NetId->GetType() == FName(TEXT("STEAM"));
 	}
 
+	bool IsValidTestPersistentId(const FString& PersistentId)
+	{
+		return PersistentId.Len() == 17 && PersistentId.IsNumeric();
+	}
+
 	FString EscapeSqlLiteral(const FString& InValue)
 	{
 		FString Escaped = InValue;
@@ -423,14 +428,7 @@ void ASpellRiseGameModeBase::SaveAllPlayersAndWorld()
 		return;
 	}
 
-	for (APlayerController* PlayerController : TActorRange<APlayerController>(World))
-	{
-		if (PlayerController && PlayerController->PlayerState)
-		{
-			Persistence->SaveCharacterForController(PlayerController);
-		}
-	}
-
+	Persistence->SaveDirtyCharacters(World);
 	Persistence->SaveWorld(World);
 }
 
@@ -447,8 +445,39 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdFromPreLoginData(
 	const bool bEditorPIETestingActive = IsEditorPIETestingModeActive();
 	const bool bRequireSteamInThisContext = bRequireSteamAuthOnDedicatedServer && IsRunningDedicatedServer() && !bNoSteamTestingActive;
 	const bool bAllowOfflineFallbackInThisContext = bAllowDevOfflineIdFallback || bNoSteamTestingActive || bEditorPIETestingActive;
+	FString TestPersistentId;
+	FParse::Value(FCommandLine::Get(), TEXT("SRTestPersistentId="), TestPersistentId);
+	TestPersistentId.TrimStartAndEndInline();
 	const FString DevAuthId = UGameplayStatics::ParseOption(Options, TEXT("DevAuthId")).TrimStartAndEnd();
 	const bool bSteamIdValid = IsSteamUniqueId(UniqueId);
+
+	if (!TestPersistentId.IsEmpty())
+	{
+		if (!bNoSteamTestingActive && !bEditorPIETestingActive)
+		{
+			UE_LOG(LogSpellRiseLoginPersistence, Warning,
+				TEXT("[Auth][TestPersistentIdIgnored] Reason=unsafe_context RequireSteam=%d NoSteam=%d PIE=%d"),
+				bRequireSteamInThisContext ? 1 : 0,
+				bNoSteamTestingActive ? 1 : 0,
+				bEditorPIETestingActive ? 1 : 0);
+		}
+		else if (!IsValidTestPersistentId(TestPersistentId))
+		{
+			UE_LOG(LogSpellRiseLoginPersistence, Warning,
+				TEXT("[Auth][TestPersistentIdIgnored] Reason=invalid_steam_id64 Length=%d"),
+				TestPersistentId.Len());
+		}
+		else
+		{
+			bOutUsedDevFallback = true;
+			UE_LOG(LogSpellRiseLoginPersistence, Log,
+				TEXT("[Auth][TestPersistentIdAccepted] PersistentId=%s NoSteam=%d PIE=%d"),
+				*TestPersistentId,
+				bNoSteamTestingActive ? 1 : 0,
+				bEditorPIETestingActive ? 1 : 0);
+			return TestPersistentId;
+		}
+	}
 
 	if (!DevAuthId.IsEmpty() && bAllowOfflineFallbackInThisContext && !bRequireSteamInThisContext)
 	{

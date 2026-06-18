@@ -3421,6 +3421,88 @@ int32 USpellRiseEquipmentManagerComponent::FindFirstFreeQuickSlot() const
 	return INDEX_NONE;
 }
 
+UEquippableItem* USpellRiseEquipmentManagerComponent::FindOwnedEquippableItemByClass(TSubclassOf<UEquippableItem> ItemClass) const
+{
+	if (!ItemClass || !GetOwner())
+	{
+		return nullptr;
+	}
+
+	UNarrativeInventoryComponent* OwnerInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(GetOwner());
+	if (!OwnerInventory)
+	{
+		return nullptr;
+	}
+
+	for (UNarrativeItem* Item : OwnerInventory->GetItems())
+	{
+		UEquippableItem* EquippableItem = Cast<UEquippableItem>(Item);
+		if (EquippableItem && EquippableItem->IsA(ItemClass))
+		{
+			return EquippableItem;
+		}
+	}
+
+	return nullptr;
+}
+
+bool USpellRiseEquipmentManagerComponent::ApplyPersistentEquipment_Server(
+	const TArray<TSubclassOf<UEquippableItem>>& EquippedItemClasses,
+	const TArray<TSubclassOf<UEquippableItem>>& QuickWeaponSlotClasses,
+	int32 SavedActiveQuickWeaponSlotIndex,
+	TSubclassOf<UEquippableItem> SavedOffHandItemClass)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
+	bool bAnyApplied = false;
+	for (TSubclassOf<UEquippableItem> ItemClass : EquippedItemClasses)
+	{
+		if (UEquippableItem* Item = FindOwnedEquippableItemByClass(ItemClass))
+		{
+			bAnyApplied |= RequestEquipItem(Item);
+		}
+	}
+
+	for (int32 SlotIndex = 0; SlotIndex < QuickWeaponSlotClasses.Num(); ++SlotIndex)
+	{
+		TSubclassOf<UEquippableItem> ItemClass = QuickWeaponSlotClasses[SlotIndex];
+		if (UEquippableItem* Item = FindOwnedEquippableItemByClass(ItemClass))
+		{
+			bAnyApplied |= AssignQuickWeaponSlot_Server(Item, SlotIndex);
+		}
+	}
+
+	if (SavedOffHandItemClass)
+	{
+		if (UEquippableItem* OffHandItem = FindOwnedEquippableItemByClass(SavedOffHandItemClass))
+		{
+			bAnyApplied |= HandleOffHandEquipIntent(OffHandItem);
+		}
+	}
+
+	if (QuickWeaponSlots.IsValidIndex(SavedActiveQuickWeaponSlotIndex) && QuickWeaponSlots[SavedActiveQuickWeaponSlotIndex])
+	{
+		bAnyApplied |= ActivateQuickWeaponSlot_Server(SavedActiveQuickWeaponSlotIndex);
+	}
+
+	RefreshEquippedWeaponReference();
+	RefreshEquippedOffHandWeaponReference();
+	RefreshOffHandSuppression_Server();
+	RefreshWeaponLoadoutVisuals_Server();
+	BroadcastWeaponChangedIfNeeded();
+	BroadcastOffHandWeaponChangedIfNeeded();
+	BroadcastHUDEquipmentSlotsChanged();
+	if (AActor* OwnerActor = GetOwner())
+	{
+		OwnerActor->ForceNetUpdate();
+	}
+
+	return bAnyApplied;
+}
+
 bool USpellRiseEquipmentManagerComponent::HandleWeaponEquipIntent(UEquippableItem* Item)
 {
 	if (!Item || !GetOwner() || !GetOwner()->HasAuthority())
