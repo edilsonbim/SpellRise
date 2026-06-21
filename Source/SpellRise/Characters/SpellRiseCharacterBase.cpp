@@ -398,24 +398,6 @@ namespace
 		}
 	}
 
-	bool SR_IsValidAbilityWheelInputTag(const FGameplayTag& Tag)
-	{
-		if (!Tag.IsValid())
-		{
-			return true;
-		}
-
-		for (int32 SlotIndex = 0; SlotIndex < 16; ++SlotIndex)
-		{
-			if (Tag.MatchesTagExact(SpellRiseTags::Input_AbilitySlot(SlotIndex)))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 }
 
 ASpellRiseCharacterBase::ASpellRiseCharacterBase()
@@ -1115,7 +1097,6 @@ void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, SelectedAbilityInputTag, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, Archetype, COND_None, REPNOTIFY_Always);
 }
 
@@ -1342,54 +1323,6 @@ void ASpellRiseCharacterBase::ApplyArchetypeToPrimaries_Server()
 	ApplyDerivedStatsInfinite();
 }
 
-void ASpellRiseCharacterBase::ServerSetSelectedAbilityInputTag_Implementation(FGameplayTag NewTag)
-{
-	FString RejectReason;
-	if (!ValidateServerRpcOwnerContext(RejectReason))
-	{
-		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), RejectReason);
-		return;
-	}
-
-	if (IsDead() || IsDowned())
-	{
-		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), IsDowned() ? TEXT("character_is_downed") : TEXT("character_is_dead"));
-		return;
-	}
-
-	if (!CheckServerRpcRateLimit(
-		AbilitySelectionRpcRateState,
-		ServerAbilitySelectionRpcRateLimitWindowSeconds,
-		ServerAbilitySelectionRpcRateLimitMaxCountPerWindow,
-		TEXT("ServerSetSelectedAbilityInputTag"),
-		RejectReason))
-	{
-		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), RejectReason);
-		return;
-	}
-
-	if (!SR_IsValidAbilityWheelInputTag(NewTag))
-	{
-		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), FString::Printf(TEXT("invalid_ability_wheel_tag(%s)"), *NewTag.ToString()));
-		return;
-	}
-
-	if (!GetSpellRiseASC())
-	{
-		AuditRejectedServerRpc(TEXT("ServerSetSelectedAbilityInputTag"), TEXT("missing_asc_context"));
-		return;
-	}
-
-	if (SelectedAbilityInputTag.MatchesTagExact(NewTag))
-	{
-		return;
-	}
-
-	const FGameplayTag OldTag = SelectedAbilityInputTag;
-	SelectedAbilityInputTag = NewTag;
-	HandleSelectedAbilityInputTagChanged(OldTag);
-}
-
 void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 {
 	FGameplayTag NewTag;
@@ -1411,21 +1344,20 @@ void ASpellRiseCharacterBase::SelectAbilitySlot(int32 SlotIndex)
 		NewTag = SpellRiseTags::Input_AbilitySlot(SlotIndex);
 	}
 
-	if (!HasAuthority())
+	if (ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>())
 	{
-		FString RejectReason;
-		if (!CanIssueOwnerServerRpc(RejectReason))
-		{
-		}
-		else
-		{
-		ServerSetSelectedAbilityInputTag(NewTag);
-		}
+		SpellRisePlayerState->RequestSetSelectedAbilityInputTag(NewTag);
+	}
+}
+
+FGameplayTag ASpellRiseCharacterBase::GetSelectedAbilityInputTag() const
+{
+	if (const ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		return SpellRisePlayerState->GetSelectedAbilityInputTag();
 	}
 
-	const FGameplayTag OldTag = SelectedAbilityInputTag;
-	SelectedAbilityInputTag = NewTag;
-	HandleSelectedAbilityInputTagChanged(OldTag);
+	return FGameplayTag();
 }
 
 void ASpellRiseCharacterBase::AbilityWheelInputPressed(int32 SlotIndex)
@@ -1532,21 +1464,10 @@ void ASpellRiseCharacterBase::ClearSelectedAbility()
 		SRASC->SR_ClearSelectedSpellAbility();
 	}
 
-	if (!HasAuthority())
+	if (ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>())
 	{
-		FString RejectReason;
-		if (!CanIssueOwnerServerRpc(RejectReason))
-		{
-		}
-		else
-		{
-			ServerSetSelectedAbilityInputTag(NewTag);
-		}
+		SpellRisePlayerState->RequestSetSelectedAbilityInputTag(NewTag);
 	}
-
-	const FGameplayTag OldTag = SelectedAbilityInputTag;
-	SelectedAbilityInputTag = NewTag;
-	HandleSelectedAbilityInputTagChanged(OldTag);
 }
 
 void ASpellRiseCharacterBase::OnRep_Archetype(ESpellRiseArchetype OldArchetype)
@@ -1554,20 +1475,9 @@ void ASpellRiseCharacterBase::OnRep_Archetype(ESpellRiseArchetype OldArchetype)
 	HandleArchetypeChanged(OldArchetype);
 }
 
-void ASpellRiseCharacterBase::OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag)
-{
-	HandleSelectedAbilityInputTagChanged(OldTag);
-}
-
 void ASpellRiseCharacterBase::HandleArchetypeChanged(ESpellRiseArchetype OldArchetype)
 {
 	BP_OnArchetypeChanged(Archetype, OldArchetype);
-}
-
-void ASpellRiseCharacterBase::HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag)
-{
-	SyncASCSelectedSpellFromReplicatedTag();
-	BP_OnSelectedAbilityInputTagChanged(SelectedAbilityInputTag, OldTag);
 }
 
 bool ASpellRiseCharacterBase::IsDead() const
@@ -1605,14 +1515,6 @@ void ASpellRiseCharacterBase::SyncDeadStateFromASC(const TCHAR* Context)
 
 	if (bOldMirror != bIsDead)
 	{
-	}
-}
-
-void ASpellRiseCharacterBase::SyncASCSelectedSpellFromReplicatedTag()
-{
-	if (USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASC())
-	{
-		SRASC->SR_SetSelectedSpellAbilityByInputTag(SelectedAbilityInputTag);
 	}
 }
 

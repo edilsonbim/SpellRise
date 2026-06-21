@@ -24,6 +24,9 @@ void USpellRisePlayerHUDViewModelComponent::BeginPlay()
 				this,
 				&USpellRisePlayerHUDViewModelComponent::HandleCharacterProgressionChanged);
 		}
+		PlayerState->OnSelectedAbilityChanged.AddUniqueDynamic(
+			this,
+			&USpellRisePlayerHUDViewModelComponent::HandleSelectedAbilityChanged);
 	}
 
 	BindAttributeDelegates();
@@ -40,6 +43,9 @@ void USpellRisePlayerHUDViewModelComponent::EndPlay(const EEndPlayReason::Type E
 				this,
 				&USpellRisePlayerHUDViewModelComponent::HandleCharacterProgressionChanged);
 		}
+		PlayerState->OnSelectedAbilityChanged.RemoveDynamic(
+			this,
+			&USpellRisePlayerHUDViewModelComponent::HandleSelectedAbilityChanged);
 	}
 
 	UnbindAttributeDelegates();
@@ -50,6 +56,16 @@ void USpellRisePlayerHUDViewModelComponent::RefreshSnapshot()
 {
 	CurrentSnapshot = BuildSnapshot();
 	OnHUDSnapshotChanged.Broadcast(CurrentSnapshot);
+}
+
+FGameplayTag USpellRisePlayerHUDViewModelComponent::GetSelectedAbilityInputTag() const
+{
+	if (const ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(GetOwner()))
+	{
+		return PlayerState->GetSelectedAbilityInputTag();
+	}
+
+	return FGameplayTag();
 }
 
 FSpellRisePlayerHUDSnapshot USpellRisePlayerHUDViewModelComponent::BuildSnapshot() const
@@ -169,6 +185,13 @@ void USpellRisePlayerHUDViewModelComponent::HandleCharacterProgressionChanged(
 	const FSpellRiseCharacterProgressionSnapshot& /*Snapshot*/)
 {
 	RefreshSnapshot();
+}
+
+void USpellRisePlayerHUDViewModelComponent::HandleSelectedAbilityChanged(
+	const FGameplayTag NewTag,
+	const FGameplayTag OldTag)
+{
+	OnSelectedAbilityChanged.Broadcast(NewTag, OldTag);
 }
 
 void USpellRisePlayerHUDViewModelComponent::HandleAttributeChanged(const FOnAttributeChangeData& /*ChangeData*/)

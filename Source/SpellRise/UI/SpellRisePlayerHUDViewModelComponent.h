@@ -64,6 +64,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	const FSpellRisePlayerHUDSnapshot&,
 	Snapshot);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FSpellRiseHUDSelectedAbilityChangedSignature,
+	FGameplayTag,
+	NewTag,
+	FGameplayTag,
+	OldTag);
+
 UCLASS(ClassGroup=(SpellRise), meta=(BlueprintSpawnableComponent))
 class SPELLRISE_API USpellRisePlayerHUDViewModelComponent : public UActorComponent
 {
@@ -81,6 +88,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|HUD|Events")
 	FSpellRisePlayerHUDSnapshotChangedSignature OnHUDSnapshotChanged;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|HUD|Abilities")
+	FGameplayTag GetSelectedAbilityInputTag() const;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|HUD|Abilities|Events")
+	FSpellRiseHUDSelectedAbilityChangedSignature OnSelectedAbilityChanged;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -92,6 +105,9 @@ private:
 
 	UFUNCTION()
 	void HandleCharacterProgressionChanged(const FSpellRiseCharacterProgressionSnapshot& Snapshot);
+
+	UFUNCTION()
+	void HandleSelectedAbilityChanged(FGameplayTag NewTag, FGameplayTag OldTag);
 
 	void HandleAttributeChanged(const FOnAttributeChangeData& ChangeData);
 

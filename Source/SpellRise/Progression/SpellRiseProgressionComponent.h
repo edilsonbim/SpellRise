@@ -88,6 +88,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	int32 GetAttributePoints() const { return AttributePoints; }
+	int32 GetHighestRewardedCharacterLevel() const { return HighestRewardedCharacterLevel; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
 	int32 GetCombatBoosterCount(ESpellRiseCombatBooster Booster) const;
@@ -124,6 +125,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool SetCharacterProgression_Server(int32 NewLevel, int32 NewExperience, int32 NewTalentPoints, int32 NewCraftPoints, int32 NewAttributePoints);
+
+	bool SetCharacterLevelByAdmin_Server(int32 NewLevel);
+	bool SetHighestRewardedCharacterLevel_Server(int32 NewLevel);
+	void GetCumulativeLevelRewards(int32 RewardedThroughLevel, int32& OutTalentPoints, int32& OutCraftPoints, int32& OutAttributePoints) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool AddExperience_Server(int32 ExperienceAmount);
@@ -214,6 +219,9 @@ protected:
 
 	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")
 	int32 AttributePoints = 0;
+
+	UPROPERTY()
+	int32 HighestRewardedCharacterLevel = 1;
 
 	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
 	uint8 MeleeBoosterCount = 0;

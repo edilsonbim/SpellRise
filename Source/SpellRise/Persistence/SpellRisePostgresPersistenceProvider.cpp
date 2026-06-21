@@ -247,6 +247,58 @@ bool FSpellRisePostgresPersistenceProvider::SaveDeathEvent(const FSpellRiseDeath
 	return bSaved;
 }
 
+bool FSpellRisePostgresPersistenceProvider::IsPortalAdmin(const FString& SteamId64)
+{
+	if (!bReady || SteamId64.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString Sql = FString::Printf(
+		TEXT("SELECT EXISTS(SELECT 1 FROM public.spellrise_portal_admins WHERE steam_id64='%s')::int;"),
+		*EscapeSqlLiteral(SteamId64));
+	FString StdOut;
+	FString StdErr;
+	if (!ExecSql(Sql, StdOut, StdErr))
+	{
+		UE_LOG(LogSpellRisePersistencePostgres, Warning,
+			TEXT("[Admin][DatabaseCheckRejected] SteamId64=%s Reason=query_failed"),
+			*SteamId64);
+		return false;
+	}
+
+	return StdOut.TrimStartAndEnd() == TEXT("1");
+}
+
+bool FSpellRisePostgresPersistenceProvider::BanPlayer(
+	const FString& SteamId64,
+	const FString& PlayerName,
+	const FString& Reason,
+	const FString& BannedUntilSql,
+	const FString& CreatedBySteamId64)
+{
+	if (!bReady || SteamId64.IsEmpty() || Reason.IsEmpty())
+	{
+		return false;
+	}
+
+	const FString UntilExpression = BannedUntilSql.IsEmpty()
+		? TEXT("NULL")
+		: FString::Printf(TEXT("'%s'::timestamptz"), *EscapeSqlLiteral(BannedUntilSql));
+	const FString Sql = FString::Printf(
+		TEXT("INSERT INTO public.spellrise_portal_bans ")
+		TEXT("(steam_id64, player_name, reason, banned_until, created_by_steam_id64, updated_at) ")
+		TEXT("VALUES ('%s','%s','%s',%s,'%s',NOW()) ")
+		TEXT("ON CONFLICT (steam_id64) DO UPDATE SET player_name=EXCLUDED.player_name, reason=EXCLUDED.reason, ")
+		TEXT("banned_until=EXCLUDED.banned_until, created_by_steam_id64=EXCLUDED.created_by_steam_id64, updated_at=NOW();"),
+		*EscapeSqlLiteral(SteamId64),
+		*EscapeSqlLiteral(PlayerName),
+		*EscapeSqlLiteral(Reason),
+		*UntilExpression,
+		*EscapeSqlLiteral(CreatedBySteamId64));
+	return ExecMutatingSql(Sql, TEXT("admin_ban_player"));
+}
+
 bool FSpellRisePostgresPersistenceProvider::InitializeSchema()
 {
 	const FString SchemaSql = TEXT(

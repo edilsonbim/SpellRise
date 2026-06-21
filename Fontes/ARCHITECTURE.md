@@ -15,6 +15,7 @@
 - `USpellRiseAbilitySystemComponent` no `PlayerState`.
 - Replication mode: `Mixed`.
 - `USpellRiseAbilityHotbarComponent` vive no `PlayerState` e mapeia 16 slots lógicos (`0-7` Weapon, `8-15` Common) para `InputTag`/classe de ability já concedida.
+- A seleção atual da hotbar (`SelectedAbilityInputTag`) vive no `PlayerState`, replica `OwnerOnly` e reconcilia o handle selecionado no ASC; o `Character` apenas encaminha a intenção de input. A UI reage pelo `USpellRisePlayerHUDViewModelComponent::OnSelectedAbilityChanged`, sem depender do ciclo de vida do Pawn.
 - Hotbar de abilities é persistida no snapshot de personagem como slots owner-only do `PlayerState`; restore roda no servidor e revalida payload de slot/definition.
 - Requisitos/contribuicao de arma ficam em `USpellRiseGameplayAbility::WeaponProgressionTag`; Blueprints de ability não devem implementar checagem estrutural de arma por classe.
 - `USpellRiseGameplayAbility` declara `DamageChannelTag`, `DamageTypeTag`, `SchoolProgressionTag` e `bUsesEquippedWeaponDamage` para o pipeline de dano.

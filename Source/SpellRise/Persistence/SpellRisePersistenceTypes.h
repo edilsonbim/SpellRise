@@ -144,7 +144,7 @@ struct FSpellRiseCharacterSaveData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 SchemaVersion = 13;
+	int32 SchemaVersion = 14;
 
 	UPROPERTY()
 	FString SteamId64;
@@ -217,6 +217,9 @@ struct FSpellRiseCharacterSaveData
 
 	UPROPERTY()
 	int32 AttributePoints = 0;
+
+	UPROPERTY()
+	int32 HighestRewardedCharacterLevel = 1;
 
 	UPROPERTY()
 	int32 MeleeBoosterCount = 0;

@@ -15,12 +15,14 @@
 4. Consolidar building mode com budget de rede e matriz de RPC.
 5. Avancar automacao multiplayer em gate continuo/CI.
 
-## Recorte de gameplay 2026-06-18
-- Reportados como corrigidos/feitos pelo operador: persistencia de ability bar, armas e itens equipados; XP, level, Craft Points e Talent Points no `USpellRiseProgressionComponent`; cooldown por nivel de ability.
-- Prioridade P0: fechar fluxo `dead`/`revive` e corrigir inventario que nao equipa item.
-- Prioridade P1: criar mecanica de gasto de Attribute Points em STR/AGI/INT/WIS; recriar projetil de flecha; concluir rework do calculo de dano/TTK; corrigir socket de arma no `VisualOverride`; melhorar talent tree com nivel setavel e curva de custo.
-- Prioridade P2: implementar durabilidade de itens; refazer bonus dos atributos base; criar boosters de atributos base; criar menu de settings para hotkeys; melhorar ragdoll.
-- Prioridade P3: criar spell de retorno de dano; refazer visual da talent tree por escolas; revisar luzes.
+## Recorte de gameplay 2026-06-21
+- Reportados como corrigidos pelo operador: calculo de dano/TTK, bonus concedidos pelos atributos base e vendor.
+- Reportado como feito pelo operador: boosters dos atributos base.
+- Em progresso: fluxo `dead`/`revive` e clamp autoritativo dos atributos.
+- Prioridade P0: corrigir inventario que nao equipa item, barra ativa e bloqueio com arma 2H.
+- Prioridade P1: drag and drop no inventario; indicador visual da ability selecionada; corrigir mapa que nao abre por completo; recriar projetil de flecha; menu de settings para hotkeys; corrigir socket de arma no `VisualOverride`.
+- Prioridade P2: melhorar ragdoll; revisar luzes; melhorar talent tree com nivel setavel e curva de gastos de Talent Points; decidir entre rework do `TalentTreeComponent` ou extensao C++ da implementacao atual.
+- Prioridade P3: refazer visual da talent tree com animacoes interativas por escolas; incluir durabilidade de itens; criar spell de retorno de dano.
 - Validacao formal nao foi executada neste registro documental; nao tratar os itens como `Verified` ate passar pelos gates aplicaveis.
 
 ## Regras de validacao

@@ -22,6 +22,8 @@ public:
 	virtual bool LoadWorld(const FString& WorldId, FSpellRiseWorldSaveData& OutData) override;
 	virtual bool SaveWorld(const FString& WorldId, const FSpellRiseWorldSaveData& Data) override;
 	virtual bool SaveDeathEvent(const FSpellRiseDeathEventData& Data) override;
+	virtual bool IsPortalAdmin(const FString& SteamId64) override;
+	virtual bool BanPlayer(const FString& SteamId64, const FString& PlayerName, const FString& Reason, const FString& BannedUntilSql, const FString& CreatedBySteamId64) override;
 
 private:
 	bool InitializeSchema();

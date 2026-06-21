@@ -49,6 +49,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Persistence")
 	bool GetSteamIdFromPlayerState(const APlayerState* PlayerState, FString& OutSteamId64) const;
+	bool IsPortalAdmin(const APlayerState* PlayerState) const;
+	bool BanPlayer(const APlayerState* TargetPlayerState, const FString& Reason, const FString& BannedUntilSql, const APlayerState* AdminPlayerState);
 
 private:
 	FString ResolveSteamIdFromController(const AController* Controller) const;

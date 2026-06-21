@@ -19,6 +19,12 @@ class USpellRiseAbilitySystemComponent;
 class UNarrativeInteractionComponent;
 class UNarrativeInventoryComponent;
 class UActorComponent;
+class UPrimitiveComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FSpellRiseActiveAbilityHotbarGroupChanged,
+	ESpellRiseAbilityHotbarGroup,
+	NewGroup);
 
 UCLASS()
 class SPELLRISE_API ASpellRisePlayerController : public APlayerController
@@ -73,6 +79,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Talents")
 	UActorComponent* ResolveTalentTreeComponentForUI() const;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Hotbar|Events")
+	FSpellRiseActiveAbilityHotbarGroupChanged OnActiveAbilityHotbarGroupChanged;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Hotbar|Input")
 	void SetActiveAbilityHotbarGroup(ESpellRiseAbilityHotbarGroup NewGroup);
@@ -246,6 +255,10 @@ protected:
 	void ServerGrantDebugExperience();
 
 private:
+	bool TryHandleAdminChatCommand(const FString& RawMessage);
+	void SendAdminSystemMessage(const FString& MessageText);
+	bool IsAdminCommandRateLimited();
+
 	void LogInputFocusSnapshot(const TCHAR* SourceLabel);
 	bool CanRunLocalHUDFlow(FString* OutSkipReason = nullptr) const;
 	void HandlePawnChangedRuntime(APawn* NewPawn, const TCHAR* SourceLabel);
@@ -268,6 +281,23 @@ private:
 
 	UPROPERTY(Transient)
 	double LastDebugExperienceGrantTimeSeconds = -1.0;
+
+	UPROPERTY(Transient)
+	double LastAdminCommandTimeSeconds = -1.0;
+
+	UPROPERTY(Transient)
+	bool bAdminAuthenticated = false;
+
+	UPROPERTY(Transient)
+	float SavedMaxFlySpeed = 600.0f;
+
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, FCollisionResponseContainer> AdminInvisibleOriginalCollisionResponses;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<APawn> AdminOriginalPawn;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<APawn> AdminFlyPawn;
 
 	UPROPERTY(Transient)
 	bool bUIInteractionModeActive = false;

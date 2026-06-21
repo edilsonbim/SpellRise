@@ -4,15 +4,21 @@
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "Components/ActorComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameSession.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/SpectatorPawn.h"
+#include "GameFramework/SpectatorPawnMovement.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
@@ -32,6 +38,8 @@
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
+#include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePlayerControllerRuntime, Log, All);
 
@@ -42,6 +50,7 @@ namespace
 	constexpr int32 MaxChatTextChars = 256;
 	constexpr int32 MaxCombatActorNameChars = 64;
 	constexpr int32 MaxCombatLogMessageChars = 192;
+	constexpr double MinimumAdminCommandIntervalSeconds = 0.20;
 
 	const FGameplayTag& InputTag_Primary()
 	{
@@ -101,6 +110,45 @@ namespace
 		Sanitized.Text = FText::FromString(SanitizeBoundedString(Message.Text.ToString(), MaxChatTextChars));
 		Sanitized.TimeText = FText::FromString(SanitizeBoundedString(Message.TimeText.ToString(), 16));
 		return Sanitized;
+	}
+
+	bool TryExtractChatText(UFunction* Function, void* Parameters, FString& OutText)
+	{
+		OutText.Reset();
+		if (!Function || !Parameters)
+		{
+			return false;
+		}
+
+		for (TFieldIterator<FProperty> It(Function); It; ++It)
+		{
+			FProperty* Property = *It;
+			if (!Property->HasAnyPropertyFlags(CPF_Parm) || Property->HasAnyPropertyFlags(CPF_ReturnParm))
+			{
+				continue;
+			}
+
+			const FString PropertyName = Property->GetName();
+			if (!PropertyName.Contains(TEXT("Text"), ESearchCase::IgnoreCase)
+				&& !PropertyName.Contains(TEXT("Message"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Parameters);
+			if (const FTextProperty* TextProperty = CastField<FTextProperty>(Property))
+			{
+				OutText = TextProperty->GetPropertyValue(ValuePtr).ToString();
+				return true;
+			}
+			if (const FStrProperty* StringProperty = CastField<FStrProperty>(Property))
+			{
+				OutText = StringProperty->GetPropertyValue(ValuePtr);
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	bool TryReadChannelPropertyValue(const FProperty* Property, const void* ValuePtr, FString& OutChannelName, int64& OutChannelValue)
@@ -343,6 +391,14 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 		Function->GetFName() == NAME_SendChatToSERVER &&
 		Function->HasAnyFunctionFlags(FUNC_NetServer))
 	{
+		FString RawMessage;
+		if (TryExtractChatText(Function, Parameters, RawMessage)
+			&& RawMessage.TrimStartAndEnd().StartsWith(TEXT("/"))
+			&& TryHandleAdminChatCommand(RawMessage))
+		{
+			return;
+		}
+
 		FString ChannelName;
 		int64 ChannelValue = INDEX_NONE;
 		bool bFoundChannel = false;
@@ -370,6 +426,531 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 	}
 
 	Super::ProcessEvent(Function, Parameters);
+}
+
+void ASpellRisePlayerController::SendAdminSystemMessage(const FString& MessageText)
+{
+	FSpellRiseChatMessage Message;
+	Message.Name = FName(TEXT("System"));
+	Message.Text = FText::FromString(SanitizeBoundedString(MessageText, MaxChatTextChars));
+	Message.TimeText = BuildCombatTimeText();
+	Message.Channel = SpellRiseChatChannel::Global;
+	ClientReceiveChatMessage(Message);
+}
+
+bool ASpellRisePlayerController::IsAdminCommandRateLimited()
+{
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	if (LastAdminCommandTimeSeconds >= 0.0
+		&& Now - LastAdminCommandTimeSeconds < MinimumAdminCommandIntervalSeconds)
+	{
+		return true;
+	}
+	LastAdminCommandTimeSeconds = Now;
+	return false;
+}
+
+bool ASpellRisePlayerController::TryHandleAdminChatCommand(const FString& RawMessage)
+{
+	if (!HasAuthority())
+	{
+		return false;
+	}
+
+	const FString Command = RawMessage.TrimStartAndEnd();
+	if (Command.Equals(TEXT("/online"), ESearchCase::IgnoreCase))
+	{
+		TArray<FString> OnlinePlayers;
+		if (GetWorld())
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const APlayerController* OnlineController = It->Get();
+				if (OnlineController && OnlineController->PlayerState)
+				{
+					OnlinePlayers.Add(OnlineController->PlayerState->GetPlayerName());
+				}
+			}
+		}
+		OnlinePlayers.Sort();
+		SendAdminSystemMessage(FString::Printf(
+			TEXT("Online (%d): %s"),
+			OnlinePlayers.Num(),
+			OnlinePlayers.IsEmpty() ? TEXT("nenhum") : *FString::Join(OnlinePlayers, TEXT(", "))));
+		return true;
+	}
+
+	if (Command.Equals(TEXT("/help"), ESearchCase::IgnoreCase))
+	{
+		SendAdminSystemMessage(TEXT("Player: /help | /online | /name NovoNome"));
+		if (bAdminAuthenticated)
+		{
+			SendAdminSystemMessage(TEXT("Admin progressao: /set level <1-999> Player | /set resetpoints Player"));
+			SendAdminSystemMessage(TEXT("Admin movimento: /goto Player | /bringto Player | /unstuck Player | /set fly | /set walk"));
+			SendAdminSystemMessage(TEXT("Admin moderacao: /give ip Player | /kick Player Motivo | /ban Player <30m|12h|7d|permanent> Motivo"));
+			SendAdminSystemMessage(TEXT("Admin personagem: /revive Player | /heal Player | /set invisible | /set visible"));
+		}
+		return true;
+	}
+
+	const bool bRecognized = Command.StartsWith(TEXT("/admin"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/set level"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/set resetpoints"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/goto"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/bringto"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/give ip"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/kick"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/ban"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/revive"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/heal"), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/unstuck"), ESearchCase::IgnoreCase)
+		|| Command.Equals(TEXT("/set invisible"), ESearchCase::IgnoreCase)
+		|| Command.Equals(TEXT("/set visible"), ESearchCase::IgnoreCase)
+		|| Command.Equals(TEXT("/set fly"), ESearchCase::IgnoreCase)
+		|| Command.Equals(TEXT("/set walk"), ESearchCase::IgnoreCase);
+	if (!bRecognized)
+	{
+		return false;
+	}
+
+	if (IsAdminCommandRateLimited())
+	{
+		SendAdminSystemMessage(TEXT("Comando rejeitado: aguarde antes de tentar novamente."));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/admin"), ESearchCase::IgnoreCase))
+	{
+		const FString SuppliedPassword = Command.RightChop(6).TrimStartAndEnd();
+		FString ExpectedPassword = FPlatformMisc::GetEnvironmentVariable(TEXT("SR_ADMIN_PASSWORD"));
+		if (ExpectedPassword.IsEmpty())
+		{
+			ExpectedPassword = TEXT("212223");
+		}
+
+		bAdminAuthenticated = SuppliedPassword == ExpectedPassword;
+		if (bAdminAuthenticated)
+		{
+			UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+				TEXT("[Admin][LoginSucceeded] Controller=%s PlayerState=%s Mode=password_only_testing"),
+				*GetNameSafe(this),
+				*GetNameSafe(PlayerState));
+		}
+		else
+		{
+			UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+				TEXT("[Admin][LoginRejected] Controller=%s PlayerState=%s Reason=invalid_password Mode=password_only_testing"),
+				*GetNameSafe(this),
+				*GetNameSafe(PlayerState));
+		}
+		SendAdminSystemMessage(bAdminAuthenticated
+			? TEXT("Admin autenticado.")
+			: TEXT("Login de admin rejeitado."));
+		return true;
+	}
+
+	if (!bAdminAuthenticated)
+	{
+		SendAdminSystemMessage(TEXT("Comando rejeitado: autentique com /admin <senha>."));
+		return true;
+	}
+
+	auto FindPlayerByName = [this](const FString& PlayerName) -> ASpellRisePlayerController*
+	{
+		if (!GetWorld() || PlayerName.IsEmpty())
+		{
+			return nullptr;
+		}
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			ASpellRisePlayerController* Candidate = Cast<ASpellRisePlayerController>(It->Get());
+			if (Candidate && Candidate->PlayerState
+				&& Candidate->PlayerState->GetPlayerName().Equals(PlayerName, ESearchCase::IgnoreCase))
+			{
+				return Candidate;
+			}
+		}
+		return nullptr;
+	};
+	auto JoinCommandParts = [](const TArray<FString>& Parts, const int32 StartIndex, const int32 MaxChars) -> FString
+	{
+		FString Result;
+		for (int32 Index = StartIndex; Index < Parts.Num(); ++Index)
+		{
+			if (!Result.IsEmpty())
+			{
+				Result += TEXT(" ");
+			}
+			Result += Parts[Index];
+		}
+		return Result.Left(MaxChars);
+	};
+
+	if (Command.StartsWith(TEXT("/set level"), ESearchCase::IgnoreCase))
+	{
+		TArray<FString> Parts;
+		Command.ParseIntoArrayWS(Parts);
+		if (Parts.Num() != 4)
+		{
+			SendAdminSystemMessage(TEXT("Uso: /set level <1-999> <Player>"));
+			return true;
+		}
+
+		const int32 TargetLevel = FCString::Atoi(*Parts[2]);
+		ASpellRisePlayerController* TargetController = FindPlayerByName(Parts[3]);
+		ASpellRisePlayerState* TargetPlayerState = TargetController
+			? TargetController->GetPlayerState<ASpellRisePlayerState>()
+			: nullptr;
+		USpellRiseProgressionComponent* Progression = TargetPlayerState
+			? TargetPlayerState->GetProgressionComponent()
+			: nullptr;
+		if (!Progression || TargetLevel < 1 || TargetLevel > 999)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: level ou player invalido."));
+			return true;
+		}
+
+		Progression->SetCharacterLevelByAdmin_Server(TargetLevel);
+		TargetPlayerState->SetTalentPoints_Server(Progression->GetTalentPoints());
+		TargetPlayerState->MarkCharacterProgressionDirtyForAdmin_Server();
+		const int32 RequiredExperience = Progression->GetExperience();
+		SendAdminSystemMessage(FString::Printf(TEXT("Level de %s definido para %d (XP %d)."),
+			*Parts[3], TargetLevel, RequiredExperience));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/set resetpoints"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(16).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		ASpellRisePlayerState* TargetPlayerState = TargetController
+			? TargetController->GetPlayerState<ASpellRisePlayerState>()
+			: nullptr;
+		if (!TargetPlayerState || !TargetPlayerState->ResetProgressionPointsForAdmin_Server())
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: player ou progressao indisponivel."));
+			return true;
+		}
+		SendAdminSystemMessage(FString::Printf(TEXT("Pontos de atributos e talentos de %s foram resetados."), *PlayerName));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/goto"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(5).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		APawn* AdminPawn = GetPawn();
+		APawn* TargetPawn = TargetController ? TargetController->GetPawn() : nullptr;
+		if (!AdminPawn || !TargetPawn)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: player ou pawn indisponivel."));
+			return true;
+		}
+		AdminPawn->TeleportTo(TargetPawn->GetActorLocation(), TargetPawn->GetActorRotation(), false, true);
+		SendAdminSystemMessage(FString::Printf(TEXT("Teleportado para %s."), *PlayerName));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/bringto"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(8).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		APawn* TargetPawn = TargetController ? TargetController->GetPawn() : nullptr;
+		APawn* AdminLocationPawn = AdminOriginalPawn.IsValid()
+			? AdminOriginalPawn.Get()
+			: GetPawn().Get();
+		if (!TargetPawn || !AdminLocationPawn || TargetController == this)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: player ou pawn indisponivel."));
+			return true;
+		}
+
+		const FVector Destination = AdminLocationPawn->GetActorLocation()
+			+ AdminLocationPawn->GetActorForwardVector() * 150.0f;
+		if (!TargetPawn->TeleportTo(Destination, AdminLocationPawn->GetActorRotation(), false, true))
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: destino de teleporte bloqueado."));
+			return true;
+		}
+		SendAdminSystemMessage(FString::Printf(TEXT("%s foi teleportado ate o admin."), *PlayerName));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/give ip"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(8).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		if (!TargetController)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: player nao encontrado."));
+			return true;
+		}
+
+		FString NetworkAddress = TargetController->GetPlayerNetworkAddress().TrimStartAndEnd();
+		if (NetworkAddress.IsEmpty())
+		{
+			NetworkAddress = TEXT("indisponivel");
+		}
+		SendAdminSystemMessage(FString::Printf(TEXT("IP de %s: %s"), *PlayerName, *NetworkAddress));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/kick"), ESearchCase::IgnoreCase))
+	{
+		TArray<FString> Parts;
+		Command.ParseIntoArrayWS(Parts);
+		if (Parts.Num() < 3)
+		{
+			SendAdminSystemMessage(TEXT("Uso: /kick Player Motivo"));
+			return true;
+		}
+		ASpellRisePlayerController* TargetController = FindPlayerByName(Parts[1]);
+		if (!TargetController || TargetController == this)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: player invalido."));
+			return true;
+		}
+		const FString Reason = JoinCommandParts(Parts, 2, 160);
+		const FText KickReason = FText::FromString(Reason);
+		AGameModeBase* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode() : nullptr;
+		bool bKicked = GameMode && GameMode->GameSession
+			? GameMode->GameSession->KickPlayer(TargetController, KickReason)
+			: false;
+		if (!bKicked)
+		{
+			TargetController->ClientReturnToMainMenuWithTextReason(KickReason);
+			bKicked = true;
+		}
+		SendAdminSystemMessage(bKicked
+			? FString::Printf(TEXT("%s foi expulso."), *Parts[1])
+			: TEXT("Falha ao expulsar player."));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/ban"), ESearchCase::IgnoreCase))
+	{
+		TArray<FString> Parts;
+		Command.ParseIntoArrayWS(Parts);
+		if (Parts.Num() < 4)
+		{
+			SendAdminSystemMessage(TEXT("Uso: /ban Player <30m|12h|7d|permanent> Motivo"));
+			return true;
+		}
+		ASpellRisePlayerController* TargetController = FindPlayerByName(Parts[1]);
+		if (!TargetController || TargetController == this || !TargetController->PlayerState)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: player invalido."));
+			return true;
+		}
+
+		const FString Duration = Parts[2].ToLower();
+		FString BannedUntil;
+		if (Duration != TEXT("permanent"))
+		{
+			const TCHAR Unit = Duration.IsEmpty() ? TEXT('\0') : Duration[Duration.Len() - 1];
+			const int32 Amount = FCString::Atoi(*Duration.LeftChop(1));
+			if (Amount <= 0 || (Unit != TEXT('m') && Unit != TEXT('h') && Unit != TEXT('d')))
+			{
+				SendAdminSystemMessage(TEXT("Tempo invalido. Use 30m, 12h, 7d ou permanent."));
+				return true;
+			}
+			const FTimespan Span = Unit == TEXT('m')
+				? FTimespan::FromMinutes(Amount)
+				: (Unit == TEXT('h') ? FTimespan::FromHours(Amount) : FTimespan::FromDays(Amount));
+			BannedUntil = (FDateTime::UtcNow() + Span).ToIso8601();
+		}
+
+		const FString Reason = JoinCommandParts(Parts, 3, 500);
+		UGameInstance* GameInstance = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
+		USpellRisePersistenceSubsystem* Persistence = GameInstance
+			? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>()
+			: nullptr;
+		if (!Persistence || !Persistence->BanPlayer(TargetController->PlayerState, Reason, BannedUntil, PlayerState))
+		{
+			SendAdminSystemMessage(TEXT("Ban rejeitado: persistencia PostgreSQL ou SteamID indisponivel."));
+			return true;
+		}
+		const FText BanReason = FText::FromString(FString::Printf(TEXT("Banido: %s"), *Reason.Left(120)));
+		AGameModeBase* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode() : nullptr;
+		if (!GameMode || !GameMode->GameSession || !GameMode->GameSession->KickPlayer(TargetController, BanReason))
+		{
+			TargetController->ClientReturnToMainMenuWithTextReason(BanReason);
+		}
+		SendAdminSystemMessage(FString::Printf(TEXT("%s foi banido (%s)."), *Parts[1], *Duration));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/revive"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(7).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		ASpellRiseCharacterBase* TargetCharacter = TargetController
+			? Cast<ASpellRiseCharacterBase>(TargetController->GetPawn())
+			: nullptr;
+		if (!TargetCharacter || !TargetCharacter->ReviveFromDowned_Server(nullptr))
+		{
+			SendAdminSystemMessage(TEXT("Revive rejeitado: player nao esta downed ou indisponivel."));
+			return true;
+		}
+		SendAdminSystemMessage(FString::Printf(TEXT("%s foi revivido."), *PlayerName));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/heal"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(5).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		ASpellRisePlayerState* TargetPlayerState = TargetController
+			? TargetController->GetPlayerState<ASpellRisePlayerState>()
+			: nullptr;
+		USpellRiseAbilitySystemComponent* TargetASC = TargetPlayerState
+			? Cast<USpellRiseAbilitySystemComponent>(TargetPlayerState->GetAbilitySystemComponent())
+			: nullptr;
+		if (!TargetASC)
+		{
+			SendAdminSystemMessage(TEXT("Heal rejeitado: ASC indisponivel."));
+			return true;
+		}
+		TargetASC->SetNumericAttributeBase(
+			UResourceAttributeSet::GetHealthAttribute(),
+			TargetASC->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute()));
+		TargetASC->SetNumericAttributeBase(
+			UResourceAttributeSet::GetManaAttribute(),
+			TargetASC->GetNumericAttribute(UResourceAttributeSet::GetMaxManaAttribute()));
+		TargetASC->SetNumericAttributeBase(
+			UResourceAttributeSet::GetStaminaAttribute(),
+			TargetASC->GetNumericAttribute(UResourceAttributeSet::GetMaxStaminaAttribute()));
+		TargetPlayerState->ForceNetUpdate();
+		SendAdminSystemMessage(FString::Printf(TEXT("%s foi curado completamente."), *PlayerName));
+		return true;
+	}
+
+	if (Command.StartsWith(TEXT("/unstuck"), ESearchCase::IgnoreCase))
+	{
+		const FString PlayerName = Command.RightChop(8).TrimStartAndEnd();
+		ASpellRisePlayerController* TargetController = FindPlayerByName(PlayerName);
+		APawn* TargetPawn = TargetController ? TargetController->GetPawn() : nullptr;
+		UGameInstance* GameInstance = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
+		USpellRisePersistenceSubsystem* Persistence = GameInstance
+			? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>()
+			: nullptr;
+		FTransform SafeTransform;
+		if (!TargetController || !TargetPawn || !Persistence
+			|| !Persistence->BuildRespawnTransformForController(TargetController, SafeTransform)
+			|| !TargetPawn->TeleportTo(SafeTransform.GetLocation(), SafeTransform.Rotator(), false, true))
+		{
+			SendAdminSystemMessage(TEXT("Unstuck rejeitado: local seguro indisponivel."));
+			return true;
+		}
+		SendAdminSystemMessage(FString::Printf(TEXT("%s foi movido para um local seguro."), *PlayerName));
+		return true;
+	}
+
+	APawn* AdminPawn = GetPawn();
+	if (!AdminPawn)
+	{
+		SendAdminSystemMessage(TEXT("Comando rejeitado: pawn indisponivel."));
+		return true;
+	}
+
+	if (Command.Equals(TEXT("/set invisible"), ESearchCase::IgnoreCase)
+		|| Command.Equals(TEXT("/set visible"), ESearchCase::IgnoreCase))
+	{
+		const bool bInvisible = Command.EndsWith(TEXT("invisible"), ESearchCase::IgnoreCase);
+		APawn* VisibilityPawn = AdminOriginalPawn.IsValid() ? AdminOriginalPawn.Get() : AdminPawn;
+		if (bInvisible)
+		{
+			AdminInvisibleOriginalCollisionResponses.Reset();
+			TArray<UPrimitiveComponent*> PrimitiveComponents;
+			VisibilityPawn->GetComponents<UPrimitiveComponent>(PrimitiveComponents);
+			for (UPrimitiveComponent* Primitive : PrimitiveComponents)
+			{
+				if (!Primitive || !Primitive->IsCollisionEnabled())
+				{
+					continue;
+				}
+				AdminInvisibleOriginalCollisionResponses.Add(Primitive, Primitive->GetCollisionResponseToChannels());
+				Primitive->SetCollisionResponseToAllChannels(ECR_Ignore);
+				Primitive->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+				Primitive->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+			}
+		}
+		else
+		{
+			for (const TPair<TWeakObjectPtr<UPrimitiveComponent>, FCollisionResponseContainer>& Entry : AdminInvisibleOriginalCollisionResponses)
+			{
+				if (UPrimitiveComponent* Primitive = Entry.Key.Get())
+				{
+					Primitive->SetCollisionResponseToChannels(Entry.Value);
+				}
+			}
+			AdminInvisibleOriginalCollisionResponses.Reset();
+		}
+		VisibilityPawn->SetActorHiddenInGame(bInvisible);
+		VisibilityPawn->ForceNetUpdate();
+		SendAdminSystemMessage(bInvisible ? TEXT("Personagem invisivel.") : TEXT("Personagem visivel."));
+		return true;
+	}
+
+	if (Command.Equals(TEXT("/set fly"), ESearchCase::IgnoreCase))
+	{
+		if (AdminFlyPawn.IsValid())
+		{
+			SendAdminSystemMessage(TEXT("Modo fly ja esta ativo."));
+			return true;
+		}
+
+		AdminOriginalPawn = AdminPawn;
+		FActorSpawnParameters SpawnParameters;
+		SpawnParameters.Owner = this;
+		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ASpectatorPawn* FlyPawn = GetWorld()->SpawnActor<ASpectatorPawn>(
+			ASpectatorPawn::StaticClass(),
+			AdminPawn->GetActorLocation(),
+			GetControlRotation(),
+			SpawnParameters);
+		if (!FlyPawn)
+		{
+			AdminOriginalPawn.Reset();
+			SendAdminSystemMessage(TEXT("Comando rejeitado: falha ao criar camera livre."));
+			return true;
+		}
+		FlyPawn->SetActorEnableCollision(false);
+		if (USpectatorPawnMovement* SpectatorMovement = Cast<USpectatorPawnMovement>(FlyPawn->GetMovementComponent()))
+		{
+			SpectatorMovement->MaxSpeed = 5000.0f;
+			SpectatorMovement->Acceleration = 10000.0f;
+			SpectatorMovement->Deceleration = 10000.0f;
+		}
+		AdminFlyPawn = FlyPawn;
+		Possess(FlyPawn);
+		SendAdminSystemMessage(TEXT("Modo fly ativo: camera livre sem colisao."));
+		return true;
+	}
+
+	if (Command.Equals(TEXT("/set walk"), ESearchCase::IgnoreCase))
+	{
+		APawn* OriginalPawn = AdminOriginalPawn.Get();
+		APawn* FlyPawn = AdminFlyPawn.Get();
+		if (!OriginalPawn)
+		{
+			SendAdminSystemMessage(TEXT("Comando rejeitado: personagem original indisponivel."));
+			return true;
+		}
+		Possess(OriginalPawn);
+		if (FlyPawn)
+		{
+			FlyPawn->Destroy();
+		}
+		AdminFlyPawn.Reset();
+		AdminOriginalPawn.Reset();
+		SendAdminSystemMessage(TEXT("Modo walk ativo: controle devolvido ao personagem."));
+		return true;
+	}
+
+	SendAdminSystemMessage(TEXT("Comando rejeitado: movement component indisponivel."));
+	return true;
 }
 
 void ASpellRisePlayerController::BeginPlay()
@@ -1226,7 +1807,7 @@ void ASpellRisePlayerController::ReleaseAbilityHotbarPhysicalSlot(const int32 Ph
 
 void ASpellRisePlayerController::SetActiveAbilityHotbarGroup(const ESpellRiseAbilityHotbarGroup NewGroup)
 {
-	if (!IsLocalController())
+	if (!IsLocalController() || ActiveAbilityHotbarGroup == NewGroup)
 	{
 		return;
 	}
@@ -1238,6 +1819,8 @@ void ASpellRisePlayerController::SetActiveAbilityHotbarGroup(const ESpellRiseAbi
 		ControlledCharacter->SR_ClearAbilityInput();
 		ControlledCharacter->ClearSelectedAbility();
 	}
+
+	OnActiveAbilityHotbarGroupChanged.Broadcast(ActiveAbilityHotbarGroup);
 }
 
 void ASpellRisePlayerController::ToggleActiveAbilityHotbarGroup()

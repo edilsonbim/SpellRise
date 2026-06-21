@@ -6,7 +6,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/DateTime.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseChatRuntime, Log, All);
 
@@ -219,7 +221,19 @@ void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, con
 		return;
 	}
 
-	const FSpellRiseChatMessage Message = BuildBoundedChatMessage(Name, Text, TimeText, Channel);
+	FName DisplayName = Name;
+	if (ASpellRisePlayerController* SenderController = FindSenderControllerByName(GetWorld(), Name))
+	{
+		if (const ASpellRisePlayerState* SenderPlayerState = SenderController->GetPlayerState<ASpellRisePlayerState>())
+		{
+			const int32 Level = SenderPlayerState->GetProgressionComponent()
+				? SenderPlayerState->GetProgressionComponent()->GetCharacterLevel()
+				: 1;
+			DisplayName = FName(*FString::Printf(TEXT("%s [%d]"), *Name.ToString(), Level));
+		}
+	}
+
+	const FSpellRiseChatMessage Message = BuildBoundedChatMessage(DisplayName, Text, TimeText, Channel);
 
 	Multi_ReceivePublicMessage(Message);
 }

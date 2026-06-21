@@ -8,6 +8,8 @@
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Movida a seleção atual de ability do `Character` para o `PlayerState`: `SelectedAbilityInputTag` agora replica `OwnerOnly`, valida slot/contexto/rate-limit no servidor, corrige prediction rejeitada no owner e expõe `OnSelectedAbilityChanged` pelo HUD ViewModel para UI sobreviver a morte/respawn sem bind no Pawn.
+- Sincronizado o status reportado pelo operador em 2026-06-21: calculo de dano/TTK, bonus dos atributos base e vendor corrigidos; boosters de atributos base feitos; `dead`/`revive` e clamp de atributos em progresso. Permanecem pendentes barra ativa, equip de inventario, block 2H, drag and drop, indicador de ability selecionada, mapa, projetil de flecha, hotkeys, socket de arma, ragdoll, luzes, evolucao visual/funcional da talent tree, durabilidade, retorno de dano e decisao sobre o `TalentTreeComponent`. Este registro nao substitui validacao formal.
 - Contribuicao de mana invertida para reforcar a identidade dos primarios: `INT` concede `+2 MaxMana` por ponto e `WIS` concede `+1 MaxMana`; o baseline `20/20` continua produzindo `160 MaxMana`.
 - Ativacao de booster passa a enviar o nivel `1..4`; o servidor rejeita desativar níveis intermediarios e exige ordem sequencial para ativar/desativar.
 - Boosters ativos passam a conceder também `+10` ao primario correspondente (`STR/AGI/INT/WIS`), além do bônus ofensivo. O bônus ativo não é gravado como atributo permanente e é removido ao desativar.

@@ -22,6 +22,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/DerivedStatsAttributeSet.h"
+#include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "SpellRise/UI/SpellRisePlayerHUDViewModelComponent.h"
@@ -31,6 +32,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCombatLog, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseProgression, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseAttributeSpendSecurity, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseAbilitySelection, Log, All);
 
 namespace
 {
@@ -374,6 +376,146 @@ UAbilitySystemComponent* ASpellRisePlayerState::GetAbilitySystemComponent() cons
 USpellRiseAbilitySystemComponent* ASpellRisePlayerState::GetSpellRiseASC() const
 {
 	return AbilitySystemComponent;
+}
+
+void ASpellRisePlayerState::RequestSetSelectedAbilityInputTag(const FGameplayTag NewTag)
+{
+	if (!IsAllowedSelectedAbilityInputTag(NewTag))
+	{
+		return;
+	}
+
+	if (!HasAuthority())
+	{
+		const APlayerController* OwnerController = GetPlayerController();
+		if (!OwnerController || !OwnerController->IsLocalController())
+		{
+			return;
+		}
+
+		SetSelectedAbilityInputTagInternal(NewTag);
+		ServerSetSelectedAbilityInputTag(NewTag);
+		return;
+	}
+
+	ServerSetSelectedAbilityInputTag(NewTag);
+}
+
+void ASpellRisePlayerState::ServerSetSelectedAbilityInputTag_Implementation(const FGameplayTag NewTag)
+{
+	FString RejectReason;
+	if (!CheckAbilitySelectionServerRateLimit(RejectReason))
+	{
+		UE_LOG(LogSpellRiseAbilitySelection, Warning,
+			TEXT("[AbilitySelection][RpcRejected] PlayerState=%s Reason=%s Tag=%s"),
+			*GetNameSafe(this),
+			*RejectReason,
+			*NewTag.ToString());
+		ClientCorrectSelectedAbilityInputTag(SelectedAbilityInputTag);
+		return;
+	}
+
+	const ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(GetPawn());
+	if (!Character || Character->IsDead() || Character->IsDowned())
+	{
+		UE_LOG(LogSpellRiseAbilitySelection, Warning,
+			TEXT("[AbilitySelection][RpcRejected] PlayerState=%s Reason=%s Tag=%s"),
+			*GetNameSafe(this),
+			Character && Character->IsDowned() ? TEXT("character_is_downed") : TEXT("character_missing_or_dead"),
+			*NewTag.ToString());
+		ClientCorrectSelectedAbilityInputTag(SelectedAbilityInputTag);
+		return;
+	}
+
+	if (!IsAllowedSelectedAbilityInputTag(NewTag))
+	{
+		UE_LOG(LogSpellRiseAbilitySelection, Warning,
+			TEXT("[AbilitySelection][RpcRejected] PlayerState=%s Reason=invalid_or_unassigned_input_tag Tag=%s"),
+			*GetNameSafe(this),
+			*NewTag.ToString());
+		ClientCorrectSelectedAbilityInputTag(SelectedAbilityInputTag);
+		return;
+	}
+
+	SetSelectedAbilityInputTagInternal(NewTag);
+}
+
+void ASpellRisePlayerState::ClientCorrectSelectedAbilityInputTag_Implementation(const FGameplayTag AuthoritativeTag)
+{
+	SetSelectedAbilityInputTagInternal(AuthoritativeTag);
+}
+
+void ASpellRisePlayerState::OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag)
+{
+	if (SelectedAbilityInputTag.MatchesTagExact(OldTag))
+	{
+		return;
+	}
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->SR_SetSelectedSpellAbilityByInputTag(SelectedAbilityInputTag);
+	}
+	OnSelectedAbilityChanged.Broadcast(SelectedAbilityInputTag, OldTag);
+}
+
+void ASpellRisePlayerState::SetSelectedAbilityInputTagInternal(const FGameplayTag& NewTag)
+{
+	if (SelectedAbilityInputTag.MatchesTagExact(NewTag))
+	{
+		return;
+	}
+
+	const FGameplayTag OldTag = SelectedAbilityInputTag;
+	SelectedAbilityInputTag = NewTag;
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->SR_SetSelectedSpellAbilityByInputTag(SelectedAbilityInputTag);
+	}
+	OnSelectedAbilityChanged.Broadcast(SelectedAbilityInputTag, OldTag);
+}
+
+bool ASpellRisePlayerState::IsAllowedSelectedAbilityInputTag(const FGameplayTag& NewTag) const
+{
+	if (!NewTag.IsValid())
+	{
+		return true;
+	}
+
+	if (!AbilityHotbarComponent)
+	{
+		return false;
+	}
+
+	for (const FSpellRiseAbilityHotbarSlot& Slot : AbilityHotbarComponent->GetSlots())
+	{
+		if (Slot.AbilityInputTag.MatchesTagExact(NewTag))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool ASpellRisePlayerState::CheckAbilitySelectionServerRateLimit(FString& OutRejectReason)
+{
+	const UWorld* World = GetWorld();
+	const double NowSeconds = World ? World->GetTimeSeconds() : 0.0;
+	if (NowSeconds - AbilitySelectionRpcRateState.WindowStartSeconds > AbilitySelectionRpcRateLimitWindowSeconds)
+	{
+		AbilitySelectionRpcRateState.WindowStartSeconds = NowSeconds;
+		AbilitySelectionRpcRateState.RequestCountInWindow = 0;
+	}
+
+	++AbilitySelectionRpcRateState.RequestCountInWindow;
+	if (AbilitySelectionRpcRateState.RequestCountInWindow > AbilitySelectionRpcRateLimitMaxCountPerWindow)
+	{
+		OutRejectReason = TEXT("rate_limit_exceeded");
+		return false;
+	}
+
+	return true;
 }
 
 void ASpellRisePlayerState::SetPlayerName(const FString& NewPlayerName)
@@ -1057,6 +1199,63 @@ void ASpellRisePlayerState::MarkCharacterProgressionDirty_Server()
 	Persistence->MarkPlayerDirtyBySteamId(SteamId64);
 }
 
+bool ASpellRisePlayerState::ResetProgressionPointsForAdmin_Server()
+{
+	if (!HasAuthority() || !ProgressionComponent || !AbilitySystemComponent)
+	{
+		return false;
+	}
+
+	int32 TotalTalentPoints = 0;
+	int32 IgnoredCraftPoints = 0;
+	int32 TotalAttributePoints = 0;
+	ProgressionComponent->GetCumulativeLevelRewards(
+		ProgressionComponent->GetHighestRewardedCharacterLevel(),
+		TotalTalentPoints,
+		IgnoredCraftPoints,
+		TotalAttributePoints);
+
+	ProgressionComponent->SetTalentPoints_Server(TotalTalentPoints);
+	ProgressionComponent->SetAttributePoints_Server(TotalAttributePoints);
+	ProgressionComponent->ResetProgressionLevels_Server();
+	SetTalentPoints_Server(TotalTalentPoints);
+
+	const float StrengthBooster = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Melee) * 10.0f;
+	const float AgilityBooster = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Bow) * 10.0f;
+	const float IntelligenceBooster = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Spell) * 10.0f;
+	const float WisdomBooster = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Divine) * 10.0f;
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute(), 20.0f + StrengthBooster);
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute(), 20.0f + AgilityBooster);
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute(), 20.0f + IntelligenceBooster);
+	AbilitySystemComponent->SetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute(), 20.0f + WisdomBooster);
+
+	if (UActorComponent* TalentComponent = SRPS_ResolveTalentTreeComponent(this))
+	{
+		if (FArrayProperty* GrantedTalentsProperty = FindFProperty<FArrayProperty>(TalentComponent->GetClass(), TEXT("GrantedTalents")))
+		{
+			FScriptArrayHelper GrantedTalentsHelper(
+				GrantedTalentsProperty,
+				GrantedTalentsProperty->ContainerPtrToValuePtr<void>(TalentComponent));
+			GrantedTalentsHelper.EmptyValues();
+		}
+		SRPS_NotifyTalentTreeTalentPointsChanged(TalentComponent);
+		if (AActor* TalentOwner = TalentComponent->GetOwner())
+		{
+			TalentOwner->ForceNetUpdate();
+		}
+	}
+
+	ForceNetUpdate();
+	MarkCharacterProgressionDirty_Server();
+	UE_LOG(LogSpellRiseProgression, Log,
+		TEXT("[Admin][ProgressionPointsReset] PlayerState=%s TalentPoints=%d AttributePoints=%d RewardedThroughLevel=%d"),
+		*GetNameSafe(this),
+		TotalTalentPoints,
+		TotalAttributePoints,
+		ProgressionComponent->GetHighestRewardedCharacterLevel());
+	return true;
+}
+
 void ASpellRisePlayerState::AppendCombatLogEvent_Server(
 	double ServerTimeSeconds,
 	const FString& InstigatorName,
@@ -1236,6 +1435,7 @@ void ASpellRisePlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, RespawnBedLocation, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, bPersistenceProfileApplied, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, CombatLog, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRisePlayerState, SelectedAbilityInputTag, COND_OwnerOnly, REPNOTIFY_Always);
 }
 
 bool ASpellRisePlayerState::ValidateRespawnBedPayload(

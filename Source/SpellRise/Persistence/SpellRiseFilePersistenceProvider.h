@@ -21,6 +21,8 @@ public:
 	virtual bool LoadWorld(const FString& WorldId, FSpellRiseWorldSaveData& OutData) override;
 	virtual bool SaveWorld(const FString& WorldId, const FSpellRiseWorldSaveData& Data) override;
 	virtual bool SaveDeathEvent(const FSpellRiseDeathEventData& Data) override;
+	virtual bool IsPortalAdmin(const FString& SteamId64) override { return false; }
+	virtual bool BanPlayer(const FString&, const FString&, const FString&, const FString&, const FString&) override { return false; }
 
 private:
 	FString BuildCharacterPath(const FString& SteamId64) const;

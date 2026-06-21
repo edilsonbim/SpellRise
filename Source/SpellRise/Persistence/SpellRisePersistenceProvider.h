@@ -26,4 +26,6 @@ public:
 	virtual bool SaveWorld(const FString& WorldId, const FSpellRiseWorldSaveData& Data) = 0;
 
 	virtual bool SaveDeathEvent(const FSpellRiseDeathEventData& Data) = 0;
+	virtual bool IsPortalAdmin(const FString& SteamId64) = 0;
+	virtual bool BanPlayer(const FString& SteamId64, const FString& PlayerName, const FString& Reason, const FString& BannedUntilSql, const FString& CreatedBySteamId64) = 0;
 };

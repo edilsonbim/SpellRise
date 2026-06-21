@@ -32,6 +32,12 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### Sincronizacao de status — 2026-06-21
+- Reportado como corrigido, aguardando validacao formal: dano/TTK, bonus dos atributos base e vendor.
+- Reportado como feito, aguardando smoke formal: boosters de atributos base.
+- Em progresso: `dead`/`revive` e clamp de atributos.
+- Abertos: barra ativa, inventario sem equipar, block 2H, mapa incompleto e socket de arma no override.
+
 ### BUG-2026-06-14-056
 - Date: 2026-06-14
 - Severity: High

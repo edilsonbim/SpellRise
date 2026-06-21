@@ -43,7 +43,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
 namespace
 {
-	constexpr int32 PersistenceCharacterSchemaVersion = 13;
+	constexpr int32 PersistenceCharacterSchemaVersion = 14;
 	constexpr int32 PersistenceCharacterInventorySchemaVersion = 8;
 	constexpr int32 PersistentCharacterLevelMin = 1;
 	constexpr int32 PersistentCharacterLevelMax = 999;
@@ -1004,6 +1004,10 @@ namespace
 			? FMath::Clamp(Data.AttributePoints, 0, PersistentProgressionCurrencyMax)
 			: 0;
 		ProgressionComponent->SetCharacterProgression_Server(SavedCharacterLevel, SavedExperience, SavedTalentPoints, SavedCraftPoints, SavedAttributePoints);
+		ProgressionComponent->SetHighestRewardedCharacterLevel_Server(
+			Data.SchemaVersion >= 14
+				? FMath::Clamp(Data.HighestRewardedCharacterLevel, SavedCharacterLevel, PersistentCharacterLevelMax)
+				: SavedCharacterLevel);
 		if (Data.SchemaVersion >= 12)
 		{
 			ProgressionComponent->SetCombatBoosterCounts_Server(
@@ -2473,6 +2477,44 @@ bool USpellRisePersistenceSubsystem::GetSteamIdFromPlayerState(const APlayerStat
 	return IsValidSteamId64(OutSteamId64);
 }
 
+bool USpellRisePersistenceSubsystem::IsPortalAdmin(const APlayerState* PlayerState) const
+{
+	if (!Provider || !Provider->IsReady() || !PlayerState)
+	{
+		return false;
+	}
+
+	FString SteamId64;
+	return GetSteamIdFromPlayerState(PlayerState, SteamId64)
+		&& Provider->IsPortalAdmin(SteamId64);
+}
+
+bool USpellRisePersistenceSubsystem::BanPlayer(
+	const APlayerState* TargetPlayerState,
+	const FString& Reason,
+	const FString& BannedUntilSql,
+	const APlayerState* AdminPlayerState)
+{
+	if (!Provider || !Provider->IsReady() || !TargetPlayerState || Reason.IsEmpty())
+	{
+		return false;
+	}
+
+	FString TargetSteamId64;
+	FString AdminSteamId64;
+	if (!GetSteamIdFromPlayerState(TargetPlayerState, TargetSteamId64))
+	{
+		return false;
+	}
+	GetSteamIdFromPlayerState(AdminPlayerState, AdminSteamId64);
+	return Provider->BanPlayer(
+		TargetSteamId64,
+		TargetPlayerState->GetPlayerName(),
+		Reason,
+		BannedUntilSql,
+		AdminSteamId64);
+}
+
 FString USpellRisePersistenceSubsystem::ResolveSteamIdFromController(const AController* Controller) const
 {
 	if (!Controller)
@@ -2878,6 +2920,9 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 		OutData.ActiveDivineBoosterCount,
 		OutData.WeaponSkillLevels,
 		OutData.SchoolLevels);
+	OutData.HighestRewardedCharacterLevel = SRPlayerState && SRPlayerState->GetProgressionComponent()
+		? SRPlayerState->GetProgressionComponent()->GetHighestRewardedCharacterLevel()
+		: OutData.CharacterLevel;
 
 	CollectAbilityHotbarData(SRPlayerState, OutData.AbilityHotbarSlots);
 	if (Character)

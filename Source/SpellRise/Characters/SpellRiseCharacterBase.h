@@ -325,21 +325,9 @@ protected:
 	void AbilityInputTagPressed(FGameplayTag InputTag);
 	void AbilityInputTagReleased(FGameplayTag InputTag);
 
-	UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputTag, BlueprintReadOnly, Category="SpellRise|Abilities")
-	FGameplayTag SelectedAbilityInputTag;
-
-	UFUNCTION()
-	void OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag);
-
-	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Abilities")
-	void BP_OnSelectedAbilityInputTagChanged(FGameplayTag NewTag, FGameplayTag OldTag);
-
-	UFUNCTION(Server, Reliable)
-	void ServerSetSelectedAbilityInputTag(FGameplayTag NewTag);
-
 public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Abilities")
-	FGameplayTag GetSelectedAbilityInputTag() const { return SelectedAbilityInputTag; }
+	FGameplayTag GetSelectedAbilityInputTag() const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
 	void SelectAbilitySlot(int32 SlotIndex);
@@ -540,9 +528,7 @@ protected:
 	USkeletalMeshComponent* ResolveSkeletalMeshFromChildActorComponent(FName ComponentName) const;
 	UCameraComponent* FindCharacterCameraComponentByName(FName ComponentName) const;
 	void HandleArchetypeChanged(ESpellRiseArchetype OldArchetype);
-	void HandleSelectedAbilityInputTagChanged(const FGameplayTag& OldTag);
 	void SyncDeadStateFromASC(const TCHAR* Context);
-	void SyncASCSelectedSpellFromReplicatedTag();
 	bool IsAllowedServerEventTag(const FGameplayTag& EventTag) const;
 	bool ValidateServerGameplayEventPayload(const FGameplayEventData& EventData, FString& OutRejectReason) const;
 	bool CheckServerGameplayEventRateLimit(const FGameplayTag& EventTag, FString& OutRejectReason);
@@ -579,17 +565,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="1"))
 	int32 ServerArchetypeRpcRateLimitMaxCountPerWindow = 2;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="0.01"))
-	float ServerAbilitySelectionRpcRateLimitWindowSeconds = 0.25f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="1"))
-	int32 ServerAbilitySelectionRpcRateLimitMaxCountPerWindow = 5;
-
 	UPROPERTY(Transient)
 	FSpellRiseServerEventRateLimitState ArchetypeRpcRateState;
-
-	UPROPERTY(Transient)
-	FSpellRiseServerEventRateLimitState AbilitySelectionRpcRateState;
 
 	UPROPERTY(Transient)
 	int32 ServerRejectedGameplayEvents = 0;

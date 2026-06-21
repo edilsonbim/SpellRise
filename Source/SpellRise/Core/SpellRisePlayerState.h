@@ -27,6 +27,13 @@ class UNarrativeInventoryComponent;
 class AActor;
 class AController;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FSpellRiseSelectedAbilityChangedSignature,
+	FGameplayTag,
+	NewTag,
+	FGameplayTag,
+	OldTag);
+
 UENUM(BlueprintType)
 enum class ESpellRisePrimaryAttribute : uint8
 {
@@ -58,6 +65,15 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	USpellRiseProgressionComponent* GetProgressionComponent() const { return ProgressionComponent; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Abilities")
+	FGameplayTag GetSelectedAbilityInputTag() const { return SelectedAbilityInputTag; }
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Abilities")
+	void RequestSetSelectedAbilityInputTag(FGameplayTag NewTag);
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Abilities|Events")
+	FSpellRiseSelectedAbilityChangedSignature OnSelectedAbilityChanged;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantAbilities(const TArray<FSpellRiseGrantedAbility>& AbilitiesToGrant, int32 AbilityLevel = 1);
@@ -139,6 +155,15 @@ protected:
 	UFUNCTION()
 	void OnRep_PersistenceProfileApplied();
 
+	UFUNCTION()
+	void OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetSelectedAbilityInputTag(FGameplayTag NewTag);
+
+	UFUNCTION(Client, Reliable)
+	void ClientCorrectSelectedAbilityInputTag(FGameplayTag AuthoritativeTag);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS")
 	TObjectPtr<USpellRiseAbilitySystemComponent> AbilitySystemComponent = nullptr;
 
@@ -181,6 +206,9 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_PersistenceProfileApplied, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Persistence")
 	bool bPersistenceProfileApplied = false;
 
+	UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputTag, BlueprintReadOnly, Category="SpellRise|Abilities")
+	FGameplayTag SelectedAbilityInputTag;
+
 	UPROPERTY(Replicated)
 	FSpellRiseCombatLogArray CombatLog;
 
@@ -202,12 +230,27 @@ private:
 		int32 RequestCountInWindow = 0;
 	};
 
+	struct FAbilitySelectionRpcRateState
+	{
+		double WindowStartSeconds = 0.0;
+		int32 RequestCountInWindow = 0;
+	};
+
 	bool CheckRespawnBedServerRateLimit(FString& OutRejectReason);
 	void AuditRejectedRespawnBedRpc(const FString& RejectReason, const FString& InActorName, const FString& InClassPath, const FVector& InLocation);
 	bool CheckAttributeSpendServerRateLimit(FString& OutRejectReason);
+	bool CheckAbilitySelectionServerRateLimit(FString& OutRejectReason);
+	bool IsAllowedSelectedAbilityInputTag(const FGameplayTag& NewTag) const;
+	void SetSelectedAbilityInputTagInternal(const FGameplayTag& NewTag);
 	void AuditRejectedAttributeSpendRpc(const FString& RejectReason, ESpellRisePrimaryAttribute Attribute, int32 Quantity);
 	void AuditRejectedCombatBoosterRpc(const FString& RejectReason, ESpellRiseCombatBooster Booster, int32 BoosterLevel = 0);
 	void MarkCharacterProgressionDirty_Server();
+
+public:
+	void MarkCharacterProgressionDirtyForAdmin_Server() { MarkCharacterProgressionDirty_Server(); }
+	bool ResetProgressionPointsForAdmin_Server();
+
+private:
 	void RecordOnRepTelemetry(const TCHAR* RepName);
 
 	bool ValidateRespawnBedPayload(
@@ -229,6 +272,7 @@ private:
 
 	FRespawnBedRpcRateState RespawnBedRpcRateState;
 	FAttributeSpendRpcRateState AttributeSpendRpcRateState;
+	FAbilitySelectionRpcRateState AbilitySelectionRpcRateState;
 	TMap<FString, int32> RejectedRpcCountByReason;
 	TMap<FString, int32> OnRepCountByName;
 	TMap<FString, double> OnRepWindowStartByName;
@@ -238,6 +282,12 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="1", UIMin="1"))
 	int32 AttributeSpendRpcRateLimitMaxCountPerWindow = 5;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="0.1", UIMin="0.1"))
+	float AbilitySelectionRpcRateLimitWindowSeconds = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="1", UIMin="1"))
+	int32 AbilitySelectionRpcRateLimitMaxCountPerWindow = 5;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Progression", meta=(ClampMin="1", UIMin="1"))
 	int32 AttributeSpendMaxQuantityPerRequest = 10;

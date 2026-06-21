@@ -150,6 +150,7 @@ bool USpellRiseProgressionComponent::InitializeCharacterProgressionDefaults_Serv
 	TalentPoints = DefaultTalentPoints;
 	CraftPoints = DefaultCraftPoints;
 	AttributePoints = DefaultAttributePoints;
+	HighestRewardedCharacterLevel = DefaultCharacterLevel;
 	MeleeBoosterCount = 0;
 	BowBoosterCount = 0;
 	SpellBoosterCount = 0;
@@ -217,6 +218,71 @@ bool USpellRiseProgressionComponent::SetCharacterProgression_Server(
 	return bChanged;
 }
 
+bool USpellRiseProgressionComponent::SetHighestRewardedCharacterLevel_Server(int32 NewLevel)
+{
+	if (!HasAuthorityOwner())
+	{
+		return false;
+	}
+
+	HighestRewardedCharacterLevel = FMath::Max(
+		HighestRewardedCharacterLevel,
+		ClampCharacterLevel(NewLevel));
+	return true;
+}
+
+void USpellRiseProgressionComponent::GetCumulativeLevelRewards(
+	int32 RewardedThroughLevel,
+	int32& OutTalentPoints,
+	int32& OutCraftPoints,
+	int32& OutAttributePoints) const
+{
+	OutTalentPoints = DefaultTalentPoints;
+	OutCraftPoints = DefaultCraftPoints;
+	OutAttributePoints = DefaultAttributePoints;
+	const int32 FinalLevel = ClampCharacterLevel(RewardedThroughLevel);
+	for (int32 Level = 2; Level <= FinalLevel; ++Level)
+	{
+		int32 TalentReward = 0;
+		int32 CraftReward = 0;
+		int32 AttributeReward = 0;
+		GetLevelRewards(Level, TalentReward, CraftReward, AttributeReward);
+		OutTalentPoints = ClampProgressionCurrency(OutTalentPoints + TalentReward);
+		OutCraftPoints = ClampProgressionCurrency(OutCraftPoints + CraftReward);
+		OutAttributePoints = ClampProgressionCurrency(OutAttributePoints + AttributeReward);
+	}
+}
+
+bool USpellRiseProgressionComponent::SetCharacterLevelByAdmin_Server(int32 NewLevel)
+{
+	if (!HasAuthorityOwner())
+	{
+		return false;
+	}
+
+	const int32 ClampedLevel = ClampCharacterLevel(NewLevel);
+	if (ClampedLevel > HighestRewardedCharacterLevel)
+	{
+		for (int32 Level = HighestRewardedCharacterLevel + 1; Level <= ClampedLevel; ++Level)
+		{
+			int32 TalentReward = 0;
+			int32 CraftReward = 0;
+			int32 AttributeReward = 0;
+			GetLevelRewards(Level, TalentReward, CraftReward, AttributeReward);
+			TalentPoints = ClampProgressionCurrency(TalentPoints + TalentReward);
+			CraftPoints = ClampProgressionCurrency(CraftPoints + CraftReward);
+			AttributePoints = ClampProgressionCurrency(AttributePoints + AttributeReward);
+		}
+		HighestRewardedCharacterLevel = ClampedLevel;
+	}
+
+	CharacterLevel = ClampedLevel;
+	Experience = GetExperienceRequiredForLevel(ClampedLevel);
+	ForceOwnerNetUpdate();
+	BroadcastCharacterProgressionChanged();
+	return true;
+}
+
 bool USpellRiseProgressionComponent::AddExperience_Server(int32 ExperienceAmount)
 {
 	if (!HasAuthorityOwner())
@@ -250,13 +316,17 @@ bool USpellRiseProgressionComponent::AddExperience_Server(int32 ExperienceAmount
 		}
 
 		++CharacterLevel;
-		int32 LevelTalentPoints = 0;
-		int32 LevelCraftPoints = 0;
-		int32 LevelAttributePoints = 0;
-		GetLevelRewards(CharacterLevel, LevelTalentPoints, LevelCraftPoints, LevelAttributePoints);
-		TalentPoints = ClampProgressionCurrency(TalentPoints + LevelTalentPoints);
-		CraftPoints = ClampProgressionCurrency(CraftPoints + LevelCraftPoints);
-		AttributePoints = ClampProgressionCurrency(AttributePoints + LevelAttributePoints);
+		if (CharacterLevel > HighestRewardedCharacterLevel)
+		{
+			int32 LevelTalentPoints = 0;
+			int32 LevelCraftPoints = 0;
+			int32 LevelAttributePoints = 0;
+			GetLevelRewards(CharacterLevel, LevelTalentPoints, LevelCraftPoints, LevelAttributePoints);
+			TalentPoints = ClampProgressionCurrency(TalentPoints + LevelTalentPoints);
+			CraftPoints = ClampProgressionCurrency(CraftPoints + LevelCraftPoints);
+			AttributePoints = ClampProgressionCurrency(AttributePoints + LevelAttributePoints);
+			HighestRewardedCharacterLevel = CharacterLevel;
+		}
 	}
 
 	if (CharacterLevel != PreviousLevel)
