@@ -90,22 +90,19 @@ float UMMC_PrimaryBase::Normalize01_FromBaseline(float PrimaryValue) const
 UMMC_CritChance::UMMC_CritChance() = default;
 float UMMC_CritChance::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-	const float T = Normalize01_FromBaseline(GetAgility(Spec));
-	return FMath::Clamp(0.05f + (0.20f * T), 0.f, 0.25f);
+	return 0.05f;
 }
 
 UMMC_CritDamage::UMMC_CritDamage() = default;
 float UMMC_CritDamage::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-	const float T = Normalize01_FromBaseline(GetWisdom(Spec));
-	return FMath::Clamp(1.5f + (0.50f * T), 1.f, 2.0f);
+	return 1.5f;
 }
 
 UMMC_ArmorPenetration::UMMC_ArmorPenetration() = default;
 float UMMC_ArmorPenetration::CalculateBaseMagnitude_Implementation(const FGameplayEffectSpec& Spec) const
 {
-	const float T = Normalize01_FromBaseline(GetStrength(Spec));
-	return FMath::Clamp(0.f + (0.30f * T), 0.f, 0.30f);
+	return 0.f;
 }
 
 UMMC_MaxHealthFromPrimaries::UMMC_MaxHealthFromPrimaries() = default;
@@ -120,7 +117,7 @@ float UMMC_MaxManaFromPrimaries::CalculateBaseMagnitude_Implementation(const FGa
 {
 	const float Int = SR_Primary::ClampPrimary(GetIntelligence(Spec));
 	const float Wis = SR_Primary::ClampPrimary(GetWisdom(Spec));
-	return FMath::Max(1.f, 100.f + Int + (Wis * 2.f));
+	return FMath::Max(1.f, 100.f + (Int * 2.f) + Wis);
 }
 
 UMMC_MaxStaminaFromPrimaries::UMMC_MaxStaminaFromPrimaries() = default;

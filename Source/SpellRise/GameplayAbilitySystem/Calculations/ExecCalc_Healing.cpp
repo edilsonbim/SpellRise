@@ -2,7 +2,8 @@
 #include "ExecCalc_Healing.h"
 
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
-#include "SpellRise/GameplayAbilitySystem/AttributeSets/BasicAttributeSet.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
@@ -53,31 +54,37 @@ namespace SpellRiseHealingTags
 
 namespace SpellRiseHealingProgression
 {
-	static float ApplyWisdomContribution(float Healing, float Wisdom)
+	static const USpellRiseProgressionComponent* ResolveSourceProgressionComponent(const UAbilitySystemComponent* SourceASC)
 	{
-		const float ClampedHealing = FMath::Max(0.f, Healing);
-		const float WisdomAlpha = FMath::Clamp(Wisdom, 0.f, 140.f) / 100.f;
-		return (ClampedHealing * 0.50f) + (ClampedHealing * 0.50f * WisdomAlpha);
+		if (!SourceASC)
+		{
+			return nullptr;
+		}
+
+		if (const ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(SourceASC->GetOwnerActor()))
+		{
+			return PlayerState->GetProgressionComponent();
+		}
+
+		if (const AActor* OwnerActor = SourceASC->GetOwnerActor())
+		{
+			if (const USpellRiseProgressionComponent* Progression = OwnerActor->FindComponentByClass<USpellRiseProgressionComponent>())
+			{
+				return Progression;
+			}
+		}
+
+		if (const AActor* AvatarActor = SourceASC->GetAvatarActor())
+		{
+			return AvatarActor->FindComponentByClass<USpellRiseProgressionComponent>();
+		}
+
+		return nullptr;
 	}
-}
-
-UExecCalc_Healing::FCaptureDefs::FCaptureDefs()
-{
-	WisdomDef = FGameplayEffectAttributeCaptureDefinition(
-		UBasicAttributeSet::GetWisdomAttribute(),
-		EGameplayEffectAttributeCaptureSource::Source,
-		false);
-}
-
-const UExecCalc_Healing::FCaptureDefs& UExecCalc_Healing::Captures()
-{
-	static FCaptureDefs CaptureDefs;
-	return CaptureDefs;
 }
 
 UExecCalc_Healing::UExecCalc_Healing()
 {
-	RelevantAttributesToCapture.Add(Captures().WisdomDef);
 }
 
 void UExecCalc_Healing::Execute_Implementation(
@@ -85,7 +92,6 @@ void UExecCalc_Healing::Execute_Implementation(
 	FGameplayEffectCustomExecutionOutput& OutExecutionOutput) const
 {
 	const FGameplayEffectSpec& Spec = ExecutionParams.GetOwningSpec();
-	const FCaptureDefs& C = Captures();
 	UAbilitySystemComponent* SourceASC = ExecutionParams.GetSourceAbilitySystemComponent();
 	UAbilitySystemComponent* TargetASC = ExecutionParams.GetTargetAbilitySystemComponent();
 	if (!SourceASC || !TargetASC)
@@ -117,12 +123,11 @@ void UExecCalc_Healing::Execute_Implementation(
 		10.f);
 
 	float FinalHealing = BaseHeal * HealingScaling;
-	float Wisdom = 20.f;
-	FAggregatorEvaluateParameters Params;
-	Params.SourceTags = Spec.CapturedSourceTags.GetAggregatedTags();
-	Params.TargetTags = Spec.CapturedTargetTags.GetAggregatedTags();
-	ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WisdomDef, Params, Wisdom);
-	FinalHealing = SpellRiseHealingProgression::ApplyWisdomContribution(FinalHealing, Wisdom);
+	if (const USpellRiseProgressionComponent* Progression =
+		SpellRiseHealingProgression::ResolveSourceProgressionComponent(SourceASC))
+	{
+		FinalHealing *= Progression->GetDivineBoosterHealingMultiplier();
+	}
 	if (!FMath::IsFinite(FinalHealing) || FinalHealing <= 0.f)
 	{
 		return;

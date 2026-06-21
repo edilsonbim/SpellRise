@@ -17,12 +17,18 @@ public class CodexBlueprintBridge : ModuleRules
         {
             "AssetRegistry",
             "BlueprintGraph",
+            "ContentBrowser",
             "EditorScriptingUtilities",
             "Json",
             "JsonUtilities",
             "Kismet",
             "KismetCompiler",
             "Projects",
+            "Slate",
+            "SlateCore",
+            "ToolMenus",
+            "UMG",
+            "UMGEditor",
             "UnrealEd"
         });
     }

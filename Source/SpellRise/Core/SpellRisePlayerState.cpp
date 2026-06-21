@@ -30,6 +30,7 @@
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCombatLog, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseProgression, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseAttributeSpendSecurity, Log, All);
 
 namespace
 {
@@ -728,6 +729,332 @@ void ASpellRisePlayerState::SetTalentPoints_Server(int32 NewAmount)
 int32 ASpellRisePlayerState::GetTalentPoints() const
 {
 	return ProgressionComponent ? ProgressionComponent->GetTalentPoints() : 0;
+}
+
+void ASpellRisePlayerState::ServerPurchaseCombatBooster_Implementation(ESpellRiseCombatBooster Booster)
+{
+	FString RejectReason;
+	if (!CheckAttributeSpendServerRateLimit(RejectReason))
+	{
+		AuditRejectedCombatBoosterRpc(RejectReason, Booster);
+		return;
+	}
+
+	const AController* OwnerController = Cast<AController>(GetOwner());
+	if (!HasAuthority() || !OwnerController || OwnerController->PlayerState != this)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("invalid_owner"), Booster);
+		return;
+	}
+
+	if (!bPersistenceProfileApplied)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("profile_not_applied"), Booster);
+		return;
+	}
+
+	if (!ProgressionComponent)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("missing_progression"), Booster);
+		return;
+	}
+
+	const int32 Cost = ProgressionComponent->GetNextCombatBoosterCost(Booster);
+	if (Cost <= 0)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("category_purchase_cap"), Booster);
+		return;
+	}
+	if (ProgressionComponent->GetTalentPoints() < Cost)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("insufficient_talent_points"), Booster);
+		return;
+	}
+
+	if (!ProgressionComponent->PurchaseCombatBooster_Server(Booster))
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("purchase_failed"), Booster);
+		return;
+	}
+
+	int32 TalentTreePoints = 0;
+	SRPS_SetTalentTreeTalentPoints(this, ProgressionComponent->GetTalentPoints(), TalentTreePoints);
+	ForceNetUpdate();
+	MarkCharacterProgressionDirty_Server();
+
+	UE_LOG(LogSpellRiseProgression, Log,
+		TEXT("[CombatBooster][Purchased] PlayerState=%s Booster=%d Count=%d Total=%d Cost=%d RemainingTalentPoints=%d"),
+		*GetNameSafe(this),
+		static_cast<int32>(Booster),
+		ProgressionComponent->GetCombatBoosterCount(Booster),
+		ProgressionComponent->GetTotalCombatBoosterCount(),
+		Cost,
+		ProgressionComponent->GetTalentPoints());
+}
+
+void ASpellRisePlayerState::ServerSetCombatBoosterActive_Implementation(
+	ESpellRiseCombatBooster Booster,
+	int32 BoosterLevel,
+	bool bActivate)
+{
+	FString RejectReason;
+	if (!CheckAttributeSpendServerRateLimit(RejectReason))
+	{
+		AuditRejectedCombatBoosterRpc(RejectReason, Booster, BoosterLevel);
+		return;
+	}
+
+	const AController* OwnerController = Cast<AController>(GetOwner());
+	if (!HasAuthority() || !OwnerController || OwnerController->PlayerState != this)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("invalid_owner"), Booster, BoosterLevel);
+		return;
+	}
+
+	if (!bPersistenceProfileApplied)
+	{
+		AuditRejectedCombatBoosterRpc(TEXT("profile_not_applied"), Booster, BoosterLevel);
+		return;
+	}
+
+	if (!ProgressionComponent
+		|| !ProgressionComponent->SetCombatBoosterActive_Server(Booster, BoosterLevel, bActivate))
+	{
+		AuditRejectedCombatBoosterRpc(
+			bActivate ? TEXT("activate_rejected_owned_or_active_cap") : TEXT("deactivate_rejected_not_active"),
+			Booster,
+			BoosterLevel);
+		return;
+	}
+
+	ForceNetUpdate();
+	MarkCharacterProgressionDirty_Server();
+	UE_LOG(LogSpellRiseProgression, Log,
+		TEXT("[CombatBooster][ActiveChanged] PlayerState=%s Booster=%d Level=%d Activate=%s ActiveCategory=%d ActiveTotal=%d OwnedCategory=%d"),
+		*GetNameSafe(this),
+		static_cast<int32>(Booster),
+		BoosterLevel,
+		bActivate ? TEXT("true") : TEXT("false"),
+		ProgressionComponent->GetActiveCombatBoosterCount(Booster),
+		ProgressionComponent->GetTotalActiveCombatBoosterCount(),
+		ProgressionComponent->GetCombatBoosterCount(Booster));
+}
+
+void ASpellRisePlayerState::ServerSpendAttributePoints_Implementation(
+	ESpellRisePrimaryAttribute Attribute,
+	int32 Quantity)
+{
+	FString RejectReason;
+	if (!CheckAttributeSpendServerRateLimit(RejectReason))
+	{
+		AuditRejectedAttributeSpendRpc(RejectReason, Attribute, Quantity);
+		return;
+	}
+
+	const AController* OwnerController = Cast<AController>(GetOwner());
+	if (!HasAuthority() || !OwnerController || OwnerController->PlayerState != this)
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("invalid_owner"), Attribute, Quantity);
+		return;
+	}
+
+	if (!bPersistenceProfileApplied)
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("profile_not_applied"), Attribute, Quantity);
+		return;
+	}
+
+	if (!ProgressionComponent || !AbilitySystemComponent)
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("missing_progression_or_asc"), Attribute, Quantity);
+		return;
+	}
+
+	const int32 MaxQuantity = FMath::Max(1, AttributeSpendMaxQuantityPerRequest);
+	if (Quantity < 1 || Quantity > MaxQuantity)
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("invalid_quantity"), Attribute, Quantity);
+		return;
+	}
+
+	if (ProgressionComponent->GetAttributePoints() < Quantity)
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("insufficient_balance"), Attribute, Quantity);
+		return;
+	}
+
+	FGameplayAttribute TargetAttribute;
+	const TCHAR* AttributeName = TEXT("Invalid");
+	switch (Attribute)
+	{
+	case ESpellRisePrimaryAttribute::Strength:
+		TargetAttribute = UCombatAttributeSet::GetStrengthAttribute();
+		AttributeName = TEXT("STR");
+		break;
+	case ESpellRisePrimaryAttribute::Agility:
+		TargetAttribute = UCombatAttributeSet::GetAgilityAttribute();
+		AttributeName = TEXT("AGI");
+		break;
+	case ESpellRisePrimaryAttribute::Intelligence:
+		TargetAttribute = UCombatAttributeSet::GetIntelligenceAttribute();
+		AttributeName = TEXT("INT");
+		break;
+	case ESpellRisePrimaryAttribute::Wisdom:
+		TargetAttribute = UCombatAttributeSet::GetWisdomAttribute();
+		AttributeName = TEXT("WIS");
+		break;
+	default:
+		AuditRejectedAttributeSpendRpc(TEXT("non_canonical_attribute"), Attribute, Quantity);
+		return;
+	}
+
+	const float CurrentBaseValue = AbilitySystemComponent->GetNumericAttributeBase(TargetAttribute);
+	int32 ActiveBoosterCount = 0;
+	switch (Attribute)
+	{
+	case ESpellRisePrimaryAttribute::Strength:
+		ActiveBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Melee);
+		break;
+	case ESpellRisePrimaryAttribute::Agility:
+		ActiveBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Bow);
+		break;
+	case ESpellRisePrimaryAttribute::Intelligence:
+		ActiveBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Spell);
+		break;
+	case ESpellRisePrimaryAttribute::Wisdom:
+		ActiveBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Divine);
+		break;
+	default:
+		break;
+	}
+	const float ActiveBoosterBonus = static_cast<float>(ActiveBoosterCount) * 10.0f;
+	const float PermanentBaseValue = FMath::Max(0.0f, CurrentBaseValue - ActiveBoosterBonus);
+	const float PermanentCap = FMath::Clamp(AttributeSpendPermanentCap, 20.0f, 100.0f);
+	if (!FMath::IsFinite(PermanentBaseValue)
+		|| PermanentBaseValue < 0.0f
+		|| PermanentBaseValue + static_cast<float>(Quantity) > PermanentCap)
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("attribute_cap_exceeded"), Attribute, Quantity);
+		return;
+	}
+
+	const int32 RemainingPoints = ProgressionComponent->GetAttributePoints() - Quantity;
+	if (!ProgressionComponent->SetAttributePoints_Server(RemainingPoints))
+	{
+		AuditRejectedAttributeSpendRpc(TEXT("balance_debit_failed"), Attribute, Quantity);
+		return;
+	}
+
+	AbilitySystemComponent->SetNumericAttributeBase(
+		TargetAttribute,
+		PermanentBaseValue + static_cast<float>(Quantity) + ActiveBoosterBonus);
+	ForceNetUpdate();
+	MarkCharacterProgressionDirty_Server();
+
+	UE_LOG(LogSpellRiseProgression, Log,
+		TEXT("[AttributeSpend][Applied] PlayerState=%s Attribute=%s Quantity=%d NewBase=%.0f RemainingPoints=%d"),
+		*GetNameSafe(this),
+		AttributeName,
+		Quantity,
+		AbilitySystemComponent->GetNumericAttributeBase(TargetAttribute),
+		RemainingPoints);
+}
+
+bool ASpellRisePlayerState::CheckAttributeSpendServerRateLimit(FString& OutRejectReason)
+{
+	if (!HasAuthority())
+	{
+		OutRejectReason = TEXT("not_authority");
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	const double NowSeconds = World ? World->GetTimeSeconds() : 0.0;
+	const double WindowSeconds = FMath::Max(0.1, static_cast<double>(AttributeSpendRpcRateLimitWindowSeconds));
+	const int32 MaxCount = FMath::Max(1, AttributeSpendRpcRateLimitMaxCountPerWindow);
+
+	if ((NowSeconds - AttributeSpendRpcRateState.WindowStartSeconds) > WindowSeconds)
+	{
+		AttributeSpendRpcRateState.WindowStartSeconds = NowSeconds;
+		AttributeSpendRpcRateState.RequestCountInWindow = 0;
+	}
+
+	++AttributeSpendRpcRateState.RequestCountInWindow;
+	if (AttributeSpendRpcRateState.RequestCountInWindow > MaxCount)
+	{
+		OutRejectReason = FString::Printf(
+			TEXT("rate_limited(window=%.2fs,max=%d,count=%d)"),
+			WindowSeconds,
+			MaxCount,
+			AttributeSpendRpcRateState.RequestCountInWindow);
+		return false;
+	}
+
+	return true;
+}
+
+void ASpellRisePlayerState::AuditRejectedAttributeSpendRpc(
+	const FString& RejectReason,
+	ESpellRisePrimaryAttribute Attribute,
+	int32 Quantity)
+{
+	const FString CounterKey = FString::Printf(TEXT("AttributeSpend:%s"), *RejectReason);
+	const int32 RejectCount = ++RejectedRpcCountByReason.FindOrAdd(CounterKey);
+	UE_LOG(LogSpellRiseAttributeSpendSecurity, Warning,
+		TEXT("[RPC][Rejected] Rpc=ServerSpendAttributePoints Reason=%s PlayerState=%s Attribute=%d Quantity=%d Count=%d"),
+		*RejectReason,
+		*GetNameSafe(this),
+		static_cast<int32>(Attribute),
+		Quantity,
+		RejectCount);
+}
+
+void ASpellRisePlayerState::AuditRejectedCombatBoosterRpc(
+	const FString& RejectReason,
+	ESpellRiseCombatBooster Booster,
+	int32 BoosterLevel)
+{
+	const FString CounterKey = FString::Printf(TEXT("CombatBooster:%s"), *RejectReason);
+	const int32 RejectCount = ++RejectedRpcCountByReason.FindOrAdd(CounterKey);
+	UE_LOG(LogSpellRiseAttributeSpendSecurity, Warning,
+		TEXT("[RPC][Rejected] Rpc=CombatBooster Reason=%s PlayerState=%s Booster=%d Level=%d Count=%d"),
+		*RejectReason,
+		*GetNameSafe(this),
+		static_cast<int32>(Booster),
+		BoosterLevel,
+		RejectCount);
+}
+
+void ASpellRisePlayerState::MarkCharacterProgressionDirty_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+	USpellRisePersistenceSubsystem* Persistence = GameInstance
+		? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>()
+		: nullptr;
+	if (!Persistence)
+	{
+		UE_LOG(LogSpellRiseProgression, Error,
+			TEXT("[AttributeSpend][PersistenceDirtyFailed] Reason=missing_subsystem PlayerState=%s"),
+			*GetNameSafe(this));
+		return;
+	}
+
+	FString SteamId64;
+	if (!Persistence->GetSteamIdFromPlayerState(this, SteamId64) || SteamId64.IsEmpty())
+	{
+		UE_LOG(LogSpellRiseProgression, Error,
+			TEXT("[AttributeSpend][PersistenceDirtyFailed] Reason=missing_persistent_id PlayerState=%s"),
+			*GetNameSafe(this));
+		return;
+	}
+
+	Persistence->MarkPlayerDirtyBySteamId(SteamId64);
 }
 
 void ASpellRisePlayerState::AppendCombatLogEvent_Server(

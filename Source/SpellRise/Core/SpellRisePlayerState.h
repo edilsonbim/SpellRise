@@ -10,6 +10,7 @@
 #include "GameplayTagContainer.h"
 #include "SpellRise/Core/SpellRiseCombatLogTypes.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityGrantTypes.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "SpellRisePlayerState.generated.h"
 
 class UAbilitySystemComponent;
@@ -25,6 +26,15 @@ class USpellRisePlayerHUDViewModelComponent;
 class UNarrativeInventoryComponent;
 class AActor;
 class AController;
+
+UENUM(BlueprintType)
+enum class ESpellRisePrimaryAttribute : uint8
+{
+	Strength UMETA(DisplayName="STR"),
+	Agility UMETA(DisplayName="AGI"),
+	Intelligence UMETA(DisplayName="INT"),
+	Wisdom UMETA(DisplayName="WIS")
+};
 
 UCLASS()
 class SPELLRISE_API ASpellRisePlayerState : public APlayerState, public IAbilitySystemInterface
@@ -108,6 +118,15 @@ public:
 	void SetTalentPoints_Server(int32 NewAmount);
 	void AddTalentPoints_Server(int32 Amount);
 
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Progression")
+	void ServerSpendAttributePoints(ESpellRisePrimaryAttribute Attribute, int32 Quantity);
+
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Progression|Boosters")
+	void ServerPurchaseCombatBooster(ESpellRiseCombatBooster Booster);
+
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Progression|Boosters")
+	void ServerSetCombatBoosterActive(ESpellRiseCombatBooster Booster, int32 BoosterLevel, bool bActivate);
+
 protected:
 	virtual void OnRep_PlayerName() override;
 
@@ -177,8 +196,18 @@ private:
 		int32 RequestCountInWindow = 0;
 	};
 
+	struct FAttributeSpendRpcRateState
+	{
+		double WindowStartSeconds = 0.0;
+		int32 RequestCountInWindow = 0;
+	};
+
 	bool CheckRespawnBedServerRateLimit(FString& OutRejectReason);
 	void AuditRejectedRespawnBedRpc(const FString& RejectReason, const FString& InActorName, const FString& InClassPath, const FVector& InLocation);
+	bool CheckAttributeSpendServerRateLimit(FString& OutRejectReason);
+	void AuditRejectedAttributeSpendRpc(const FString& RejectReason, ESpellRisePrimaryAttribute Attribute, int32 Quantity);
+	void AuditRejectedCombatBoosterRpc(const FString& RejectReason, ESpellRiseCombatBooster Booster, int32 BoosterLevel = 0);
+	void MarkCharacterProgressionDirty_Server();
 	void RecordOnRepTelemetry(const TCHAR* RepName);
 
 	bool ValidateRespawnBedPayload(
@@ -199,9 +228,22 @@ private:
 	int32 RespawnBedRpcRateLimitMaxCountPerWindow = 2;
 
 	FRespawnBedRpcRateState RespawnBedRpcRateState;
+	FAttributeSpendRpcRateState AttributeSpendRpcRateState;
 	TMap<FString, int32> RejectedRpcCountByReason;
 	TMap<FString, int32> OnRepCountByName;
 	TMap<FString, double> OnRepWindowStartByName;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="0.1", UIMin="0.1"))
+	float AttributeSpendRpcRateLimitWindowSeconds = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Security|RPC", meta=(ClampMin="1", UIMin="1"))
+	int32 AttributeSpendRpcRateLimitMaxCountPerWindow = 5;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Progression", meta=(ClampMin="1", UIMin="1"))
+	int32 AttributeSpendMaxQuantityPerRequest = 10;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Progression", meta=(ClampMin="20.0", ClampMax="100.0", UIMin="20.0", UIMax="100.0"))
+	float AttributeSpendPermanentCap = 100.0f;
 
 	void MaybeSendCombatLogSnapshotToOwner_Server(const TCHAR* Reason);
 

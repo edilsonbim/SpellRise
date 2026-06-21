@@ -10,6 +10,15 @@
 class USpellRiseAbilityDefinition;
 class USpellRiseProgressionBalanceData;
 
+UENUM(BlueprintType)
+enum class ESpellRiseCombatBooster : uint8
+{
+	Melee,
+	Bow,
+	Spell,
+	Divine
+};
+
 USTRUCT(BlueprintType)
 struct SPELLRISE_API FSpellRiseProgressionLevelEntry
 {
@@ -80,6 +89,27 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	int32 GetAttributePoints() const { return AttributePoints; }
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	int32 GetCombatBoosterCount(ESpellRiseCombatBooster Booster) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	int32 GetTotalCombatBoosterCount() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	int32 GetActiveCombatBoosterCount(ESpellRiseCombatBooster Booster) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	int32 GetTotalActiveCombatBoosterCount() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	int32 GetNextCombatBoosterCost(ESpellRiseCombatBooster Booster) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	float GetCombatBoosterDamageMultiplier(ESpellRiseCombatBooster Booster) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
+	float GetDivineBoosterHealingMultiplier() const;
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	int32 GetExperienceRequiredForLevel(int32 TargetLevel) const;
 
@@ -108,7 +138,25 @@ public:
 	bool AddCraftPoints_Server(int32 Amount);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
+	bool SetAttributePoints_Server(int32 NewAmount);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool AddAttributePoints_Server(int32 Amount);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression|Boosters")
+	bool PurchaseCombatBooster_Server(ESpellRiseCombatBooster Booster);
+
+	bool SetCombatBoosterCounts_Server(
+		int32 MeleeOwned,
+		int32 BowOwned,
+		int32 SpellOwned,
+		int32 DivineOwned,
+		int32 MeleeActive,
+		int32 BowActive,
+		int32 SpellActive,
+		int32 DivineActive);
+
+	bool SetCombatBoosterActive_Server(ESpellRiseCombatBooster Booster, int32 BoosterLevel, bool bActivate);
 
 	const TArray<FSpellRiseProgressionLevelEntry>& GetWeaponSkillLevels() const { return WeaponSkillLevels; }
 	const TArray<FSpellRiseProgressionLevelEntry>& GetSchoolLevels() const { return SchoolLevels; }
@@ -167,6 +215,30 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")
 	int32 AttributePoints = 0;
 
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 MeleeBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 BowBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 SpellBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 DivineBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 ActiveMeleeBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 ActiveBowBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 ActiveSpellBoosterCount = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression|Boosters")
+	uint8 ActiveDivineBoosterCount = 0;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Progression", meta=(ClampMin="2", UIMin="2"))
 	int32 MaxCharacterLevel = 999;
 
@@ -196,6 +268,10 @@ private:
 	static constexpr int32 AttributePointsPerLevel = 5;
 	static constexpr int32 MaxAttributePointGrantLevel = 65;
 	static constexpr int32 MaxProgressionCurrency = 1000000;
+	static constexpr int32 MaxCombatBoosters = 4;
+	static constexpr float DamageBonusPerBooster = 0.05f;
+	static constexpr float DivineHealingBonusPerBooster = 0.10f;
+	static constexpr float PrimaryAttributeBonusPerActiveBooster = 10.0f;
 
 	static int32 ClampProgressionLevel(int32 Level);
 	int32 ClampCharacterLevel(int32 Level) const;
@@ -209,4 +285,5 @@ private:
 	static bool IsChildOfTag(FGameplayTag Tag, const TCHAR* ParentTagName);
 	static bool SetLevel(TArray<FSpellRiseProgressionLevelEntry>& Entries, FGameplayTag Tag, int32 NewLevel);
 	static bool EnsureLevelAtLeast(TArray<FSpellRiseProgressionLevelEntry>& Entries, FGameplayTag Tag, int32 NewLevel);
+	void ApplyPrimaryAttributeBoosterDelta(ESpellRiseCombatBooster Booster, int32 CountDelta) const;
 };

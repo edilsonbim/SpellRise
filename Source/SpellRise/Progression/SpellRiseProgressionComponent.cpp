@@ -2,6 +2,8 @@
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/GameplayAbilitySystem/AttributeSets/CombatAttributeSet.h"
+#include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Data/SpellRiseAbilityDefinition.h"
 #include "SpellRise/Progression/SpellRiseProgressionBalanceData.h"
 
@@ -25,6 +27,14 @@ void USpellRiseProgressionComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, TalentPoints, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, CraftPoints, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, AttributePoints, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, MeleeBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, BowBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, SpellBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, DivineBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, ActiveMeleeBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, ActiveBowBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, ActiveSpellBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, ActiveDivineBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
 }
 
 int32 USpellRiseProgressionComponent::GetWeaponSkillLevel(FGameplayTag WeaponSkillTag) const
@@ -35,6 +45,57 @@ int32 USpellRiseProgressionComponent::GetWeaponSkillLevel(FGameplayTag WeaponSki
 int32 USpellRiseProgressionComponent::GetSchoolLevel(FGameplayTag SchoolTag) const
 {
 	return FindLevel(SchoolLevels, SchoolTag);
+}
+
+int32 USpellRiseProgressionComponent::GetCombatBoosterCount(ESpellRiseCombatBooster Booster) const
+{
+	switch (Booster)
+	{
+	case ESpellRiseCombatBooster::Melee: return MeleeBoosterCount;
+	case ESpellRiseCombatBooster::Bow: return BowBoosterCount;
+	case ESpellRiseCombatBooster::Spell: return SpellBoosterCount;
+	case ESpellRiseCombatBooster::Divine: return DivineBoosterCount;
+	default: return 0;
+	}
+}
+
+int32 USpellRiseProgressionComponent::GetTotalCombatBoosterCount() const
+{
+	return MeleeBoosterCount + BowBoosterCount + SpellBoosterCount + DivineBoosterCount;
+}
+
+int32 USpellRiseProgressionComponent::GetActiveCombatBoosterCount(ESpellRiseCombatBooster Booster) const
+{
+	switch (Booster)
+	{
+	case ESpellRiseCombatBooster::Melee: return ActiveMeleeBoosterCount;
+	case ESpellRiseCombatBooster::Bow: return ActiveBowBoosterCount;
+	case ESpellRiseCombatBooster::Spell: return ActiveSpellBoosterCount;
+	case ESpellRiseCombatBooster::Divine: return ActiveDivineBoosterCount;
+	default: return 0;
+	}
+}
+
+int32 USpellRiseProgressionComponent::GetTotalActiveCombatBoosterCount() const
+{
+	return ActiveMeleeBoosterCount + ActiveBowBoosterCount + ActiveSpellBoosterCount + ActiveDivineBoosterCount;
+}
+
+int32 USpellRiseProgressionComponent::GetNextCombatBoosterCost(ESpellRiseCombatBooster Booster) const
+{
+	static constexpr int32 Costs[MaxCombatBoosters] = { 200, 400, 800, 1600 };
+	const int32 OwnedCount = GetCombatBoosterCount(Booster);
+	return OwnedCount >= 0 && OwnedCount < MaxCombatBoosters ? Costs[OwnedCount] : 0;
+}
+
+float USpellRiseProgressionComponent::GetCombatBoosterDamageMultiplier(ESpellRiseCombatBooster Booster) const
+{
+	return 1.0f + static_cast<float>(GetActiveCombatBoosterCount(Booster)) * DamageBonusPerBooster;
+}
+
+float USpellRiseProgressionComponent::GetDivineBoosterHealingMultiplier() const
+{
+	return 1.0f + static_cast<float>(ActiveDivineBoosterCount) * DivineHealingBonusPerBooster;
 }
 
 int32 USpellRiseProgressionComponent::GetExperienceRequiredForLevel(int32 TargetLevel) const
@@ -89,6 +150,14 @@ bool USpellRiseProgressionComponent::InitializeCharacterProgressionDefaults_Serv
 	TalentPoints = DefaultTalentPoints;
 	CraftPoints = DefaultCraftPoints;
 	AttributePoints = DefaultAttributePoints;
+	MeleeBoosterCount = 0;
+	BowBoosterCount = 0;
+	SpellBoosterCount = 0;
+	DivineBoosterCount = 0;
+	ActiveMeleeBoosterCount = 0;
+	ActiveBowBoosterCount = 0;
+	ActiveSpellBoosterCount = 0;
+	ActiveDivineBoosterCount = 0;
 	ForceOwnerNetUpdate();
 	BroadcastCharacterProgressionChanged();
 
@@ -258,6 +327,24 @@ bool USpellRiseProgressionComponent::AddCraftPoints_Server(int32 Amount)
 	return true;
 }
 
+bool USpellRiseProgressionComponent::SetAttributePoints_Server(int32 NewAmount)
+{
+	if (!HasAuthorityOwner())
+	{
+		return false;
+	}
+
+	const int32 ClampedPoints = ClampProgressionCurrency(NewAmount);
+	const bool bChanged = AttributePoints != ClampedPoints;
+	AttributePoints = ClampedPoints;
+	if (bChanged)
+	{
+		ForceOwnerNetUpdate();
+		BroadcastCharacterProgressionChanged();
+	}
+	return bChanged;
+}
+
 bool USpellRiseProgressionComponent::AddAttributePoints_Server(int32 Amount)
 {
 	if (!HasAuthorityOwner())
@@ -274,6 +361,182 @@ bool USpellRiseProgressionComponent::AddAttributePoints_Server(int32 Amount)
 	ForceOwnerNetUpdate();
 	BroadcastCharacterProgressionChanged();
 	return true;
+}
+
+bool USpellRiseProgressionComponent::PurchaseCombatBooster_Server(ESpellRiseCombatBooster Booster)
+{
+	if (!HasAuthorityOwner())
+	{
+		return false;
+	}
+
+	uint8* TargetCount = nullptr;
+	switch (Booster)
+	{
+	case ESpellRiseCombatBooster::Melee: TargetCount = &MeleeBoosterCount; break;
+	case ESpellRiseCombatBooster::Bow: TargetCount = &BowBoosterCount; break;
+	case ESpellRiseCombatBooster::Spell: TargetCount = &SpellBoosterCount; break;
+	case ESpellRiseCombatBooster::Divine: TargetCount = &DivineBoosterCount; break;
+	default: return false;
+	}
+
+	const int32 TalentPointCost = GetNextCombatBoosterCost(Booster);
+	if (TalentPointCost <= 0 || *TargetCount >= MaxCombatBoosters)
+	{
+		return false;
+	}
+
+	if (TalentPoints < TalentPointCost)
+	{
+		return false;
+	}
+
+	TalentPoints -= TalentPointCost;
+	++(*TargetCount);
+	ForceOwnerNetUpdate();
+	BroadcastCharacterProgressionChanged();
+	return true;
+}
+
+bool USpellRiseProgressionComponent::SetCombatBoosterCounts_Server(
+	int32 MeleeOwned,
+	int32 BowOwned,
+	int32 SpellOwned,
+	int32 DivineOwned,
+	int32 MeleeActive,
+	int32 BowActive,
+	int32 SpellActive,
+	int32 DivineActive)
+{
+	if (!HasAuthorityOwner())
+	{
+		return false;
+	}
+
+	const int32 SafeMelee = FMath::Clamp(MeleeOwned, 0, MaxCombatBoosters);
+	const int32 SafeBow = FMath::Clamp(BowOwned, 0, MaxCombatBoosters);
+	const int32 SafeSpell = FMath::Clamp(SpellOwned, 0, MaxCombatBoosters);
+	const int32 SafeDivine = FMath::Clamp(DivineOwned, 0, MaxCombatBoosters);
+	const int32 SafeActiveMelee = FMath::Clamp(MeleeActive, 0, SafeMelee);
+	const int32 SafeActiveBow = FMath::Clamp(BowActive, 0, SafeBow);
+	const int32 SafeActiveSpell = FMath::Clamp(SpellActive, 0, SafeSpell);
+	const int32 SafeActiveDivine = FMath::Clamp(DivineActive, 0, SafeDivine);
+	if (SafeActiveMelee + SafeActiveBow + SafeActiveSpell + SafeActiveDivine > MaxCombatBoosters)
+	{
+		return false;
+	}
+
+	const bool bChanged = MeleeBoosterCount != SafeMelee
+		|| BowBoosterCount != SafeBow
+		|| SpellBoosterCount != SafeSpell
+		|| DivineBoosterCount != SafeDivine
+		|| ActiveMeleeBoosterCount != SafeActiveMelee
+		|| ActiveBowBoosterCount != SafeActiveBow
+		|| ActiveSpellBoosterCount != SafeActiveSpell
+		|| ActiveDivineBoosterCount != SafeActiveDivine;
+	const int32 MeleeActiveDelta = SafeActiveMelee - ActiveMeleeBoosterCount;
+	const int32 BowActiveDelta = SafeActiveBow - ActiveBowBoosterCount;
+	const int32 SpellActiveDelta = SafeActiveSpell - ActiveSpellBoosterCount;
+	const int32 DivineActiveDelta = SafeActiveDivine - ActiveDivineBoosterCount;
+	MeleeBoosterCount = static_cast<uint8>(SafeMelee);
+	BowBoosterCount = static_cast<uint8>(SafeBow);
+	SpellBoosterCount = static_cast<uint8>(SafeSpell);
+	DivineBoosterCount = static_cast<uint8>(SafeDivine);
+	ActiveMeleeBoosterCount = static_cast<uint8>(SafeActiveMelee);
+	ActiveBowBoosterCount = static_cast<uint8>(SafeActiveBow);
+	ActiveSpellBoosterCount = static_cast<uint8>(SafeActiveSpell);
+	ActiveDivineBoosterCount = static_cast<uint8>(SafeActiveDivine);
+	ApplyPrimaryAttributeBoosterDelta(ESpellRiseCombatBooster::Melee, MeleeActiveDelta);
+	ApplyPrimaryAttributeBoosterDelta(ESpellRiseCombatBooster::Bow, BowActiveDelta);
+	ApplyPrimaryAttributeBoosterDelta(ESpellRiseCombatBooster::Spell, SpellActiveDelta);
+	ApplyPrimaryAttributeBoosterDelta(ESpellRiseCombatBooster::Divine, DivineActiveDelta);
+	if (bChanged)
+	{
+		ForceOwnerNetUpdate();
+		BroadcastCharacterProgressionChanged();
+	}
+	return bChanged;
+}
+
+bool USpellRiseProgressionComponent::SetCombatBoosterActive_Server(
+	ESpellRiseCombatBooster Booster,
+	int32 BoosterLevel,
+	bool bActivate)
+{
+	if (!HasAuthorityOwner() || BoosterLevel < 1 || BoosterLevel > MaxCombatBoosters)
+	{
+		return false;
+	}
+
+	uint8* ActiveCount = nullptr;
+	switch (Booster)
+	{
+	case ESpellRiseCombatBooster::Melee: ActiveCount = &ActiveMeleeBoosterCount; break;
+	case ESpellRiseCombatBooster::Bow: ActiveCount = &ActiveBowBoosterCount; break;
+	case ESpellRiseCombatBooster::Spell: ActiveCount = &ActiveSpellBoosterCount; break;
+	case ESpellRiseCombatBooster::Divine: ActiveCount = &ActiveDivineBoosterCount; break;
+	default: return false;
+	}
+
+	if (bActivate)
+	{
+		if (BoosterLevel != static_cast<int32>(*ActiveCount) + 1
+			|| BoosterLevel > GetCombatBoosterCount(Booster)
+			|| GetTotalActiveCombatBoosterCount() >= MaxCombatBoosters)
+		{
+			return false;
+		}
+		++(*ActiveCount);
+		ApplyPrimaryAttributeBoosterDelta(Booster, 1);
+	}
+	else
+	{
+		if (BoosterLevel != static_cast<int32>(*ActiveCount))
+		{
+			return false;
+		}
+		--(*ActiveCount);
+		ApplyPrimaryAttributeBoosterDelta(Booster, -1);
+	}
+
+	ForceOwnerNetUpdate();
+	BroadcastCharacterProgressionChanged();
+	return true;
+}
+
+void USpellRiseProgressionComponent::ApplyPrimaryAttributeBoosterDelta(
+	ESpellRiseCombatBooster Booster,
+	int32 CountDelta) const
+{
+	if (CountDelta == 0)
+	{
+		return;
+	}
+
+	const ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(GetOwner());
+	USpellRiseAbilitySystemComponent* ASC = PlayerState ? PlayerState->GetSpellRiseASC() : nullptr;
+	if (!ASC)
+	{
+		return;
+	}
+
+	FGameplayAttribute Attribute;
+	switch (Booster)
+	{
+	case ESpellRiseCombatBooster::Melee: Attribute = UCombatAttributeSet::GetStrengthAttribute(); break;
+	case ESpellRiseCombatBooster::Bow: Attribute = UCombatAttributeSet::GetAgilityAttribute(); break;
+	case ESpellRiseCombatBooster::Spell: Attribute = UCombatAttributeSet::GetIntelligenceAttribute(); break;
+	case ESpellRiseCombatBooster::Divine: Attribute = UCombatAttributeSet::GetWisdomAttribute(); break;
+	default: return;
+	}
+
+	const float CurrentBase = ASC->GetNumericAttributeBase(Attribute);
+	ASC->SetNumericAttributeBase(
+		Attribute,
+		FMath::Clamp(
+			CurrentBase + static_cast<float>(CountDelta) * PrimaryAttributeBonusPerActiveBooster,
+			0.0f,
+			140.0f));
 }
 
 void USpellRiseProgressionComponent::ResetProgressionLevels_Server()

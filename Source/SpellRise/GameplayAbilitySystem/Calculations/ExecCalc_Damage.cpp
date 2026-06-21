@@ -427,14 +427,6 @@ namespace SpellRiseDamageProgression
 		return BaseContribution + ProgressionBonus;
 	}
 
-	static float ApplyPrimaryAttributeContribution(float Damage, float PrimaryAttribute)
-	{
-		const float ClampedDamage = FMath::Max(0.f, Damage);
-		const float PrimaryAlpha = FMath::Clamp(PrimaryAttribute, 0.f, 140.f) / 100.f;
-		return (ClampedDamage * MinimumDamageContribution)
-			+ (ClampedDamage * MaximumProgressionBonusContribution * PrimaryAlpha);
-	}
-
 	static FGameplayTag ResolveEquippedWeaponProgressionTag(const UAbilitySystemComponent* SourceASC)
 	{
 		if (!SourceASC)
@@ -796,13 +788,11 @@ void UExecCalc_Damage::Execute_Implementation(
 	float PreAttributeDamage = 0.f;
 	float PreLevelScaleDamage = 0.f;
 	float PlayerLevelDamageScale = 1.f;
+	float CombatBoosterDamageMultiplier = 1.f;
 	int32 SourceCharacterLevelForDebug = 0;
 	int32 TargetCharacterLevelForDebug = 0;
 	int32 LowerEffectiveCharacterLevelForDebug = 0;
 	int32 HigherEffectiveCharacterLevelForDebug = 0;
-	float PrimaryAttributeRawForDebug = 0.f;
-	float PrimaryAttributeClampedForDebug = 0.f;
-	const TCHAR* PrimaryAttributeNameForDebug = TEXT("None");
 	FGameplayTag EffectiveWeaponProgressionTag;
 
 	if (bIsFallDamage)
@@ -913,37 +903,28 @@ void UExecCalc_Damage::Execute_Implementation(
 	FinalDamage = BaseDamage * DamageScaling;
 	PreAttributeDamage = FinalDamage;
 
-	if (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine()))
+	const USpellRiseProgressionComponent* SourceProgression =
+		SpellRiseDamageProgression::ResolveSourceProgressionComponent(SourceASC, Spec.GetContext().GetSourceObject());
+	if (SourceProgression)
 	{
-		PrimaryAttributeRawForDebug = 20.f;
-		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.WisdomDef, Params, PrimaryAttributeRawForDebug);
-		PrimaryAttributeNameForDebug = TEXT("WIS");
+		if (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine()))
+		{
+			CombatBoosterDamageMultiplier = SourceProgression->GetCombatBoosterDamageMultiplier(ESpellRiseCombatBooster::Divine);
+		}
+		else if (Channel == 1)
+		{
+			CombatBoosterDamageMultiplier = SourceProgression->GetCombatBoosterDamageMultiplier(ESpellRiseCombatBooster::Melee);
+		}
+		else if (Channel == 2)
+		{
+			CombatBoosterDamageMultiplier = SourceProgression->GetCombatBoosterDamageMultiplier(ESpellRiseCombatBooster::Bow);
+		}
+		else if (Channel == 3)
+		{
+			CombatBoosterDamageMultiplier = SourceProgression->GetCombatBoosterDamageMultiplier(ESpellRiseCombatBooster::Spell);
+		}
 	}
-	else if (Channel == 1)
-	{
-		PrimaryAttributeRawForDebug = 20.f;
-		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.StrengthDef, Params, PrimaryAttributeRawForDebug);
-		PrimaryAttributeNameForDebug = TEXT("STR");
-	}
-	else if (Channel == 2)
-	{
-		PrimaryAttributeRawForDebug = 20.f;
-		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.AgilityDef, Params, PrimaryAttributeRawForDebug);
-		PrimaryAttributeNameForDebug = TEXT("AGI");
-	}
-	else if (Channel == 3)
-	{
-		PrimaryAttributeRawForDebug = 20.f;
-		ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(C.IntelligenceDef, Params, PrimaryAttributeRawForDebug);
-		PrimaryAttributeNameForDebug = TEXT("INT");
-	}
-
-	PrimaryAttributeClampedForDebug = FMath::Clamp(PrimaryAttributeRawForDebug, 0.f, 140.f);
-	if (Channel == 1 || Channel == 2 || Channel == 3
-		|| (SpellRiseTags::DamageType_Divine().IsValid() && EffectiveDamageTags.HasTagExact(SpellRiseTags::DamageType_Divine())))
-	{
-		FinalDamage = SpellRiseDamageProgression::ApplyPrimaryAttributeContribution(FinalDamage, PrimaryAttributeRawForDebug);
-	}
+	FinalDamage *= CombatBoosterDamageMultiplier;
 
 	PreLevelScaleDamage = FinalDamage;
 	PlayerLevelDamageScale = SpellRiseDamageProgression::GetPlayerLevelDamageScale(
@@ -1008,7 +989,7 @@ void UExecCalc_Damage::Execute_Implementation(
 		UE_LOG(
 			LogSpellRiseDamage,
 			Log,
-			TEXT("[DamageCalc] Source=%s Target=%s Ability=%s Channel=%s AbilityRaw=%.2f AbilityContribution=%.2f UsesWeapon=%s WeaponRaw=%.2f WeaponContribution=%.2f Base=%.2f AbilityLevel=%d AbilityLevelAffectsDamage=false WeaponTag=%s WeaponLevel=%d SchoolTag=%s SchoolLevel=%d Scaling=%.3f PreAttribute=%.2f PrimaryAttribute=%s PrimaryRaw=%.2f PrimaryClamped=%.2f PreLevelScale=%.2f SourceLevel=%d TargetLevel=%d LevelLower=%d LevelHigher=%d LevelScale=%.3f PreMitigation=%.2f TrueDamage=%s Resist=%.2f ArmorPen=%.2f ArmorPenApplied=%s Crit=%s CritMult=%.2f Final=%.2f"),
+			TEXT("[DamageCalc] Source=%s Target=%s Ability=%s Channel=%s AbilityRaw=%.2f AbilityContribution=%.2f UsesWeapon=%s WeaponRaw=%.2f WeaponContribution=%.2f Base=%.2f AbilityLevel=%d AbilityLevelAffectsDamage=false WeaponTag=%s WeaponLevel=%d SchoolTag=%s SchoolLevel=%d Scaling=%.3f PreBooster=%.2f BoosterMult=%.3f PreLevelScale=%.2f SourceLevel=%d TargetLevel=%d LevelLower=%d LevelHigher=%d LevelScale=%.3f PreMitigation=%.2f TrueDamage=%s Resist=%.2f ArmorPen=%.2f ArmorPenApplied=%s Crit=%s CritMult=%.2f Final=%.2f"),
 			*GetNameSafe(SourceASC->GetOwnerActor()),
 			*GetNameSafe(TargetASC->GetOwnerActor()),
 			*GetNameSafe(SourceAbility),
@@ -1026,9 +1007,7 @@ void UExecCalc_Damage::Execute_Implementation(
 			SchoolLevelForDebug,
 			DamageScaling,
 			PreAttributeDamage,
-			PrimaryAttributeNameForDebug,
-			PrimaryAttributeRawForDebug,
-			PrimaryAttributeClampedForDebug,
+			CombatBoosterDamageMultiplier,
 			PreLevelScaleDamage,
 			SourceCharacterLevelForDebug,
 			TargetCharacterLevelForDebug,

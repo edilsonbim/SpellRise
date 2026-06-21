@@ -15,9 +15,9 @@
 
 ## Ordem de dano
 1. Base damage do `SetByCaller`.
-2. Progressao autoritativa: base da ability escalada por nivel da escola, dano da arma escalado por nivel da arma e atributo primario aplicavel.
+2. Progressao autoritativa: base da ability escalada por nivel da escola e dano da arma escalado por nivel da arma.
 3. Escala generica de dano.
-4. Escala por atributo primario: STR melee, AGI bow, INT spell, WIS divine.
+4. Booster ofensivo: `+5%` por slot em melee, bow, spell ou divine.
 5. Escala PvP por diferenca de level efetivo, capado em `65`.
 6. Mitigacao por resistencia com penetracao.
 7. Crit chance + crit multiplier.

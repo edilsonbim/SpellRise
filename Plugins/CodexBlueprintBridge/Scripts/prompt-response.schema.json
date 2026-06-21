@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "response": {
+      "type": "string"
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommendedNextSteps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "proposedPatch": {
+      "type": "null"
+    }
+  },
+  "required": [
+    "summary",
+    "response",
+    "risks",
+    "recommendedNextSteps",
+    "proposedPatch"
+  ],
+  "additionalProperties": false
+}

@@ -144,7 +144,7 @@ struct FSpellRiseCharacterSaveData
 	GENERATED_BODY()
 
 	UPROPERTY()
-	int32 SchemaVersion = 11;
+	int32 SchemaVersion = 13;
 
 	UPROPERTY()
 	FString SteamId64;
@@ -217,6 +217,30 @@ struct FSpellRiseCharacterSaveData
 
 	UPROPERTY()
 	int32 AttributePoints = 0;
+
+	UPROPERTY()
+	int32 MeleeBoosterCount = 0;
+
+	UPROPERTY()
+	int32 BowBoosterCount = 0;
+
+	UPROPERTY()
+	int32 SpellBoosterCount = 0;
+
+	UPROPERTY()
+	int32 DivineBoosterCount = 0;
+
+	UPROPERTY()
+	int32 ActiveMeleeBoosterCount = 0;
+
+	UPROPERTY()
+	int32 ActiveBowBoosterCount = 0;
+
+	UPROPERTY()
+	int32 ActiveSpellBoosterCount = 0;
+
+	UPROPERTY()
+	int32 ActiveDivineBoosterCount = 0;
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedTalent> Talents;

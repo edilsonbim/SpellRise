@@ -19,6 +19,8 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 | Ability Hotbar 8+8 | input local -> slot lógico -> `InputTag` | servidor valida alteração de slot, grupo Weapon/Common e rate-limit | GAS ativa ability já concedida | slots `OwnerOnly` no `PlayerState` | só UX/seleção | slot stale após troca de arma ou OnRep fora de ordem |
 | Persistencia de hotbar/equipamento | save/load server-side | servidor valida paths, slots, inventario restaurado e ownership | Servidor | hotbar/equipment owner-only existentes | nao | restore fora de ordem com inventario/talentos |
 | Progressao personagem/XP | servidor/persistencia/reward de inimigo | servidor valida fonte de XP e tabela de level | Servidor | `PlayerState` owner-only, RepNotify apenas quando muda | nao | cliente tentar forcar XP/level ou UI stale |
+| Gasto de Attribute Points | UI local -> `PlayerState::ServerSpendAttributePoints` com enum + quantidade | owner, perfil aplicado, atributo canonico, quantidade `1..10`, saldo, cap `100`, max `5 RPC/s` | Servidor via ASC + saldo no componente de progressao | atributos GAS e saldo existentes, ambos `OwnerOnly` | nao | spam reliable ou UI observar saldo/atributo em frames distintos |
+| Compra/ativacao de booster | UI -> `ServerPurchaseCombatBooster(enum)` ou `ServerSetCombatBoosterActive(enum,level,bool)` | owner, perfil, enum, level `1..4`, ordem sequencial, saldo/custo, posse e limite de 4 ativos; max `5 RPC/s` | Servidor debita compra ou altera loadout ativo | 8 `uint8` `OwnerOnly` | nao | spam reliable ou UI observar saldo/loadout em frames distintos |
 | Progressao arma/escola | servidor/persistencia | servidor valida tag e nivel `1..100` | Servidor | `PlayerState` owner-only | nao | cliente tentar forcar nivel ou UI stale |
 | Target Data (spell/projétil) | trace local como intenção | payload/alcance/LOS/ownership | Servidor | resultado autoritativo | Sim (pré-visual) | cliente tentar forçar hit inválido |
 | Projétil | após validação do cast | spawn + trajetória inicial | Servidor | actor replicado + hit no servidor | opcional visual local | hit fantasma por ordem de eventos |
@@ -52,6 +54,8 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 - Hotbar de abilities: `PlayerState` owner-only, 16 slots; RPC de edição envia `SlotIndex + InputTag + AbilityClass`, rate-limitado no servidor.
 - Persistência de hotbar/equipamento não adiciona RPC novo; restore usa chamadas server-side e payload de snapshot validado.
 - Progressão/XP não salva no storage a cada kill; rewards marcam o personagem como dirty e o snapshot periódico salva apenas players dirty. Level-up pode forçar net update owner-only, XP comum usa o update normal do `PlayerState`.
+- Gasto de Attribute Points usa no maximo `5 RPC/s` por jogador, payload aproximado de `5 bytes` antes de overhead (`uint8` + `int32`), nao cria propriedade replicada e marca o snapshot como dirty para o autosave server-side.
+- Compra usa payload aproximado de `1 byte`; ativacao usa aproximadamente `2 bytes` (`enum + bool`). Ambos compartilham maximo `5 RPC/s`. O componente replica oito contadores `uint8` owner-only.
 - Inventario de player: componente no `PlayerState`; `Items`/`Currency` seguem a replicacao do componente Narrative e `LootSource` permanece `OwnerOnly`.
 - RPC crítico de gameplay: máximo recomendado `<= 20/s` por jogador por fluxo.
 - Inventário/loot/use/store: máximo inicial de 6 RPCs por 0,25s por componente e quantity `1..1000`; rejeições devem usar log categorizado.

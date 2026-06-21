@@ -20,6 +20,11 @@
       "Name": "CodexBlueprintBridge",
       "Type": "Editor",
       "LoadingPhase": "Default"
+    },
+    {
+      "Name": "CodexBlueprintBridgeTests",
+      "Type": "Editor",
+      "LoadingPhase": "PostEngineInit"
     }
   ]
 }

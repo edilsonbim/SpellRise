@@ -31,4 +31,6 @@ O servidor e a unica autoridade para dano, custos, cooldowns, recursos, atributo
 - Persistencia de producao deve ser server-side.
 - Cliente nao pode enviar snapshot final confiavel nem substituir validacao do servidor.
 - Eventos sensiveis devem ser auditaveis quando afetarem economia, inventario, loot ou progressao.
+- Gasto de `AttributePoints` aceita somente intencao minima do owner (`STR/AGI/INT/WIS` + quantidade); saldo, cap, perfil carregado, rate-limit, mutacao GAS e persistencia sao resolvidos exclusivamente no servidor.
+- Compra aceita somente o enum; custo progressivo, saldo e posse sao resolvidos no servidor. Ativacao aceita enum, nivel `1..4` e booleano; o servidor exige ativar o próximo nível ou desativar exatamente o último nível ativo.
 - `-SRTestPersistentId=<SteamID64>` pode fixar a identidade apenas em PIE ou quando o modo NoSteam de teste estiver explicitamente habilitado; fora desses contextos o servidor ignora o parâmetro.

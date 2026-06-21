@@ -15,9 +15,12 @@
 4. Consolidar building mode com budget de rede e matriz de RPC.
 5. Avancar automacao multiplayer em gate continuo/CI.
 
-## Recorte de gameplay 2026-06-14
-- Reportados como corrigidos pelo operador: inventario/vendor/loot fechando aceitavelmente, barra de ability ao morrer, regen de atributos, animacao equip/unequip, camera sem arma, AoE sem dano, `Blizzard` nao entrando mais no solo e `shoot arrow`.
-- Pendentes ativos: inventario nao equipando item, recriar projetil de flecha, menu de settings para hotkeys, sockets de arma no `VisualOverride`, ragdoll, fluxo `dead`/`revive` e revisao de luzes.
+## Recorte de gameplay 2026-06-18
+- Reportados como corrigidos/feitos pelo operador: persistencia de ability bar, armas e itens equipados; XP, level, Craft Points e Talent Points no `USpellRiseProgressionComponent`; cooldown por nivel de ability.
+- Prioridade P0: fechar fluxo `dead`/`revive` e corrigir inventario que nao equipa item.
+- Prioridade P1: criar mecanica de gasto de Attribute Points em STR/AGI/INT/WIS; recriar projetil de flecha; concluir rework do calculo de dano/TTK; corrigir socket de arma no `VisualOverride`; melhorar talent tree com nivel setavel e curva de custo.
+- Prioridade P2: implementar durabilidade de itens; refazer bonus dos atributos base; criar boosters de atributos base; criar menu de settings para hotkeys; melhorar ragdoll.
+- Prioridade P3: criar spell de retorno de dano; refazer visual da talent tree por escolas; revisar luzes.
 - Validacao formal nao foi executada neste registro documental; nao tratar os itens como `Verified` ate passar pelos gates aplicaveis.
 
 ## Regras de validacao

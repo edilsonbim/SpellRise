@@ -43,7 +43,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePersistence, Log, All);
 
 namespace
 {
-	constexpr int32 PersistenceCharacterSchemaVersion = 11;
+	constexpr int32 PersistenceCharacterSchemaVersion = 13;
 	constexpr int32 PersistenceCharacterInventorySchemaVersion = 8;
 	constexpr int32 PersistentCharacterLevelMin = 1;
 	constexpr int32 PersistentCharacterLevelMax = 999;
@@ -54,7 +54,7 @@ namespace
 	constexpr int32 LegacyPersistenceWorldSchemaVersion = 5;
 	constexpr int32 MaxVisualConfigurationJsonLength = 64 * 1024;
 	constexpr float PersistentPrimaryAttributeMin = 0.0f;
-	constexpr float PersistentPrimaryAttributeMax = 140.0f;
+	constexpr float PersistentPrimaryAttributeMax = 100.0f;
 	constexpr int32 PersistentTalentLevelMin = 1;
 	constexpr int32 PersistentTalentLevelMax = 100;
 	constexpr uint8 SlotEncodingLegacyRawBase64 = 0;
@@ -553,6 +553,14 @@ namespace
 		int32& OutTalentPoints,
 		int32& OutCraftPoints,
 		int32& OutAttributePoints,
+		int32& OutMeleeBoosterCount,
+		int32& OutBowBoosterCount,
+		int32& OutSpellBoosterCount,
+		int32& OutDivineBoosterCount,
+		int32& OutActiveMeleeBoosterCount,
+		int32& OutActiveBowBoosterCount,
+		int32& OutActiveSpellBoosterCount,
+		int32& OutActiveDivineBoosterCount,
 		TArray<FSpellRiseSavedProgressionLevel>& OutWeaponSkillLevels,
 		TArray<FSpellRiseSavedProgressionLevel>& OutSchoolLevels)
 	{
@@ -561,6 +569,14 @@ namespace
 		OutTalentPoints = 100;
 		OutCraftPoints = 100;
 		OutAttributePoints = 0;
+		OutMeleeBoosterCount = 0;
+		OutBowBoosterCount = 0;
+		OutSpellBoosterCount = 0;
+		OutDivineBoosterCount = 0;
+		OutActiveMeleeBoosterCount = 0;
+		OutActiveBowBoosterCount = 0;
+		OutActiveSpellBoosterCount = 0;
+		OutActiveDivineBoosterCount = 0;
 		OutWeaponSkillLevels.Reset();
 		OutSchoolLevels.Reset();
 		if (!PlayerState)
@@ -579,6 +595,14 @@ namespace
 		OutTalentPoints = FMath::Clamp(ProgressionComponent->GetTalentPoints(), 0, PersistentProgressionCurrencyMax);
 		OutCraftPoints = FMath::Clamp(ProgressionComponent->GetCraftPoints(), 0, PersistentProgressionCurrencyMax);
 		OutAttributePoints = FMath::Clamp(ProgressionComponent->GetAttributePoints(), 0, PersistentProgressionCurrencyMax);
+		OutMeleeBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Melee);
+		OutBowBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Bow);
+		OutSpellBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Spell);
+		OutDivineBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Divine);
+		OutActiveMeleeBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Melee);
+		OutActiveBowBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Bow);
+		OutActiveSpellBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Spell);
+		OutActiveDivineBoosterCount = ProgressionComponent->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Divine);
 		CollectProgressionLevels(ProgressionComponent->GetWeaponSkillLevels(), OutWeaponSkillLevels);
 		CollectProgressionLevels(ProgressionComponent->GetSchoolLevels(), OutSchoolLevels);
 	}
@@ -980,6 +1004,22 @@ namespace
 			? FMath::Clamp(Data.AttributePoints, 0, PersistentProgressionCurrencyMax)
 			: 0;
 		ProgressionComponent->SetCharacterProgression_Server(SavedCharacterLevel, SavedExperience, SavedTalentPoints, SavedCraftPoints, SavedAttributePoints);
+		if (Data.SchemaVersion >= 12)
+		{
+			ProgressionComponent->SetCombatBoosterCounts_Server(
+				Data.MeleeBoosterCount,
+				Data.BowBoosterCount,
+				Data.SpellBoosterCount,
+				Data.DivineBoosterCount,
+				Data.SchemaVersion >= 13 ? Data.ActiveMeleeBoosterCount : Data.MeleeBoosterCount,
+				Data.SchemaVersion >= 13 ? Data.ActiveBowBoosterCount : Data.BowBoosterCount,
+				Data.SchemaVersion >= 13 ? Data.ActiveSpellBoosterCount : Data.SpellBoosterCount,
+				Data.SchemaVersion >= 13 ? Data.ActiveDivineBoosterCount : Data.DivineBoosterCount);
+		}
+		else
+		{
+			ProgressionComponent->SetCombatBoosterCounts_Server(0, 0, 0, 0, 0, 0, 0, 0);
+		}
 		PlayerState->SetTalentPoints_Server(SavedTalentPoints);
 
 		ProgressionComponent->ResetProgressionLevels_Server();
@@ -1223,6 +1263,23 @@ namespace
 			|| Data.AttributePoints < 0 || Data.AttributePoints > PersistentProgressionCurrencyMax)
 		{
 			OutReason = TEXT("invalid_character_progression");
+			return false;
+		}
+
+		if (Data.MeleeBoosterCount < 0 || Data.BowBoosterCount < 0
+			|| Data.SpellBoosterCount < 0 || Data.DivineBoosterCount < 0
+			|| Data.MeleeBoosterCount > 4 || Data.BowBoosterCount > 4
+			|| Data.SpellBoosterCount > 4 || Data.DivineBoosterCount > 4
+			|| Data.ActiveMeleeBoosterCount < 0 || Data.ActiveBowBoosterCount < 0
+			|| Data.ActiveSpellBoosterCount < 0 || Data.ActiveDivineBoosterCount < 0
+			|| Data.ActiveMeleeBoosterCount > Data.MeleeBoosterCount
+			|| Data.ActiveBowBoosterCount > Data.BowBoosterCount
+			|| Data.ActiveSpellBoosterCount > Data.SpellBoosterCount
+			|| Data.ActiveDivineBoosterCount > Data.DivineBoosterCount
+			|| Data.ActiveMeleeBoosterCount + Data.ActiveBowBoosterCount
+				+ Data.ActiveSpellBoosterCount + Data.ActiveDivineBoosterCount > 4)
+		{
+			OutReason = TEXT("invalid_combat_boosters");
 			return false;
 		}
 
@@ -2769,10 +2826,27 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 	{
 	}
 
-	OutData.Strength = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute()));
-	OutData.Agility = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute()));
-	OutData.Intelligence = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute()));
-	OutData.Wisdom = ClampPersistentPrimaryAttribute(ASC->GetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute()));
+	const USpellRiseProgressionComponent* Progression = SRPlayerState->GetProgressionComponent();
+	const float MeleeBoosterBonus = Progression
+		? Progression->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Melee) * 10.0f
+		: 0.0f;
+	const float BowBoosterBonus = Progression
+		? Progression->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Bow) * 10.0f
+		: 0.0f;
+	const float SpellBoosterBonus = Progression
+		? Progression->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Spell) * 10.0f
+		: 0.0f;
+	const float DivineBoosterBonus = Progression
+		? Progression->GetActiveCombatBoosterCount(ESpellRiseCombatBooster::Divine) * 10.0f
+		: 0.0f;
+	OutData.Strength = ClampPersistentPrimaryAttribute(
+		ASC->GetNumericAttributeBase(UCombatAttributeSet::GetStrengthAttribute()) - MeleeBoosterBonus);
+	OutData.Agility = ClampPersistentPrimaryAttribute(
+		ASC->GetNumericAttributeBase(UCombatAttributeSet::GetAgilityAttribute()) - BowBoosterBonus);
+	OutData.Intelligence = ClampPersistentPrimaryAttribute(
+		ASC->GetNumericAttributeBase(UCombatAttributeSet::GetIntelligenceAttribute()) - SpellBoosterBonus);
+	OutData.Wisdom = ClampPersistentPrimaryAttribute(
+		ASC->GetNumericAttributeBase(UCombatAttributeSet::GetWisdomAttribute()) - DivineBoosterBonus);
 
 	OutData.Health = ASC->GetNumericAttribute(UResourceAttributeSet::GetHealthAttribute());
 	OutData.Mana = ASC->GetNumericAttribute(UResourceAttributeSet::GetManaAttribute());
@@ -2794,6 +2868,14 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 		OutData.TalentPoints,
 		OutData.CraftPoints,
 		OutData.AttributePoints,
+		OutData.MeleeBoosterCount,
+		OutData.BowBoosterCount,
+		OutData.SpellBoosterCount,
+		OutData.DivineBoosterCount,
+		OutData.ActiveMeleeBoosterCount,
+		OutData.ActiveBowBoosterCount,
+		OutData.ActiveSpellBoosterCount,
+		OutData.ActiveDivineBoosterCount,
 		OutData.WeaponSkillLevels,
 		OutData.SchoolLevels);
 

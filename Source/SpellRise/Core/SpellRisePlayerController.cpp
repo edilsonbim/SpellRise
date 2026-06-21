@@ -30,6 +30,8 @@
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePlayerControllerRuntime, Log, All);
 
@@ -555,6 +557,7 @@ void ASpellRisePlayerController::RestoreGameplayInputAfterUI(const FName Source)
 		return;
 	}
 
+	bUIInteractionModeActive = false;
 	bShowMouseCursor = false;
 	bEnableClickEvents = false;
 	bEnableMouseOverEvents = false;
@@ -578,6 +581,40 @@ void ASpellRisePlayerController::RestoreGameplayInputAfterUI(const FName Source)
 		*GetNameSafe(this),
 		*GetNameSafe(GetPawn()));
 	LogInputFocusSnapshot(TEXT("RestoreGameplayInputAfterUI"));
+}
+
+void ASpellRisePlayerController::ToggleUIInteractionMode()
+{
+	if (!IsLocalController() || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	if (bUIInteractionModeActive)
+	{
+		RestoreGameplayInputAfterUI(TEXT("ToggleUIInteractionMode"));
+		return;
+	}
+
+	bUIInteractionModeActive = true;
+	bShowMouseCursor = true;
+	bEnableClickEvents = true;
+	bEnableMouseOverEvents = true;
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetHideCursorDuringCapture(false);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(true);
+
+	RefreshEnhancedInputContexts();
+
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+		TEXT("[InputFocus][UIInteraction] Active=1 Controller=%s Pawn=%s"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetPawn()));
+	LogInputFocusSnapshot(TEXT("ToggleUIInteractionMode.Enable"));
 }
 
 void ASpellRisePlayerController::InventorySplitSlotSERVER_Implementation(UObject* FromContainer, int32 Slot, int32 Amount)
@@ -756,6 +793,107 @@ void ASpellRisePlayerController::SetupInputComponent()
 		EIC->BindAction(IA_Ability8, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility8Released);
 	}
 
+	if (ToggleUIInteractionKey.IsValid())
+	{
+		InputComponent->BindKey(
+			ToggleUIInteractionKey,
+			IE_Pressed,
+			this,
+			&ASpellRisePlayerController::OnToggleUIInteractionPressed);
+	}
+
+#if !UE_BUILD_SHIPPING
+	if (DebugGrantExperienceKey.IsValid())
+	{
+		InputComponent->BindKey(
+			DebugGrantExperienceKey,
+			IE_Pressed,
+			this,
+			&ASpellRisePlayerController::OnDebugGrantExperiencePressed);
+	}
+#endif
+
+}
+
+void ASpellRisePlayerController::OnToggleUIInteractionPressed()
+{
+	ToggleUIInteractionMode();
+}
+
+void ASpellRisePlayerController::OnDebugGrantExperiencePressed()
+{
+#if !UE_BUILD_SHIPPING
+	if (HasAuthority())
+	{
+		ServerGrantDebugExperience_Implementation();
+		return;
+	}
+
+	ServerGrantDebugExperience();
+#endif
+}
+
+void ASpellRisePlayerController::ServerGrantDebugExperience_Implementation()
+{
+#if !UE_BUILD_SHIPPING
+	constexpr double MinimumGrantIntervalSeconds = 0.25;
+	constexpr float MaximumDebugExperienceGrant = 100000000.0f;
+
+	const UWorld* World = GetWorld();
+	const double CurrentTimeSeconds = World ? World->GetTimeSeconds() : 0.0;
+	if (LastDebugExperienceGrantTimeSeconds >= 0.0
+		&& CurrentTimeSeconds - LastDebugExperienceGrantTimeSeconds < MinimumGrantIntervalSeconds)
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+			TEXT("[DebugXP][Rejected] Reason=rate_limit Controller=%s"),
+			*GetNameSafe(this));
+		return;
+	}
+
+	if (!FMath::IsFinite(DebugExperienceGrantAmount)
+		|| DebugExperienceGrantAmount < 1.0f
+		|| DebugExperienceGrantAmount > MaximumDebugExperienceGrant)
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+			TEXT("[DebugXP][Rejected] Reason=invalid_amount Controller=%s Amount=%.2f"),
+			*GetNameSafe(this),
+			DebugExperienceGrantAmount);
+		return;
+	}
+
+	ASpellRisePlayerState* SpellRisePlayerState = GetPlayerState<ASpellRisePlayerState>();
+	USpellRiseProgressionComponent* ProgressionComponent = SpellRisePlayerState
+		? SpellRisePlayerState->GetProgressionComponent()
+		: nullptr;
+	if (!ProgressionComponent)
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+			TEXT("[DebugXP][Rejected] Reason=missing_progression Controller=%s PlayerState=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(SpellRisePlayerState));
+		return;
+	}
+
+	const int32 ExperienceToGrant = FMath::RoundToInt(DebugExperienceGrantAmount);
+	if (!ProgressionComponent->AddExperience_Server(ExperienceToGrant))
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+			TEXT("[DebugXP][Rejected] Reason=grant_failed Controller=%s PlayerState=%s Amount=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(SpellRisePlayerState),
+			ExperienceToGrant);
+		return;
+	}
+
+	LastDebugExperienceGrantTimeSeconds = CurrentTimeSeconds;
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+		TEXT("[DebugXP][Granted] Controller=%s PlayerState=%s Amount=%d Level=%d Experience=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(SpellRisePlayerState),
+		ExperienceToGrant,
+		ProgressionComponent->GetCharacterLevel(),
+		ProgressionComponent->GetExperience());
+#endif
 }
 
 void ASpellRisePlayerController::OnPossess(APawn* InPawn)

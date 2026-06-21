@@ -1,6 +1,8 @@
 # Backlog
 
 ## Progressao
+- Feito, pendente de validacao formal: XP, level, `CraftPoints` e `TalentPoints` centralizados no `USpellRiseProgressionComponent` autoritativo do `PlayerState`.
+- Corrigido, pendente de validacao formal: cooldown por nivel de ability no fluxo GAS; manter configuracao data-driven e decisao final no servidor.
 - Pendente BP: no `TalentTreeComponent`, chamar `EnsureWeaponSkillLevelFromTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState` quando talento de arma for concedido/restaurado.
 - Pendente BP: no `TalentTreeComponent`, trocar o vinculo manual de arma por `EnsureProgressionLevelFromAbilityDefinitionTalent_Server` quando houver `USpellRiseAbilityDefinition`, cobrindo arma e escola com o mesmo fluxo.
 - Pendente migração: avaliar renomear `bGrantTalentPointsOnDeath`/`MinDamageContributionForTalentReward` para semântica de XP depois que os Blueprints forem resalvos com redirect seguro.
@@ -59,22 +61,33 @@
 - Owner: Gameplay/Network
 - Alvo: budget de rede, matriz RPC e validação server-side de contexto/alcance/LOS.
 
-## Alta prioridade
-- Corrigir inventario que nao equipa item: revisar fluxo Narrative Inventory -> equipamento -> grant/remove GAS -> attach visual, mantendo decisão no servidor.
-- Recriar projetil de flecha: restaurar pipeline free-target `aim local -> target data -> validação server -> spawn replicado -> hit/GE no servidor`.
-- Criar menu de settings para hotkeys: permitir remapeamento de inputs/hotbar sem mover estado autoritativo para UI/PlayerController.
-- Corrigir sockets de equipamento/projeteis: revisar attach points usados por equip/unequip, arma equipada/stowed e spawn de projeteis.
-- Corrigir socket de arma no `VisualOverride`: garantir attach correto quando o visual do personagem troca mesh/skeleton, sem depender de lógica de UI.
+## Gameplay — P0 bloqueante
+- Corrigido, pendente de validacao formal: persistir ability hotbar, armas e itens equipados no snapshot server-side; validar restore em DS+2 e reconexao sem criar item ausente no inventario restaurado.
 - Implementar/fechar fluxo de dead e revive (em progresso): estado `Downed`, aceitar morte, finalizar, levantar/reviver, full loot apenas na morte final, respawn e reconciliação.
-- Melhorar ragdoll: separar decisão de morte server-side da apresentação client-side e evitar dependência em Dedicated Server.
-- Revisar luzes: ajustar iluminação/custo visual sem impactar DS/headless.
-- Configurar cooldown por nivel de ability: curva/data-driven por habilidade, aplicada no fluxo GAS sem depender de UI.
+- Corrigir inventario que nao equipa item: revisar fluxo Narrative Inventory -> equipamento -> grant/remove GAS -> attach visual, mantendo decisão no servidor.
+
+## Gameplay — P1 alta
+- Implementado e com build `SpellRiseEditor Win64 Development` aprovada em 2026-06-19: gasto autoritativo de `AttributePoints` em STR/AGI/INT/WIS via RPC owner-bound no `PlayerState`, com validacao de perfil, owner, saldo, atributo canonico, quantidade `1..10`, cap `100`, rate-limit `5/s`, mutacao pelo ASC e dirty-save server-side. Pendente ligar BP/UI e validar DS+2 normal + lag/loss + reconexao.
+- Recriar projetil de flecha: restaurar pipeline free-target `aim local -> target data -> validação server -> spawn replicado -> hit/GE no servidor`.
+- Refazer cálculo de dano para melhorar TTK (em progresso): consolidar fórmula com dano base da ability, arma equipada, nível da arma, escola, resist/penetration/crit e curvas de balanceamento; `AbilityLevel` permanece restrito a custo/cooldown.
+- Corrigir socket de arma no `VisualOverride`: garantir attach correto quando o visual do personagem troca mesh/skeleton, sem depender de lógica de UI.
+- Corrigir sockets de equipamento/projeteis: revisar attach points usados por equip/unequip, arma equipada/stowed e spawn de projeteis.
 - Melhorar talent tree: permitir nível setável por talento, curva de gasto de talent points e validação server-side do custo.
-- Criar boosters de atributos base: buffs temporários/persistentes sobre STR/AGI/INT/WIS com limites claros e compatibilidade com persistência.
+- balance pass de resist / penetration / crit sob TTK alvo.
+
+## Gameplay — P2 média
+- Incluir durabilidade de itens: desgaste e reparo decididos no servidor, persistidos e auditáveis, com UI apenas apresentando o estado replicado.
 - Refazer bônus derivados dos atributos base: revisar o que STR/AGI/INT/WIS concedem e documentar impacto em AttributeSet/MMC/ExecCalc/UI.
-- Refazer cálculo de dano para melhorar TTK: consolidar fórmula com nível da ability, arma equipada, nível da arma, escola, resist/penetration/crit e curvas de balanceamento.
+- Feito em C++, pendente UI/smoke: ate quatro boosters por categoria com custos `200/400/800/1600 TalentPoints`, todos compraveis e loadout limitado a quatro ativos; Melee/Bow/Spell dão `+5%` de dano e Divine dá `+5%` de dano e `+10%` de cura por ativo.
+- Criar menu de settings para hotkeys: permitir remapeamento de inputs/hotbar sem mover estado autoritativo para UI/PlayerController.
+- Melhorar ragdoll: separar decisão de morte server-side da apresentação client-side e evitar dependência em Dedicated Server.
+
+## Gameplay — P3 baixa
+- Criar spell de retorno de dano: aplicar retorno via GAS/GameplayEffect no servidor com limites anti-loop, sem confiar em dano informado pelo cliente.
 - Refazer visual da talent tree com animações interativas por escolas, mantendo UI client-only e sem estado autoritativo no widget.
-- balance pass de resist / penetration / crit sob TTK alvo;
+- Revisar luzes: ajustar iluminação/custo visual sem impactar DS/headless.
+
+## Engenharia contínua
 - automação multiplayer em CI;
 - revisão da base GAS para fronteiras explícitas de activation / commit / prediction / replication.
 

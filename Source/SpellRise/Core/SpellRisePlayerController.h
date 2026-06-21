@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagContainer.h"
+#include "InputCoreTypes.h"
 #include "TimerManager.h"
 #include "SpellRiseChatTypes.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
@@ -63,6 +64,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
 	void RestoreGameplayInputAfterUI(const FName Source);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Input")
+	void ToggleUIInteractionMode();
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Input")
+	bool IsUIInteractionModeActive() const { return bUIInteractionModeActive; }
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Talents")
 	UActorComponent* ResolveTalentTreeComponentForUI() const;
@@ -188,6 +195,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TObjectPtr<UInputAction> IA_Ability8 = nullptr;
 
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Debug|Progression")
+	FKey DebugGrantExperienceKey = EKeys::F9;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Debug|Progression", meta=(ClampMin="1.0", UIMin="1.0"))
+	float DebugExperienceGrantAmount = 100.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="Input|UI")
+	FKey ToggleUIInteractionKey = EKeys::F10;
+
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TSubclassOf<UGameplayAbility> AttackAbilityClass;
 
@@ -223,6 +239,11 @@ protected:
 	void OnAbility7Released();
 	void OnAbility8Pressed();
 	void OnAbility8Released();
+	void OnToggleUIInteractionPressed();
+	void OnDebugGrantExperiencePressed();
+
+	UFUNCTION(Server, Reliable)
+	void ServerGrantDebugExperience();
 
 private:
 	void LogInputFocusSnapshot(const TCHAR* SourceLabel);
@@ -244,6 +265,12 @@ private:
 
 	void PushCombatLogMessage(const FString& MessageText);
 	bool ShouldEnableUIInputContext() const;
+
+	UPROPERTY(Transient)
+	double LastDebugExperienceGrantTimeSeconds = -1.0;
+
+	UPROPERTY(Transient)
+	bool bUIInteractionModeActive = false;
 
 	UPROPERTY(Transient)
 	double LastInputFocusSnapshotTimeSeconds = 0.0;
