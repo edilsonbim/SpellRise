@@ -18,6 +18,7 @@
 #include "SpellRiseGameState.h"
 #include "SpellRisePlayerController.h"
 #include "SpellRisePlayerState.h"
+#include "SpellRise/Components/SpellRiseChatComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseLoginPersistence, Log, All);
@@ -326,6 +327,16 @@ void ASpellRiseGameModeBase::Logout(AController* Exiting)
 		{
 			ExitingUniqueId = DescribeUniqueId(ExitingPC->PlayerState->GetUniqueId());
 			ExitingAddress = ExitingPC->GetPlayerNetworkAddress();
+		}
+		if (ASpellRisePlayerController* SpellRiseExitingPC = Cast<ASpellRisePlayerController>(ExitingPC))
+		{
+			if (ASpellRiseGameState* SpellRiseGameState = GetGameState<ASpellRiseGameState>())
+			{
+				if (USpellRiseChatComponent* ChatComponent = SpellRiseGameState->GetChatComponent())
+				{
+					ChatComponent->HandleControllerLogout(SpellRiseExitingPC);
+				}
+			}
 		}
 
 		const bool bSkipSaveForHandover = ShouldSkipSaveDuringHandover(Exiting);

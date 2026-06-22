@@ -329,7 +329,7 @@ static void SendDownedReviveCombatChat(ASpellRiseCharacterBase* DownedCharacter,
 	}
 
 	UWorld* World = DownedCharacter->GetWorld();
-	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
+	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M")));
 	const FString DownedName = ResolveSpellRiseCharacterChatName(DownedCharacter);
 	const FString ReviverName = ResolveSpellRiseCharacterChatName(Reviver);
 	ASpellRisePlayerController* DownedController = ResolveSpellRiseCharacterController(DownedCharacter);
@@ -348,7 +348,7 @@ static void SendFinalDeathCombatChat(ASpellRiseCharacterBase* Victim, ASpellRise
 	}
 
 	UWorld* World = Victim->GetWorld();
-	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
+	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M")));
 	const FString VictimName = ResolveSpellRiseCharacterChatName(Victim);
 	const FString FinalizerName = ResolveSpellRiseCharacterChatName(Finalizer);
 	ASpellRisePlayerController* VictimController = ResolveSpellRiseCharacterController(Victim);
@@ -526,6 +526,7 @@ void ASpellRiseCharacterBase::BeginPlay()
 		}
 
 		Marker->bOnlyVisibleToOwningPlayer = true;
+		Marker->bVisibleToPartyMembers = true;
 		Marker->RefreshMarker();
 	}
 

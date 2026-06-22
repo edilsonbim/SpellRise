@@ -66,6 +66,21 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	USpellRiseProgressionComponent* GetProgressionComponent() const { return ProgressionComponent; }
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Party")
+	const FString& GetPartyId() const { return PartyId; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Party")
+	bool IsInParty() const { return !PartyId.IsEmpty(); }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Party")
+	bool IsInSamePartyWith(const APlayerState* OtherPlayerState) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Party")
+	bool IsPartyLeader() const;
+
+	const FString& GetPartyLeaderId() const { return PartyLeaderId; }
+	void SetPartyState_Server(const FString& NewPartyId, const FString& NewPartyLeaderId);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Abilities")
 	FGameplayTag GetSelectedAbilityInputTag() const { return SelectedAbilityInputTag; }
 
@@ -158,6 +173,9 @@ protected:
 	UFUNCTION()
 	void OnRep_SelectedAbilityInputTag(const FGameplayTag& OldTag);
 
+	UFUNCTION()
+	void OnRep_PartyId();
+
 	UFUNCTION(Server, Reliable)
 	void ServerSetSelectedAbilityInputTag(FGameplayTag NewTag);
 
@@ -208,6 +226,12 @@ protected:
 
 	UPROPERTY(ReplicatedUsing=OnRep_SelectedAbilityInputTag, BlueprintReadOnly, Category="SpellRise|Abilities")
 	FGameplayTag SelectedAbilityInputTag;
+
+	UPROPERTY(ReplicatedUsing=OnRep_PartyId, BlueprintReadOnly, Category="SpellRise|Party")
+	FString PartyId;
+
+	UPROPERTY(ReplicatedUsing=OnRep_PartyId, BlueprintReadOnly, Category="SpellRise|Party")
+	FString PartyLeaderId;
 
 	UPROPERTY(Replicated)
 	FSpellRiseCombatLogArray CombatLog;

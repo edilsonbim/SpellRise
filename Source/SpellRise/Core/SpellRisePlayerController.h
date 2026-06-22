@@ -92,6 +92,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Chat")
 	int32 GetChatUnreadCount(const FString& TabId) const;
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
+	void ClearActiveChatHistory();
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
 	void SetWhisperBlocked(const FString& ConversationId, bool bBlocked);
 
@@ -103,6 +106,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
 	void SendWhisperToConversation(const FString& ConversationId, const FText& Text);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
+	bool OpenWhisperWithPlayerName(const FString& DisplayedPlayerName);
 
 	UFUNCTION(Server, Reliable)
 	void ServerSendWhisperToConversation(const FString& ConversationId, const FString& Text);
@@ -165,10 +171,18 @@ public:
 		bool bOutgoing);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat|Whisper")
+	void BP_OnWhisperOpenRequested(
+		const FString& ConversationId,
+		const FString& ConversationName);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat|Whisper")
 	void BP_OnWhisperUnreadChanged(const FString& ConversationId, int32 UnreadCount);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
 	void BP_OnChatUnreadChanged(const FString& TabId, int32 UnreadCount);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
+	void BP_OnChatHistoryCleared(const FString& TabId);
 
 	APawn* GetLastSpellRiseControlledPawn() const;
 

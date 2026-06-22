@@ -61,7 +61,35 @@ namespace
 
 		const APlayerState* MarkerOwnerPS = ResolveMarkerOwningPlayerState(Marker->GetOwner());
 		const APlayerState* LocalPS = PC->PlayerState;
-		return MarkerOwnerPS && LocalPS && (MarkerOwnerPS == LocalPS);
+		if (!MarkerOwnerPS || !LocalPS)
+		{
+			return false;
+		}
+		if (MarkerOwnerPS == LocalPS)
+		{
+			return true;
+		}
+		if (!Marker->bVisibleToPartyMembers)
+		{
+			return false;
+		}
+
+		static const FName SamePartyFunctionName(TEXT("IsInSamePartyWith"));
+		UFunction* SamePartyFunction = LocalPS->FindFunction(SamePartyFunctionName);
+		if (!SamePartyFunction)
+		{
+			return false;
+		}
+
+		struct FSamePartyParams
+		{
+			const APlayerState* OtherPlayerState = nullptr;
+			bool ReturnValue = false;
+		};
+		FSamePartyParams Params;
+		Params.OtherPlayerState = MarkerOwnerPS;
+		const_cast<APlayerState*>(LocalPS)->ProcessEvent(SamePartyFunction, &Params);
+		return Params.ReturnValue;
 	}
 }
 
@@ -213,11 +241,54 @@ FNavigationMarkerSettings UNavigationMarkerComponent::GetMarkerSettings(const FG
 		Settings.bShowActorRotation = Overrides.bShowActorRotation;
 	}
 
+	if (const APlayerState* MarkerOwnerPS = ResolveMarkerOwningPlayerState(GetOwner()))
+	{
+		const FString PlayerName = MarkerOwnerPS->GetPlayerName().TrimStartAndEnd();
+		if (!PlayerName.IsEmpty())
+		{
+			Settings.LocationDisplayName = FText::FromString(PlayerName.Left(32));
+		}
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const APlayerController* LocalPC = It->Get();
+			if (!LocalPC || !LocalPC->IsLocalController() || !LocalPC->PlayerState)
+			{
+				continue;
+			}
+			if (LocalPC->PlayerState == MarkerOwnerPS)
+			{
+				Settings.IconTint = FLinearColor::White;
+				break;
+			}
+
+			static const FName SamePartyFunctionName(TEXT("IsInSamePartyWith"));
+			UFunction* SamePartyFunction = LocalPC->PlayerState->FindFunction(SamePartyFunctionName);
+			if (SamePartyFunction)
+			{
+				struct FSamePartyParams
+				{
+					const APlayerState* OtherPlayerState = nullptr;
+					bool ReturnValue = false;
+				};
+				FSamePartyParams Params;
+				Params.OtherPlayerState = MarkerOwnerPS;
+				LocalPC->PlayerState.Get()->ProcessEvent(SamePartyFunction, &Params);
+				if (Params.ReturnValue)
+				{
+					Settings.IconTint = FLinearColor(0.15f, 1.0f, 0.2f, 1.0f);
+				}
+			}
+			break;
+		}
+	}
+
 	return Settings;
 }
 
 void UNavigationMarkerComponent::RefreshMarker()
 {
+	RemoveMarker();
+	RegisterMarker();
 	OnRefreshRequired.Broadcast();
 }
 

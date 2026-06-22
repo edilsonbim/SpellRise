@@ -111,6 +111,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Marker Setup|Visibility")
 	bool bOnlyVisibleToOwningPlayer = false;
 
+	// Se verdadeiro, membros da mesma party do ator dono tambem podem registrar esse marker.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Marker Setup|Visibility")
+	bool bVisibleToPartyMembers = false;
+
 	//The properties the navigation marker should use 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Marker Setup")
 	FNavigationMarkerSettings DefaultMarkerSettings;

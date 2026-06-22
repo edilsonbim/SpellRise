@@ -1,5 +1,10 @@
 # Changelog
 
+- Adicionados `/clear` local por aba e `/invite Player` server-side, com PartyId no PlayerState, roteamento do canal PARTY e NavigationMarker visível entre membros.
+- Party passou a exigir aceite `Y/N`, ganhou leader autoritativo, `/remove Player`, `/leader Player` e `/leave`; NavigationMarker agora exibe o nome do player.
+- Adicionado `/party`, saída automática no logout e reconciliação global local dos NavigationMarkers para corrigir marker visível apenas ao leader.
+- Chat passou a exibir horário `HH:mm`; markers de outros membros da Party ficam verdes e o próprio permanece branco; adicionada API local para abrir whisper por duplo clique no nome.
+
 ## Unreleased
 ### Build / Tooling
 - Build policy consolidada em Unreal Source.

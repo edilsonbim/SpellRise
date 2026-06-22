@@ -29,6 +29,12 @@ Para o mapa detalhado dos Blueprints, funções, variáveis, ordem de eventos e 
 | `/name NovoNome` | Altera o nome do próprio personagem | Servidor | Salva personagem imediatamente | Baixo; validação linear do remetente e uma operação de save |
 | `/online` | Lista os nomes dos jogadores conectados | Servidor | Não | Baixo; percorre controllers e responde somente ao solicitante |
 | `/help` | Lista comandos disponíveis para a sessão | Servidor | Não | Baixo; resposta privada sem busca externa |
+| `/clear` | Limpa somente o histórico local da aba ativa | Cliente local | Não | Sem RPC, replicação ou custo no servidor |
+| `/invite Player` | Adiciona o player online à Party do remetente e habilita canal/marcador compartilhado | Servidor | Não | Baixo; busca linear por nome e duas alterações pontuais de PlayerState |
+| `/remove Player` | Leader remove um membro da Party | Servidor | Não | Baixo; busca linear e atualização pontual |
+| `/leader Player` | Transfere liderança para outro membro | Servidor | Não | Baixo; atualiza leader nos PlayerStates da Party |
+| `/leave` | Sai da Party; se for leader, transfere para um membro restante | Servidor | Não | Baixo; dissolve Party com somente um membro |
+| `/party` | Lista membros online e identifica o leader | Servidor | Não | Baixo; busca linear e resposta privada |
 | `/w Player Mensagem` | Envia whisper privado ao player | Servidor | Não | Baixo; duas entregas client-only |
 | `/whisper Player Mensagem` | Alias completo de `/w` | Servidor | Não | Baixo; duas entregas client-only |
 | `/r Mensagem` | Responde à última conversa de whisper | Servidor | Não | Baixo; resolve o último ID de conversa |
@@ -106,6 +112,15 @@ Todos os comandos abaixo:
 - Cada mensagem carrega `ConversationId`, `ConversationName` e `bOutgoing` para a UI criar abas locais.
 - Block list de whisper é validada no servidor e não replica payload para terceiros.
 - Unread e histórico ficam apenas no cliente; não criam propriedade replicada nem `OnRep`.
+- Horários de todas as abas usam somente `HH:mm`; segundos não são transportados nem exibidos.
+- Duplo clique no nome resolve localmente o PlayerState e abre uma aba whisper; não envia RPC até existir mensagem.
+- `/clear` é interceptado antes de qualquer RPC e remove apenas mensagens cujo `TabId` corresponde à aba ativa.
+- Party usa `PartyId` e `PartyLeaderId` no `PlayerState`, replicados para todos, e roteia mensagens somente aos membros com o mesmo ID.
+- `/invite` cria convite pendente por 30 segundos. O alvo responde `Y` ou `N`; somente `Y` muta a Party.
+- Player que já está em Party não pode receber novo convite. Somente o leader pode convidar, remover ou transferir liderança.
+- Logout remove o player da Party antes de destruir o PlayerState; se era leader, transfere liderança para um membro restante.
+- Mudança de Party reconcilia todos os NavigationMarkers locais para tolerar ordem variável entre replicação de PlayerState e Pawn.
+- O marker do Character permanece owner-only por padrão, mas também é registrado localmente para PlayerStates com o mesmo `PartyId`.
 - Unread é indexado por `TabId`: `GLOBAL`, `PARTY`, `GUILD`, `COMBAT` ou `ConversationId` no whisper. Toda mensagem recebida em uma aba não ativa incrementa o contador, inclusive mensagem própria devolvida pelo servidor.
 - Whisper não pode ser enviado sem `ConversationId`; o `PlayerController` rejeita localmente esse contexto incompleto antes de criar RPC.
 - `/ban` adiciona uma operação PostgreSQL síncrona e deve permanecer rara.

@@ -118,6 +118,8 @@
 - `USpellRiseConstructionModeComponent`: isola o building mode no controller.
 - Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
 - Chat runtime: `ASpellRisePlayerController::SubmitChatMessageForConversation` recebe da UI texto/canal/conversation ID e roteia para RPCs owner-bound; `USpellRiseChatComponent` no `GameState` sanitiza, aplica rate-limit e roteia Global/System. Whisper usa identidade estável, entrega client-only e block list server-side. Histórico/unread são exclusivamente locais e o mapa Blueprint detalhado vive em `CHAT_BLUEPRINT_MAP.md`.
+- Interação de nome no chat: duplo clique é UX local, resolve o `PlayerState` replicado por nome e abre a conversa whisper sem RPC; o primeiro RPC ocorre apenas ao enviar texto.
+- Party básica: `PartyId` e `PartyLeaderId` autoritativos vivem no `ASpellRisePlayerState`; convite pendente é aceito/recusado por `Y/N` no servidor; `/party`, `/invite`, `/remove`, `/leader` e `/leave` são validados pelo `USpellRiseChatComponent`. Logout remove o membro e transfere liderança quando necessário. O canal PARTY é entregue apenas a PlayerStates com o mesmo ID e o `NavigationMarker` usa o nome do PlayerState, reconcilia todos os markers locais após mudança de Party e é filtrado para owner ou membros da mesma party.
 
 ## Regras estruturais
 - dedicated server deve funcionar sem HUD/widget/câmera;

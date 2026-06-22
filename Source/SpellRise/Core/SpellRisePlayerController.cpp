@@ -85,7 +85,7 @@ namespace
 	FText BuildCombatTimeText()
 	{
 		const FDateTime Now = FDateTime::Now();
-		return FText::FromString(Now.ToString(TEXT("%H:%M:%S")));
+		return FText::FromString(Now.ToString(TEXT("%H:%M")));
 	}
 
 	FString SanitizeBoundedString(FString Value, const int32 MaxChars, const TCHAR* Fallback = TEXT(""))
@@ -475,6 +475,12 @@ void ASpellRisePlayerController::SubmitChatMessageForConversation(
 		return;
 	}
 
+	if (SafeText.Equals(TEXT("/clear"), ESearchCase::IgnoreCase))
+	{
+		ClearActiveChatHistory();
+		return;
+	}
+
 	if (Channel == SpellRiseChatChannel::Whisper)
 	{
 		const FString SafeConversationId =
@@ -521,6 +527,28 @@ void ASpellRisePlayerController::ServerSubmitChatMessage_Implementation(
 bool ASpellRisePlayerController::HandleServerChatCommand(const FString& RawMessage)
 {
 	return TryHandleWhisperChatCommand(RawMessage) || TryHandleAdminChatCommand(RawMessage);
+}
+
+void ASpellRisePlayerController::ClearActiveChatHistory()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	const FString TabId = ActiveChatTabId.IsEmpty() ? TEXT("GLOBAL") : ActiveChatTabId;
+	NativeChatHistory.RemoveAll([&TabId](const FSpellRiseChatMessage& Message)
+	{
+		return ResolveChatTabId(Message).Equals(TabId, ESearchCase::CaseSensitive);
+	});
+	ChatUnreadByTabId.Remove(TabId);
+	BP_OnChatUnreadChanged(TabId, 0);
+	if (TabId.Equals(ActiveWhisperConversationId, ESearchCase::CaseSensitive))
+	{
+		WhisperUnreadByConversation.Remove(TabId);
+		BP_OnWhisperUnreadChanged(TabId, 0);
+	}
+	BP_OnChatHistoryCleared(TabId);
 }
 
 FString ASpellRisePlayerController::ResolveWhisperConversationId_Server(
@@ -751,6 +779,71 @@ void ASpellRisePlayerController::SendWhisperToConversation(
 	ServerSendWhisperToConversation(SafeConversationId, SafeText);
 }
 
+bool ASpellRisePlayerController::OpenWhisperWithPlayerName(const FString& DisplayedPlayerName)
+{
+	if (!IsLocalController() || !GetWorld())
+	{
+		return false;
+	}
+
+	FString TargetName = SanitizeBoundedString(DisplayedPlayerName, MaxChatNameChars);
+	const int32 LevelSuffixIndex = TargetName.Find(TEXT(" ["), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+	if (LevelSuffixIndex != INDEX_NONE && TargetName.EndsWith(TEXT("]")))
+	{
+		TargetName.LeftInline(LevelSuffixIndex, EAllowShrinking::No);
+		TargetName.TrimEndInline();
+	}
+	if (TargetName.StartsWith(TEXT("From "), ESearchCase::IgnoreCase))
+	{
+		TargetName.RightChopInline(5, EAllowShrinking::No);
+	}
+	else if (TargetName.StartsWith(TEXT("To "), ESearchCase::IgnoreCase))
+	{
+		TargetName.RightChopInline(3, EAllowShrinking::No);
+	}
+	if (TargetName.IsEmpty())
+	{
+		return false;
+	}
+
+	APlayerState* Match = nullptr;
+	int32 MatchCount = 0;
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	if (GameState)
+	{
+		for (APlayerState* Candidate : GameState->PlayerArray)
+		{
+			if (Candidate && Candidate->GetPlayerName().Equals(TargetName, ESearchCase::IgnoreCase))
+			{
+				Match = Candidate;
+				++MatchCount;
+			}
+		}
+	}
+	if (MatchCount != 1 || !Match || Match == PlayerState)
+	{
+		return false;
+	}
+
+	const FString ConversationId = Match->GetUniqueId().IsValid()
+		? SanitizeBoundedString(Match->GetUniqueId()->ToString(), MaxWhisperConversationIdChars)
+		: SanitizeBoundedString(
+			FString::Printf(TEXT("NAME:%s"), *Match->GetPlayerName()),
+			MaxWhisperConversationIdChars);
+	const FString ConversationName =
+		SanitizeBoundedString(Match->GetPlayerName(), MaxChatNameChars, TEXT("Player"));
+	if (ConversationId.IsEmpty())
+	{
+		return false;
+	}
+
+	ActiveWhisperConversationId = ConversationId;
+	BP_OnWhisperConversationReceived(ConversationId, ConversationName, true);
+	BP_OnWhisperOpenRequested(ConversationId, ConversationName);
+	SetActiveChatTab(ConversationId);
+	return true;
+}
+
 void ASpellRisePlayerController::SetWhisperBlocked(
 	const FString& ConversationId,
 	const bool bBlocked)
@@ -909,7 +1002,7 @@ bool ASpellRisePlayerController::TryHandleAdminChatCommand(const FString& RawMes
 
 	if (Command.Equals(TEXT("/help"), ESearchCase::IgnoreCase))
 	{
-		SendAdminSystemMessage(TEXT("Player: /help | /online | /name NovoNome | /w Player Mensagem | /r Mensagem"));
+		SendAdminSystemMessage(TEXT("Player: /help | /online | /party | /clear | /invite Player | /remove Player | /leader Player | /leave | /name NovoNome | /w Player Mensagem | /r Mensagem"));
 		if (bAdminAuthenticated)
 		{
 			SendAdminSystemMessage(TEXT("Admin progressao: /set level <1-999> Player | /set resetpoints Player"));
@@ -1551,7 +1644,12 @@ void ASpellRisePlayerController::RefreshEnhancedInputContexts()
 
 	UpdateEnhancedInputContext(Subsystem, IMC_CoreMovement.Get(), IMC_CoreMovementPriority, true, TEXT("CoreMovement"));
 	UpdateEnhancedInputContext(Subsystem, IMC_CoreCamera.Get(), IMC_CoreCameraPriority, true, TEXT("CoreCamera"));
-	UpdateEnhancedInputContext(Subsystem, IMC_Combat.Get(), IMC_CombatPriority, true, TEXT("Combat"));
+	UpdateEnhancedInputContext(
+		Subsystem,
+		IMC_Combat.Get(),
+		IMC_CombatPriority,
+		!bUIInteractionModeActive,
+		TEXT("Combat"));
 	UpdateEnhancedInputContext(Subsystem, IMC_Interaction.Get(), IMC_InteractionPriority, true, TEXT("Interaction"));
 	UpdateEnhancedInputContext(Subsystem, IMC_UI.Get(), IMC_UIPriority, bUIInputContextActive, TEXT("UI"));
 	UpdateEnhancedInputContext(Subsystem, IMC_System.Get(), IMC_SystemPriority, true, TEXT("System"));

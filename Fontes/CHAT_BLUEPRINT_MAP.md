@@ -28,6 +28,9 @@ Antes de pedir screenshots, inspecione os assets e funções listados aqui. O co
 | `ASpellRisePlayerController::GetChatUnreadCount` | Retorna unread local por `TabId` |
 | `BP_OnChatMessageReceived` | Evento de apresentação para adicionar/reconstruir mensagem |
 | `BP_OnChatUnreadChanged` | Evento genérico de unread para todas as abas |
+| `BP_OnChatHistoryCleared` | Solicita ao widget reconstruir a aba após `/clear` local |
+| `OpenWhisperWithPlayerName` | Resolve localmente nome exibido para PlayerState/ConversationId |
+| `BP_OnWhisperOpenRequested` | Solicita que o widget ative a aba whisper criada/garantida |
 | `USpellRiseChatComponent` | Serviço server-side para chat público |
 | `DeliverWhisper_Server` | Resolução e entrega autoritativa do whisper |
 
@@ -168,6 +171,21 @@ Fluxo:
 O evento `BP_OnChatUnreadChanged` do controller deve encaminhar diretamente para essa função.
 
 `UpdateWhisperUnread` pode permanecer apenas como wrapper legado.
+
+### `/clear`
+
+`BP_SpellRisePlayerController.BP_OnChatHistoryCleared` deve chamar
+`ChatWidgetRef.RebuildChatFromHistory`. O histórico nativo da aba já foi removido
+antes do evento; o Blueprint apenas limpa e reconstrói a apresentação.
+
+### Duplo clique no nome
+
+`W_ChatText` deve tratar duplo clique somente no texto do nome e chamar
+`OwningPlayerController.OpenWhisperWithPlayerName(Message.Name.ToString())`.
+O C++ remove sufixos de level e resolve identidade pelo `PlayerArray`.
+
+`BP_OnWhisperOpenRequested` deve garantir a aba com `EnsureChatTab`, ativá-la e
+reconstruir o histórico. Não há RPC até o usuário enviar a primeira mensagem.
 
 ### `SelectTabById`
 

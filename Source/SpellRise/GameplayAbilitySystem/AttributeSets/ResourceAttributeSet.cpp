@@ -403,7 +403,7 @@ static void SendCombatLogMessages(
 	const FString DamageTypeLabel = ResolveDamageTypeLabel(DamageTypeTag);
 	const FString CriticalPrefix = bWasCritical ? TEXT("critical ") : TEXT("");
 	const bool bTargetWasDowned = bTargetDied && TargetCharacter && TargetCharacter->GetPlayerState();
-	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
+	const FText TimeText = FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M")));
 	UWorld* World = TargetCharacter ? TargetCharacter->GetWorld() : nullptr;
 	if (!World && SourceCharacter)
 	{

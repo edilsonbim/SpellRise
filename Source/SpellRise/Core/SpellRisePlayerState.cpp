@@ -1,5 +1,6 @@
 // Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRisePlayerState.h"
+#include "NavigationMarkerComponent.h"
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
@@ -365,6 +366,73 @@ void ASpellRisePlayerState::OnRep_PlayerName()
 	if (PlayerHUDViewModelComponent)
 	{
 		PlayerHUDViewModelComponent->RefreshSnapshot();
+	}
+}
+
+bool ASpellRisePlayerState::IsInSamePartyWith(const APlayerState* OtherPlayerState) const
+{
+	const ASpellRisePlayerState* OtherSpellRisePlayerState = Cast<ASpellRisePlayerState>(OtherPlayerState);
+	return OtherSpellRisePlayerState
+		&& !PartyId.IsEmpty()
+		&& PartyId.Equals(OtherSpellRisePlayerState->PartyId, ESearchCase::CaseSensitive);
+}
+
+bool ASpellRisePlayerState::IsPartyLeader() const
+{
+	if (!IsInParty())
+	{
+		return false;
+	}
+	const FString StableId = GetUniqueId().IsValid()
+		? GetUniqueId()->ToString()
+		: FString::Printf(TEXT("NAME:%s"), *GetPlayerName());
+	return PartyLeaderId.Equals(StableId.Left(64), ESearchCase::CaseSensitive);
+}
+
+void ASpellRisePlayerState::SetPartyState_Server(
+	const FString& NewPartyId,
+	const FString& NewPartyLeaderId)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	const FString SafePartyId = NewPartyId.Left(36);
+	const FString SafePartyLeaderId = NewPartyLeaderId.Left(64);
+	if (PartyId.Equals(SafePartyId, ESearchCase::CaseSensitive)
+		&& PartyLeaderId.Equals(SafePartyLeaderId, ESearchCase::CaseSensitive))
+	{
+		return;
+	}
+
+	PartyId = SafePartyId;
+	PartyLeaderId = SafePartyId.IsEmpty() ? FString() : SafePartyLeaderId;
+	ForceNetUpdate();
+}
+
+void ASpellRisePlayerState::OnRep_PartyId()
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+	for (TActorIterator<APawn> It(GetWorld()); It; ++It)
+	{
+		APawn* CurrentPawn = *It;
+		if (!CurrentPawn)
+		{
+			continue;
+		}
+		TArray<UNavigationMarkerComponent*> NavigationMarkers;
+		CurrentPawn->GetComponents<UNavigationMarkerComponent>(NavigationMarkers);
+		for (UNavigationMarkerComponent* Marker : NavigationMarkers)
+		{
+			if (Marker)
+			{
+				Marker->RefreshMarker();
+			}
+		}
 	}
 }
 
@@ -1436,6 +1504,8 @@ void ASpellRisePlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, bPersistenceProfileApplied, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(ASpellRisePlayerState, CombatLog, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRisePlayerState, SelectedAbilityInputTag, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME(ASpellRisePlayerState, PartyId);
+	DOREPLIFETIME(ASpellRisePlayerState, PartyLeaderId);
 }
 
 bool ASpellRisePlayerState::ValidateRespawnBedPayload(

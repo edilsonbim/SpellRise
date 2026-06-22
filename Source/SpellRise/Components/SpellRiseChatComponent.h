@@ -8,6 +8,7 @@
 #include "SpellRiseChatComponent.generated.h"
 
 class ASpellRisePlayerController;
+class ASpellRisePlayerState;
 
 UCLASS(ClassGroup=(SpellRise), BlueprintType, Blueprintable, meta=(BlueprintSpawnableComponent))
 class SPELLRISE_API USpellRiseChatComponent : public UActorComponent
@@ -21,6 +22,8 @@ public:
 		ASpellRisePlayerController* SenderController,
 		const FString& RawText,
 		uint8 RequestedChannel);
+
+	void HandleControllerLogout(ASpellRisePlayerController* ExitingController);
 
 	UE_DEPRECATED(5.7, "Use ASpellRisePlayerController::SubmitChatMessage. Legacy Blueprint adapter only.")
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
@@ -37,11 +40,30 @@ private:
 		int32 RejectedInWindow = 0;
 	};
 
+	struct FPendingPartyInvite
+	{
+		TWeakObjectPtr<ASpellRisePlayerController> Inviter;
+		double ExpiresAtSeconds = 0.0;
+	};
+
 	bool CheckRateLimit(ASpellRisePlayerController* SenderController, uint8 Channel, FString& OutRejectReason);
 	bool HandleNameCommand(ASpellRisePlayerController* SenderController, const FString& RawText);
+	bool HandleInviteCommand(ASpellRisePlayerController* SenderController, const FString& RawText);
+	bool HandlePartyResponse(ASpellRisePlayerController* SenderController, const FString& RawText);
+	bool HandleRemoveCommand(ASpellRisePlayerController* SenderController, const FString& RawText);
+	bool HandleLeaderCommand(ASpellRisePlayerController* SenderController, const FString& RawText);
+	bool HandleLeaveCommand(ASpellRisePlayerController* SenderController);
+	bool HandlePartyListCommand(ASpellRisePlayerController* SenderController);
+	ASpellRisePlayerController* FindUniquePlayerByName(const FString& PlayerName, int32& OutMatchCount) const;
+	FString ResolveStablePlayerId(const ASpellRisePlayerState* PlayerState) const;
+	void UpdatePartyLeaderForMembers(const FString& PartyId, const FString& LeaderId);
+	void DissolvePartyIfNeeded(const FString& PartyId);
 	void BroadcastPublicMessage(const FSpellRiseChatMessage& Message);
+	void BroadcastPartyMessage(ASpellRisePlayerController* SenderController, const FSpellRiseChatMessage& Message);
 	void SendPrivateSystemMessage(ASpellRisePlayerController* TargetController, const FString& MessageText, uint8 Channel = 0);
 	FSpellRiseChatMessage BuildPublicMessage(ASpellRisePlayerController* SenderController, const FString& Text, uint8 Channel) const;
 
 	TMap<TWeakObjectPtr<ASpellRisePlayerController>, FChatRateState> PublicRateStates;
+	TMap<TWeakObjectPtr<ASpellRisePlayerController>, double> LastPartyInviteSeconds;
+	TMap<TWeakObjectPtr<ASpellRisePlayerController>, FPendingPartyInvite> PendingPartyInvites;
 };

@@ -57,8 +57,12 @@ bool UNarrativeNavigationComponent::AddMarker(class UNavigationMarkerComponent* 
 			MapTiles.Add(MapTile);
 		}
 
-		Markers.Add(NavMarker);
-		OnMarkerAdded.Broadcast(NavMarker);
+		const int32 PreviousCount = Markers.Num();
+		Markers.AddUnique(NavMarker);
+		if (Markers.Num() != PreviousCount)
+		{
+			OnMarkerAdded.Broadcast(NavMarker);
+		}
 		return true;
 	}
 
