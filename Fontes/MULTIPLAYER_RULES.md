@@ -31,7 +31,7 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 | Inventario/Loot UI | UI local -> componente de inventario do `PlayerState` | servidor valida owner, source de loot, quantidade e rate-limit | Servidor | inventario/loot source no `PlayerState`, `LootSource` `OwnerOnly` | só UX | source stale se resolver pelo pawn durante respawn |
 | Building Mode | input local | contexto/material/range/LOS/RPC rate | Servidor | estado mínimo necessário | opcional ghost local | abuso de RPC/payload |
 | PlayerController runtime | input/UI local | apenas RPCs permitidos | Servidor | somente dados essenciais | não | overflow de replicação |
-| Chat/Whisper | UI local -> `ServerSubmitChatMessage(text,channel)` | owner, tamanho `<=256`, canal, identidade, rate-limit, block list | Servidor roteia | Global por client unreliable; whisper/system por client reliable | nao | spam reliable, fan-out global e adaptador BP legado |
+| Chat/Whisper | UI local -> `ASpellRisePlayerController::SubmitChatMessageForConversation(text,channel,conversationId)` | owner, tamanho `<=256`, canal, identidade/conversation id, rate-limit, block list | Servidor roteia | Global por client unreliable; whisper/system por client reliable | nao | spam reliable, fan-out global e adaptador BP legado |
 
 ## Contrato de RPC
 - Todo RPC deve declarar:
@@ -61,7 +61,7 @@ Definir contrato único de authority, prediction, RPC, replicação e critérios
 - RPC crítico de gameplay: máximo recomendado `<= 20/s` por jogador por fluxo.
 - Inventário/loot/use/store: máximo inicial de 6 RPCs por 0,25s por componente e quantity `1..1000`; rejeições devem usar log categorizado.
 - Chat público entra por um RPC reliable owner-bound e sai por client RPC unreliable individual; limite inicial de 4 mensagens por 2 segundos por player.
-- Whisper entra pelo mesmo RPC explícito ou por `ServerSendWhisperToConversation`, sai reliable somente para dois participantes e não replica histórico.
+- Whisper entra pela API explícita do `PlayerController`, com `ConversationId` da aba ativa, e cai em `ServerSendWhisperToConversation`; sai reliable somente para dois participantes e não replica histórico.
 - Death/corpse/equipment visual multicast é apresentação e não deve usar reliable; autoridade vem de GE/tag/estado replicado pelo servidor.
 - Eventos de gameplay server-side: manter rate-limit por tag.
 - Cura usa o mesmo contrato de atributos/recursos: valor final server-side, sem RPC de valor curado vindo do cliente.

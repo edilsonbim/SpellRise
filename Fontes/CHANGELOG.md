@@ -4,10 +4,13 @@
 ### Build / Tooling
 - Build policy consolidada em Unreal Source.
 - Adicionado plugin Editor-only `CodexBlueprintBridge` para inspecao segura de Blueprints via commandlet JSON; validado com `ListBlueprints` sem alteracao de assets.
+- Adicionado `CHAT_BLUEPRINT_MAP.md` como mapa vivo do fluxo C++/Blueprint do chat, incluindo assets, graphs, IDs de abas, unread, ordem da primeira mensagem whisper e inspeção via commandlet sem screenshots.
 - Compatibilidade UE 5.7 ajustada em pontos críticos de build.
 - Dependência de `CommonUI` declarada corretamente no plugin Narrative.
 
 ### Gameplay / Networking
+- Unread do chat foi generalizado em C++ para todas as abas (`GLOBAL`, `PARTY`, `GUILD`, `COMBAT` e whisper por `ConversationId`), mantendo contadores exclusivamente locais e sem replicação/RPC adicional.
+- Chat/whisper foi consolidado em C++ no `PlayerController`: `SubmitChatMessageForConversation` recebe explicitamente `Text + Channel + ConversationId`, roteia `Global` via `ServerSubmitChatMessage` e `Whisper` via `SendWhisperToConversation`; `SubmitChatMessage` permanece como adaptador compatível.
 - Movida a seleção atual de ability do `Character` para o `PlayerState`: `SelectedAbilityInputTag` agora replica `OwnerOnly`, valida slot/contexto/rate-limit no servidor, corrige prediction rejeitada no owner e expõe `OnSelectedAbilityChanged` pelo HUD ViewModel para UI sobreviver a morte/respawn sem bind no Pawn.
 - Sincronizado o status reportado pelo operador em 2026-06-21: calculo de dano/TTK, bonus dos atributos base e vendor corrigidos; boosters de atributos base feitos; `dead`/`revive` e clamp de atributos em progresso. Permanecem pendentes barra ativa, equip de inventario, block 2H, drag and drop, indicador de ability selecionada, mapa, projetil de flecha, hotkeys, socket de arma, ragdoll, luzes, evolucao visual/funcional da talent tree, durabilidade, retorno de dano e decisao sobre o `TalentTreeComponent`. Este registro nao substitui validacao formal.
 - Contribuicao de mana invertida para reforcar a identidade dos primarios: `INT` concede `+2 MaxMana` por ponto e `WIS` concede `+1 MaxMana`; o baseline `20/20` continua produzindo `160 MaxMana`.

@@ -6,9 +6,12 @@ Inventariar os comandos existentes, separar permissões de player e admin e regi
 
 Este documento não contém senha, segredo ou valor de autenticação administrativa.
 
+Para o mapa detalhado dos Blueprints, funções, variáveis, ordem de eventos e inspeção sem screenshots, consulte `CHAT_BLUEPRINT_MAP.md`.
+
 ## Fluxo do chat
 
-- O fluxo de produção usa `ASpellRisePlayerController::SubmitChatMessage` e o RPC explícito `ServerSubmitChatMessage`.
+- O fluxo de produção usa `ASpellRisePlayerController::SubmitChatMessageForConversation` como entrada explícita da UI (`Text + Channel + ConversationId`); o próprio `PlayerController` roteia `Global` para `ServerSubmitChatMessage` e `Whisper` para `SendWhisperToConversation`.
+- `SubmitChatMessage` permanece como adaptador compatível e usa a conversa ativa local, mas widgets novos devem passar o `ConversationId` explicitamente para evitar divergência entre estado da aba e estado do controller.
 - O RPC Blueprint legado `SendChatToSERVER` existe somente como adaptador temporário e é consumido antes de executar o Blueprint.
 - Nome e texto são sanitizados e limitados no servidor.
 - Nome: máximo de 32 caracteres.
@@ -103,6 +106,8 @@ Todos os comandos abaixo:
 - Cada mensagem carrega `ConversationId`, `ConversationName` e `bOutgoing` para a UI criar abas locais.
 - Block list de whisper é validada no servidor e não replica payload para terceiros.
 - Unread e histórico ficam apenas no cliente; não criam propriedade replicada nem `OnRep`.
+- Unread é indexado por `TabId`: `GLOBAL`, `PARTY`, `GUILD`, `COMBAT` ou `ConversationId` no whisper. Toda mensagem recebida em uma aba não ativa incrementa o contador, inclusive mensagem própria devolvida pelo servidor.
+- Whisper não pode ser enviado sem `ConversationId`; o `PlayerController` rejeita localmente esse contexto incompleto antes de criar RPC.
 - `/ban` adiciona uma operação PostgreSQL síncrona e deve permanecer rara.
 - Não há target data, multicast administrativo, payload replicado novo ou `OnRep` administrativo.
 
@@ -119,7 +124,7 @@ A autenticação somente por senha não é adequada para produção. Qualquer pl
 
 ### P1 — adaptador Blueprint legado
 
-O transporte autoritativo já deriva identidade do owner do `PlayerController`, mas o `W_Chat` ainda chama o RPC Blueprint legado. Migrar o node para `SubmitChatMessage` e depois remover o adaptador de `ProcessEvent`.
+O transporte autoritativo já deriva identidade do owner do `PlayerController`. O `W_Chat` deve usar `SubmitChatMessageForConversation`; o RPC Blueprint legado `SendChatToSERVER` e o adaptador de `ProcessEvent` devem ser removidos após confirmar que nenhum asset ainda os referencia.
 
 ### P1 — nomes duplicados
 

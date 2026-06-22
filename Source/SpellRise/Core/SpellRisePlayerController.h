@@ -62,6 +62,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
 	void SubmitChatMessage(const FText& Text, uint8 Channel);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
+	void SubmitChatMessageForConversation(
+		const FText& Text,
+		uint8 Channel,
+		const FString& ConversationId);
+
 	UFUNCTION(Server, Reliable)
 	void ServerSubmitChatMessage(const FString& Text, uint8 Channel);
 
@@ -79,6 +85,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Chat|Whisper")
 	int32 GetWhisperUnreadCount(const FString& ConversationId) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
+	void SetActiveChatTab(const FString& TabId);
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Chat")
+	int32 GetChatUnreadCount(const FString& TabId) const;
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
 	void SetWhisperBlocked(const FString& ConversationId, bool bBlocked);
@@ -154,6 +166,9 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat|Whisper")
 	void BP_OnWhisperUnreadChanged(const FString& ConversationId, int32 UnreadCount);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
+	void BP_OnChatUnreadChanged(const FString& TabId, int32 UnreadCount);
 
 	APawn* GetLastSpellRiseControlledPawn() const;
 
@@ -351,6 +366,12 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FString, int32> WhisperUnreadByConversation;
+
+	UPROPERTY(Transient)
+	FString ActiveChatTabId;
+
+	UPROPERTY(Transient)
+	TMap<FString, int32> ChatUnreadByTabId;
 
 	UPROPERTY(Transient)
 	TSet<FString> BlockedWhisperConversationIds;

@@ -56,6 +56,7 @@ namespace
 	constexpr double WhisperRateWindowSeconds = 2.0;
 	constexpr int32 WhisperRateMaxCountPerWindow = 4;
 	constexpr int32 MaxWhisperConversationIdChars = 64;
+	constexpr int32 MaxChatTabIdChars = 64;
 
 	const FGameplayTag& InputTag_Primary()
 	{
@@ -117,6 +118,28 @@ namespace
 		Sanitized.ConversationId = SanitizeBoundedString(Message.ConversationId, MaxWhisperConversationIdChars);
 		Sanitized.ConversationName = SanitizeBoundedString(Message.ConversationName, MaxChatNameChars);
 		return Sanitized;
+	}
+
+	FString ResolveChatTabId(const FSpellRiseChatMessage& Message)
+	{
+		if (Message.Channel == SpellRiseChatChannel::Whisper)
+		{
+			return SanitizeBoundedString(Message.ConversationId, MaxChatTabIdChars);
+		}
+
+		switch (Message.Channel)
+		{
+		case SpellRiseChatChannel::Global:
+			return TEXT("GLOBAL");
+		case SpellRiseChatChannel::Party:
+			return TEXT("PARTY");
+		case SpellRiseChatChannel::Guild:
+			return TEXT("GUILD");
+		case SpellRiseChatChannel::Combat:
+			return TEXT("COMBAT");
+		default:
+			return FString();
+		}
 	}
 
 	bool TryExtractChatText(UFunction* Function, void* Parameters, FString& OutText)
@@ -438,11 +461,37 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 
 void ASpellRisePlayerController::SubmitChatMessage(const FText& Text, const uint8 Channel)
 {
+	SubmitChatMessageForConversation(Text, Channel, ActiveWhisperConversationId);
+}
+
+void ASpellRisePlayerController::SubmitChatMessageForConversation(
+	const FText& Text,
+	const uint8 Channel,
+	const FString& ConversationId)
+{
 	const FString SafeText = SanitizeBoundedString(Text.ToString(), MaxChatTextChars);
 	if (!IsLocalController() || SafeText.IsEmpty())
 	{
 		return;
 	}
+
+	if (Channel == SpellRiseChatChannel::Whisper)
+	{
+		const FString SafeConversationId =
+			SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+		if (SafeConversationId.IsEmpty())
+		{
+			UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+				TEXT("[Chat][SubmitRejected] Reason=missing_active_whisper_conversation Controller=%s"),
+				*GetNameSafe(this));
+			return;
+		}
+
+		ActiveWhisperConversationId = SafeConversationId;
+		SendWhisperToConversation(SafeConversationId, FText::FromString(SafeText));
+		return;
+	}
+
 	ServerSubmitChatMessage(SafeText, Channel);
 }
 
@@ -751,15 +800,43 @@ void ASpellRisePlayerController::SetActiveWhisperConversation(const FString& Con
 	ActiveWhisperConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
 	if (!ActiveWhisperConversationId.IsEmpty())
 	{
-		WhisperUnreadByConversation.Remove(ActiveWhisperConversationId);
-		BP_OnWhisperUnreadChanged(ActiveWhisperConversationId, 0);
+		SetActiveChatTab(ActiveWhisperConversationId);
 	}
 }
 
 int32 ASpellRisePlayerController::GetWhisperUnreadCount(const FString& ConversationId) const
 {
-	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
-	return WhisperUnreadByConversation.FindRef(SafeConversationId);
+	return GetChatUnreadCount(ConversationId);
+}
+
+void ASpellRisePlayerController::SetActiveChatTab(const FString& TabId)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	ActiveChatTabId = SanitizeBoundedString(TabId, MaxChatTabIdChars);
+	if (ActiveChatTabId.IsEmpty())
+	{
+		return;
+	}
+
+	ChatUnreadByTabId.Remove(ActiveChatTabId);
+	BP_OnChatUnreadChanged(ActiveChatTabId, 0);
+
+	if (!ActiveWhisperConversationId.IsEmpty()
+		&& ActiveChatTabId.Equals(ActiveWhisperConversationId, ESearchCase::CaseSensitive))
+	{
+		WhisperUnreadByConversation.Remove(ActiveChatTabId);
+		BP_OnWhisperUnreadChanged(ActiveChatTabId, 0);
+	}
+}
+
+int32 ASpellRisePlayerController::GetChatUnreadCount(const FString& TabId) const
+{
+	const FString SafeTabId = SanitizeBoundedString(TabId, MaxChatTabIdChars);
+	return ChatUnreadByTabId.FindRef(SafeTabId);
 }
 
 void ASpellRisePlayerController::ServerSendWhisperToConversation_Implementation(
@@ -2550,17 +2627,26 @@ void ASpellRisePlayerController::ReceiveChatMessageLocal(const FSpellRiseChatMes
 	}
 
 	BP_OnChatMessageReceived(SanitizedMessage);
+	const FString MessageTabId = ResolveChatTabId(SanitizedMessage);
+	if (!MessageTabId.IsEmpty()
+		&& !MessageTabId.Equals(ActiveChatTabId, ESearchCase::CaseSensitive))
+	{
+		int32& UnreadCount = ChatUnreadByTabId.FindOrAdd(MessageTabId);
+		UnreadCount = FMath::Min(UnreadCount + 1, 999);
+		BP_OnChatUnreadChanged(MessageTabId, UnreadCount);
+	}
+
 	if (SanitizedMessage.Channel == SpellRiseChatChannel::Whisper
 		&& !SanitizedMessage.ConversationId.IsEmpty())
 	{
-		if (!SanitizedMessage.bOutgoing
-			&& !SanitizedMessage.ConversationId.Equals(
-				ActiveWhisperConversationId,
-				ESearchCase::CaseSensitive))
+		if (!SanitizedMessage.ConversationId.Equals(ActiveChatTabId, ESearchCase::CaseSensitive))
 		{
-			int32& UnreadCount = WhisperUnreadByConversation.FindOrAdd(SanitizedMessage.ConversationId);
-			UnreadCount = FMath::Min(UnreadCount + 1, 999);
-			BP_OnWhisperUnreadChanged(SanitizedMessage.ConversationId, UnreadCount);
+			WhisperUnreadByConversation.Add(
+				SanitizedMessage.ConversationId,
+				ChatUnreadByTabId.FindRef(SanitizedMessage.ConversationId));
+			BP_OnWhisperUnreadChanged(
+				SanitizedMessage.ConversationId,
+				ChatUnreadByTabId.FindRef(SanitizedMessage.ConversationId));
 		}
 		BP_OnWhisperConversationReceived(
 			SanitizedMessage.ConversationId,
