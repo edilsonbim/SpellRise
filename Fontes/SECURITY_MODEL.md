@@ -22,6 +22,8 @@ O servidor e a unica autoridade para dano, custos, cooldowns, recursos, atributo
 - Todo RPC novo deve validar origem, ownership, payload e abuso.
 - Payload deve ser minimo e deterministico.
 - Multicast e permitido apenas para apresentacao, nunca para decisao autoritativa.
+- Chat deriva remetente exclusivamente do owner do `PlayerController`; nome declarado pelo cliente não é identidade confiável.
+- Whisper valida destinatário, tamanho, rate-limit e block list no servidor; conteúdo privado não deve ser registrado em logs comuns.
 
 ## Dedicated Server
 - Nao pode depender de HUD, widget, camera, input local ou logica de UI.

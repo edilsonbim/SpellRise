@@ -59,6 +59,42 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
 	void ReceiveChatMessageLocal(const FSpellRiseChatMessage& Message);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat")
+	void SubmitChatMessage(const FText& Text, uint8 Channel);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSubmitChatMessage(const FString& Text, uint8 Channel);
+
+	UFUNCTION(Client, Unreliable)
+	void ClientReceivePublicChatMessage(const FSpellRiseChatMessage& Message);
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Chat")
+	const TArray<FSpellRiseChatMessage>& GetNativeChatHistory() const { return NativeChatHistory; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Chat|Whisper")
+	TArray<FSpellRiseChatMessage> GetWhisperConversationHistory(const FString& ConversationId) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
+	void SetActiveWhisperConversation(const FString& ConversationId);
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Chat|Whisper")
+	int32 GetWhisperUnreadCount(const FString& ConversationId) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
+	void SetWhisperBlocked(const FString& ConversationId, bool bBlocked);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetWhisperBlocked(const FString& ConversationId, bool bBlocked);
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Chat")
+	static uint8 GetWhisperChatChannel() { return SpellRiseChatChannel::Whisper; }
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Chat|Whisper")
+	void SendWhisperToConversation(const FString& ConversationId, const FText& Text);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSendWhisperToConversation(const FString& ConversationId, const FString& Text);
+
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Inventory")
 	void InventorySplitSlotSERVER(UObject* FromContainer, int32 Slot, int32 Amount);
 
@@ -110,7 +146,18 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat")
 	void BP_OnChatMessageReceived(const FSpellRiseChatMessage& Message);
 
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat|Whisper")
+	void BP_OnWhisperConversationReceived(
+		const FString& ConversationId,
+		const FString& ConversationName,
+		bool bOutgoing);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Chat|Whisper")
+	void BP_OnWhisperUnreadChanged(const FString& ConversationId, int32 UnreadCount);
+
 	APawn* GetLastSpellRiseControlledPawn() const;
+
+	bool HandleServerChatCommand(const FString& RawMessage);
 
 protected:
 	virtual void BeginPlay() override;
@@ -256,6 +303,11 @@ protected:
 
 private:
 	bool TryHandleAdminChatCommand(const FString& RawMessage);
+	bool TryHandleWhisperChatCommand(const FString& RawMessage);
+	bool DeliverWhisper_Server(ASpellRisePlayerController* TargetController, const FString& MessageText);
+	bool CheckWhisperRateLimit_Server(FString& OutRejectReason);
+	ASpellRisePlayerController* FindPlayerControllerByConversationId_Server(const FString& ConversationId) const;
+	FString ResolveWhisperConversationId_Server(const ASpellRisePlayerController* Controller) const;
 	void SendAdminSystemMessage(const FString& MessageText);
 	bool IsAdminCommandRateLimited();
 
@@ -284,6 +336,27 @@ private:
 
 	UPROPERTY(Transient)
 	double LastAdminCommandTimeSeconds = -1.0;
+
+	UPROPERTY(Transient)
+	double WhisperRateWindowStartSeconds = 0.0;
+
+	UPROPERTY(Transient)
+	int32 WhisperRateCountInWindow = 0;
+
+	UPROPERTY(Transient)
+	FString LastWhisperConversationId;
+
+	UPROPERTY(Transient)
+	FString ActiveWhisperConversationId;
+
+	UPROPERTY(Transient)
+	TMap<FString, int32> WhisperUnreadByConversation;
+
+	UPROPERTY(Transient)
+	TSet<FString> BlockedWhisperConversationIds;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category="SpellRise|Chat", meta=(AllowPrivateAccess="true"))
+	TArray<FSpellRiseChatMessage> NativeChatHistory;
 
 	UPROPERTY(Transient)
 	bool bAdminAuthenticated = false;

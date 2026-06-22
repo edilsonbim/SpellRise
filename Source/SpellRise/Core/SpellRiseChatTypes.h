@@ -23,6 +23,15 @@ struct FSpellRiseChatMessage
 
 	UPROPERTY(BlueprintReadWrite, Category="SpellRise|Chat")
 	uint8 Channel = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category="SpellRise|Chat|Whisper")
+	FString ConversationId;
+
+	UPROPERTY(BlueprintReadWrite, Category="SpellRise|Chat|Whisper")
+	FString ConversationName;
+
+	UPROPERTY(BlueprintReadWrite, Category="SpellRise|Chat|Whisper")
+	bool bOutgoing = false;
 };
 
 namespace SpellRiseChatChannel
@@ -31,4 +40,5 @@ namespace SpellRiseChatChannel
 	static constexpr uint8 Party = 1;
 	static constexpr uint8 Guild = 2;
 	static constexpr uint8 Combat = 3;
+	static constexpr uint8 Whisper = 4;
 }

@@ -8,12 +8,13 @@ Este documento não contém senha, segredo ou valor de autenticação administra
 
 ## Fluxo do chat
 
-- O cliente envia texto pelo RPC legado `SendChatToSERVER`.
+- O fluxo de produção usa `ASpellRisePlayerController::SubmitChatMessage` e o RPC explícito `ServerSubmitChatMessage`.
+- O RPC Blueprint legado `SendChatToSERVER` existe somente como adaptador temporário e é consumido antes de executar o Blueprint.
 - Nome e texto são sanitizados e limitados no servidor.
 - Nome: máximo de 32 caracteres.
 - Texto: máximo de 256 caracteres.
 - Horário: máximo de 16 caracteres.
-- Mensagens públicas são distribuídas por multicast `Unreliable`.
+- Mensagens públicas são roteadas pelo `USpellRiseChatComponent` do `GameState` e entregues por RPC client `Unreliable` individual.
 - Mensagens de sistema, combat log e respostas administrativas são enviadas somente ao controller alvo.
 - Mensagens públicas exibem o nome no formato `Player [Level]`.
 - Canal Combat é somente leitura para o cliente.
@@ -25,6 +26,9 @@ Este documento não contém senha, segredo ou valor de autenticação administra
 | `/name NovoNome` | Altera o nome do próprio personagem | Servidor | Salva personagem imediatamente | Baixo; validação linear do remetente e uma operação de save |
 | `/online` | Lista os nomes dos jogadores conectados | Servidor | Não | Baixo; percorre controllers e responde somente ao solicitante |
 | `/help` | Lista comandos disponíveis para a sessão | Servidor | Não | Baixo; resposta privada sem busca externa |
+| `/w Player Mensagem` | Envia whisper privado ao player | Servidor | Não | Baixo; duas entregas client-only |
+| `/whisper Player Mensagem` | Alias completo de `/w` | Servidor | Não | Baixo; duas entregas client-only |
+| `/r Mensagem` | Responde à última conversa de whisper | Servidor | Não | Baixo; resolve o último ID de conversa |
 
 ### Regras de `/name`
 
@@ -77,8 +81,8 @@ Todos os comandos abaixo:
 
 ### Chat público
 
-- Uma entrada cliente-servidor por mensagem.
-- Uma saída multicast `Unreliable` para cada mensagem pública.
+- Uma entrada reliable cliente-servidor por mensagem aceita.
+- Uma saída client `Unreliable` para cada conexão destinatária da mensagem pública.
 - Payload lógico máximo: aproximadamente 304 caracteres antes do overhead de `FText`, RPC e serialização.
 - Custo de distribuição cresce com o número de conexões relevantes: `O(players)` por mensagem.
 - Não cria propriedades replicadas nem `OnRep`.
@@ -86,7 +90,7 @@ Todos os comandos abaixo:
 
 ### Comandos administrativos
 
-- Reutilizam o RPC de chat existente; não adicionam RPC.
+- Reutilizam `ServerSubmitChatMessage`; não criam um RPC por comando.
 - Respostas usam uma chamada client reliable somente para o admin.
 - Busca por nome percorre controllers conectados: `O(players)` somente quando um comando é executado.
 - `/set level` pode executar até 998 iterações no pior caso absoluto, uma única vez; custo aceitável para operação administrativa rara.
@@ -94,6 +98,11 @@ Todos os comandos abaixo:
 - `/set fly` adiciona apenas um pawn temporário por admin em modo fly.
 - `/online` é `O(players)` e owner-only; não gera multicast.
 - `/help` mostra comandos administrativos somente quando o controller está autenticado como admin.
+- Whisper usa canal `4`, nunca multicast, e entrega somente para remetente e destinatário via client reliable.
+- Whisper aceita no máximo 4 mensagens a cada 2 segundos por remetente.
+- Cada mensagem carrega `ConversationId`, `ConversationName` e `bOutgoing` para a UI criar abas locais.
+- Block list de whisper é validada no servidor e não replica payload para terceiros.
+- Unread e histórico ficam apenas no cliente; não criam propriedade replicada nem `OnRep`.
 - `/ban` adiciona uma operação PostgreSQL síncrona e deve permanecer rara.
 - Não há target data, multicast administrativo, payload replicado novo ou `OnRep` administrativo.
 
@@ -108,26 +117,9 @@ A autenticação somente por senha não é adequada para produção. Qualquer pl
 - auditoria de login e comandos;
 - bloqueio progressivo após tentativas inválidas.
 
-### P1 — chat público sem rate-limit próprio
+### P1 — adaptador Blueprint legado
 
-O chat público não possui rate-limit server-side dedicado. Um cliente pode enviar mensagens repetidamente e causar:
-
-- custo de multicast proporcional ao número de players;
-- spam de UI;
-- aumento de tráfego e processamento de `FText`;
-- risco de burst em servidores com muitos jogadores.
-
-Gate recomendado antes de produção:
-
-- máximo inicial de 2 mensagens por segundo por player;
-- burst máximo de 4;
-- cooldown progressivo para abuso;
-- rejeição categorizada sem eco público;
-- métrica de mensagens aceitas/rejeitadas por minuto.
-
-### P1 — identidade do remetente no fluxo legado
-
-O componente de chat ainda resolve o remetente público pelo nome declarado recebido do fluxo Blueprint legado. Comandos admin já usam o `PlayerController` real, mas o chat público deve migrar para identidade derivada exclusivamente do owner da conexão.
+O transporte autoritativo já deriva identidade do owner do `PlayerController`, mas o `W_Chat` ainda chama o RPC Blueprint legado. Migrar o node para `SubmitChatMessage` e depois remover o adaptador de `ProcessEvent`.
 
 ### P1 — nomes duplicados
 
@@ -163,7 +155,7 @@ O pawn original permanece no mundo enquanto o admin usa a câmera livre. Definir
 ### Dedicated Server
 
 - Baixo para comandos administrativos esporádicos.
-- Chat público é o principal risco de escala por não ter rate-limit dedicado.
+- Chat público possui rate-limit inicial de 4 mensagens por 2 segundos por player.
 - Com 100 players, uma mensagem pública gera distribuição para as conexões relevantes; spam contínuo não é aceitável.
 
 ### Lag/loss

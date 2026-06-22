@@ -32,11 +32,13 @@
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Components/SpellRiseChatComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Core/SpellRiseGameState.h"
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
@@ -51,6 +53,9 @@ namespace
 	constexpr int32 MaxCombatActorNameChars = 64;
 	constexpr int32 MaxCombatLogMessageChars = 192;
 	constexpr double MinimumAdminCommandIntervalSeconds = 0.20;
+	constexpr double WhisperRateWindowSeconds = 2.0;
+	constexpr int32 WhisperRateMaxCountPerWindow = 4;
+	constexpr int32 MaxWhisperConversationIdChars = 64;
 
 	const FGameplayTag& InputTag_Primary()
 	{
@@ -109,6 +114,8 @@ namespace
 		Sanitized.Name = FName(*SanitizeBoundedString(Message.Name.ToString(), MaxChatNameChars, TEXT("System")));
 		Sanitized.Text = FText::FromString(SanitizeBoundedString(Message.Text.ToString(), MaxChatTextChars));
 		Sanitized.TimeText = FText::FromString(SanitizeBoundedString(Message.TimeText.ToString(), 16));
+		Sanitized.ConversationId = SanitizeBoundedString(Message.ConversationId, MaxWhisperConversationIdChars);
+		Sanitized.ConversationName = SanitizeBoundedString(Message.ConversationName, MaxChatNameChars);
 		return Sanitized;
 	}
 
@@ -392,16 +399,8 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 		Function->HasAnyFunctionFlags(FUNC_NetServer))
 	{
 		FString RawMessage;
-		if (TryExtractChatText(Function, Parameters, RawMessage)
-			&& RawMessage.TrimStartAndEnd().StartsWith(TEXT("/"))
-			&& TryHandleAdminChatCommand(RawMessage))
-		{
-			return;
-		}
-
 		FString ChannelName;
-		int64 ChannelValue = INDEX_NONE;
-		bool bFoundChannel = false;
+		int64 ChannelValue = SpellRiseChatChannel::Global;
 
 		for (TFieldIterator<FProperty> It(Function); It; ++It)
 		{
@@ -413,19 +412,369 @@ void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Paramet
 
 			if (ExtractChannelFromPropertyRecursive(Property, Parameters, ChannelName, ChannelValue))
 			{
-				bFoundChannel = true;
 				break;
 			}
 		}
 
-		if (bFoundChannel && IsCombatChannelDescriptor(ChannelName, ChannelValue))
+		if (TryExtractChatText(Function, Parameters, RawMessage))
 		{
-			ClientMessage(TEXT("Canal Combat e somente leitura."));
+			const uint8 SafeChannel = ChannelValue >= 0 && ChannelValue <= TNumericLimits<uint8>::Max()
+				? static_cast<uint8>(ChannelValue)
+				: SpellRiseChatChannel::Global;
+			if (const ASpellRiseGameState* SRGameState =
+				GetWorld() ? GetWorld()->GetGameState<ASpellRiseGameState>() : nullptr)
+			{
+				if (USpellRiseChatComponent* ChatComponent = SRGameState->GetChatComponent())
+				{
+					ChatComponent->HandleClientMessage(this, RawMessage, SafeChannel);
+				}
+			}
 			return;
 		}
 	}
 
 	Super::ProcessEvent(Function, Parameters);
+}
+
+void ASpellRisePlayerController::SubmitChatMessage(const FText& Text, const uint8 Channel)
+{
+	const FString SafeText = SanitizeBoundedString(Text.ToString(), MaxChatTextChars);
+	if (!IsLocalController() || SafeText.IsEmpty())
+	{
+		return;
+	}
+	ServerSubmitChatMessage(SafeText, Channel);
+}
+
+void ASpellRisePlayerController::ServerSubmitChatMessage_Implementation(
+	const FString& Text,
+	const uint8 Channel)
+{
+	const FString SafeText = SanitizeBoundedString(Text, MaxChatTextChars);
+	if (SafeText.IsEmpty())
+	{
+		return;
+	}
+
+	const ASpellRiseGameState* SRGameState =
+		GetWorld() ? GetWorld()->GetGameState<ASpellRiseGameState>() : nullptr;
+	USpellRiseChatComponent* ChatComponent = SRGameState ? SRGameState->GetChatComponent() : nullptr;
+	if (!ChatComponent)
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Error,
+			TEXT("[Chat][SubmitRejected] Reason=missing_chat_service Controller=%s"),
+			*GetNameSafe(this));
+		return;
+	}
+	ChatComponent->HandleClientMessage(this, SafeText, Channel);
+}
+
+bool ASpellRisePlayerController::HandleServerChatCommand(const FString& RawMessage)
+{
+	return TryHandleWhisperChatCommand(RawMessage) || TryHandleAdminChatCommand(RawMessage);
+}
+
+FString ASpellRisePlayerController::ResolveWhisperConversationId_Server(
+	const ASpellRisePlayerController* Controller) const
+{
+	if (!Controller || !Controller->PlayerState)
+	{
+		return FString();
+	}
+
+	if (const FUniqueNetIdRepl& UniqueId = Controller->PlayerState->GetUniqueId(); UniqueId.IsValid())
+	{
+		return SanitizeBoundedString(UniqueId->ToString(), MaxWhisperConversationIdChars);
+	}
+
+	return SanitizeBoundedString(
+		FString::Printf(TEXT("NAME:%s"), *Controller->PlayerState->GetPlayerName()),
+		MaxWhisperConversationIdChars);
+}
+
+ASpellRisePlayerController* ASpellRisePlayerController::FindPlayerControllerByConversationId_Server(
+	const FString& ConversationId) const
+{
+	if (!GetWorld() || ConversationId.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		ASpellRisePlayerController* Candidate = Cast<ASpellRisePlayerController>(It->Get());
+		if (Candidate && ResolveWhisperConversationId_Server(Candidate).Equals(ConversationId, ESearchCase::CaseSensitive))
+		{
+			return Candidate;
+		}
+	}
+	return nullptr;
+}
+
+bool ASpellRisePlayerController::CheckWhisperRateLimit_Server(FString& OutRejectReason)
+{
+	if (!HasAuthority())
+	{
+		OutRejectReason = TEXT("not_authority");
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	if (Now - WhisperRateWindowStartSeconds > WhisperRateWindowSeconds)
+	{
+		WhisperRateWindowStartSeconds = Now;
+		WhisperRateCountInWindow = 0;
+	}
+
+	++WhisperRateCountInWindow;
+	if (WhisperRateCountInWindow > WhisperRateMaxCountPerWindow)
+	{
+		OutRejectReason = TEXT("rate_limit");
+		return false;
+	}
+	return true;
+}
+
+bool ASpellRisePlayerController::DeliverWhisper_Server(
+	ASpellRisePlayerController* TargetController,
+	const FString& MessageText)
+{
+	if (!HasAuthority() || !PlayerState || !TargetController || !TargetController->PlayerState)
+	{
+		return false;
+	}
+
+	if (TargetController == this)
+	{
+		SendAdminSystemMessage(TEXT("Whisper rejeitado: voce nao pode enviar mensagem para si mesmo."));
+		return true;
+	}
+
+	const FString SafeText = SanitizeBoundedString(MessageText, MaxChatTextChars);
+	if (SafeText.IsEmpty())
+	{
+		SendAdminSystemMessage(TEXT("Uso: /w Player Mensagem"));
+		return true;
+	}
+
+	FString RejectReason;
+	if (!CheckWhisperRateLimit_Server(RejectReason))
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+			TEXT("[Chat][WhisperRejected] Reason=%s Sender=%s"),
+			*RejectReason,
+			*GetNameSafe(PlayerState));
+		SendAdminSystemMessage(TEXT("Whisper rejeitado: muitas mensagens em pouco tempo."));
+		return true;
+	}
+
+	const FString SenderName = SanitizeBoundedString(PlayerState->GetPlayerName(), MaxChatNameChars, TEXT("Player"));
+	const FString TargetName = SanitizeBoundedString(TargetController->PlayerState->GetPlayerName(), MaxChatNameChars, TEXT("Player"));
+	const FString SenderId = ResolveWhisperConversationId_Server(this);
+	const FString TargetId = ResolveWhisperConversationId_Server(TargetController);
+	if (SenderId.IsEmpty() || TargetId.IsEmpty())
+	{
+		SendAdminSystemMessage(TEXT("Whisper rejeitado: identidade da conversa indisponivel."));
+		return true;
+	}
+	if (TargetController->BlockedWhisperConversationIds.Contains(SenderId))
+	{
+		SendAdminSystemMessage(TEXT("Whisper rejeitado: destinatario indisponivel."));
+		return true;
+	}
+
+	FSpellRiseChatMessage SenderMessage;
+	SenderMessage.Name = FName(*FString::Printf(TEXT("To %s"), *TargetName));
+	SenderMessage.Text = FText::FromString(SafeText);
+	SenderMessage.TimeText = BuildCombatTimeText();
+	SenderMessage.Channel = SpellRiseChatChannel::Whisper;
+	SenderMessage.ConversationId = TargetId;
+	SenderMessage.ConversationName = TargetName;
+	SenderMessage.bOutgoing = true;
+
+	FSpellRiseChatMessage TargetMessage;
+	TargetMessage.Name = FName(*FString::Printf(TEXT("From %s"), *SenderName));
+	TargetMessage.Text = FText::FromString(SafeText);
+	TargetMessage.TimeText = SenderMessage.TimeText;
+	TargetMessage.Channel = SpellRiseChatChannel::Whisper;
+	TargetMessage.ConversationId = SenderId;
+	TargetMessage.ConversationName = SenderName;
+	TargetMessage.bOutgoing = false;
+
+	LastWhisperConversationId = TargetId;
+	TargetController->LastWhisperConversationId = SenderId;
+	ClientReceiveChatMessage(SenderMessage);
+	TargetController->ClientReceiveChatMessage(TargetMessage);
+	return true;
+}
+
+bool ASpellRisePlayerController::TryHandleWhisperChatCommand(const FString& RawMessage)
+{
+	if (!HasAuthority())
+	{
+		return false;
+	}
+
+	const FString Command = RawMessage.TrimStartAndEnd();
+	const bool bReply = Command.StartsWith(TEXT("/r "), ESearchCase::IgnoreCase);
+	const bool bWhisper = Command.StartsWith(TEXT("/w "), ESearchCase::IgnoreCase)
+		|| Command.StartsWith(TEXT("/whisper "), ESearchCase::IgnoreCase);
+	if (!bReply && !bWhisper)
+	{
+		return false;
+	}
+
+	if (bReply)
+	{
+		if (LastWhisperConversationId.IsEmpty())
+		{
+			SendAdminSystemMessage(TEXT("Whisper rejeitado: nenhuma conversa recente."));
+			return true;
+		}
+		ASpellRisePlayerController* TargetController =
+			FindPlayerControllerByConversationId_Server(LastWhisperConversationId);
+		if (!TargetController)
+		{
+			SendAdminSystemMessage(TEXT("Whisper rejeitado: player offline."));
+			return true;
+		}
+		return DeliverWhisper_Server(TargetController, Command.RightChop(3).TrimStartAndEnd());
+	}
+
+	const int32 PrefixLength = Command.StartsWith(TEXT("/whisper "), ESearchCase::IgnoreCase) ? 9 : 3;
+	const FString Payload = Command.RightChop(PrefixLength).TrimStartAndEnd();
+	FString TargetName;
+	FString MessageText;
+	if (Payload.StartsWith(TEXT("\"")))
+	{
+		const int32 ClosingQuote = Payload.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, 1);
+		if (ClosingQuote == INDEX_NONE)
+		{
+			SendAdminSystemMessage(TEXT("Uso: /w \"Nome do Player\" Mensagem"));
+			return true;
+		}
+		TargetName = Payload.Mid(1, ClosingQuote - 1);
+		MessageText = Payload.Mid(ClosingQuote + 1).TrimStartAndEnd();
+	}
+	else if (!Payload.Split(TEXT(" "), &TargetName, &MessageText))
+	{
+		SendAdminSystemMessage(TEXT("Uso: /w Player Mensagem"));
+		return true;
+	}
+
+	ASpellRisePlayerController* Match = nullptr;
+	int32 MatchCount = 0;
+	if (GetWorld())
+	{
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			ASpellRisePlayerController* Candidate = Cast<ASpellRisePlayerController>(It->Get());
+			if (Candidate && Candidate->PlayerState
+				&& Candidate->PlayerState->GetPlayerName().Equals(TargetName, ESearchCase::IgnoreCase))
+			{
+				Match = Candidate;
+				++MatchCount;
+			}
+		}
+	}
+
+	if (MatchCount != 1 || !Match)
+	{
+		SendAdminSystemMessage(MatchCount > 1
+			? TEXT("Whisper rejeitado: nome ambiguo.")
+			: TEXT("Whisper rejeitado: player offline ou nao encontrado."));
+		return true;
+	}
+	return DeliverWhisper_Server(Match, MessageText);
+}
+
+void ASpellRisePlayerController::SendWhisperToConversation(
+	const FString& ConversationId,
+	const FText& Text)
+{
+	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	const FString SafeText = SanitizeBoundedString(Text.ToString(), MaxChatTextChars);
+	if (!IsLocalController() || SafeConversationId.IsEmpty() || SafeText.IsEmpty())
+	{
+		return;
+	}
+	ServerSendWhisperToConversation(SafeConversationId, SafeText);
+}
+
+void ASpellRisePlayerController::SetWhisperBlocked(
+	const FString& ConversationId,
+	const bool bBlocked)
+{
+	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	if (!IsLocalController() || SafeConversationId.IsEmpty())
+	{
+		return;
+	}
+
+	if (bBlocked)
+	{
+		BlockedWhisperConversationIds.Add(SafeConversationId);
+	}
+	else
+	{
+		BlockedWhisperConversationIds.Remove(SafeConversationId);
+	}
+	ServerSetWhisperBlocked(SafeConversationId, bBlocked);
+}
+
+void ASpellRisePlayerController::ServerSetWhisperBlocked_Implementation(
+	const FString& ConversationId,
+	const bool bBlocked)
+{
+	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	if (SafeConversationId.IsEmpty() || SafeConversationId == ResolveWhisperConversationId_Server(this))
+	{
+		return;
+	}
+	if (bBlocked)
+	{
+		BlockedWhisperConversationIds.Add(SafeConversationId);
+	}
+	else
+	{
+		BlockedWhisperConversationIds.Remove(SafeConversationId);
+	}
+}
+
+void ASpellRisePlayerController::SetActiveWhisperConversation(const FString& ConversationId)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	ActiveWhisperConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	if (!ActiveWhisperConversationId.IsEmpty())
+	{
+		WhisperUnreadByConversation.Remove(ActiveWhisperConversationId);
+		BP_OnWhisperUnreadChanged(ActiveWhisperConversationId, 0);
+	}
+}
+
+int32 ASpellRisePlayerController::GetWhisperUnreadCount(const FString& ConversationId) const
+{
+	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	return WhisperUnreadByConversation.FindRef(SafeConversationId);
+}
+
+void ASpellRisePlayerController::ServerSendWhisperToConversation_Implementation(
+	const FString& ConversationId,
+	const FString& Text)
+{
+	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	ASpellRisePlayerController* TargetController =
+		FindPlayerControllerByConversationId_Server(SafeConversationId);
+	if (!TargetController)
+	{
+		SendAdminSystemMessage(TEXT("Whisper rejeitado: player offline."));
+		return;
+	}
+	DeliverWhisper_Server(TargetController, Text);
 }
 
 void ASpellRisePlayerController::SendAdminSystemMessage(const FString& MessageText)
@@ -483,7 +832,7 @@ bool ASpellRisePlayerController::TryHandleAdminChatCommand(const FString& RawMes
 
 	if (Command.Equals(TEXT("/help"), ESearchCase::IgnoreCase))
 	{
-		SendAdminSystemMessage(TEXT("Player: /help | /online | /name NovoNome"));
+		SendAdminSystemMessage(TEXT("Player: /help | /online | /name NovoNome | /w Player Mensagem | /r Mensagem"));
 		if (bAdminAuthenticated)
 		{
 			SendAdminSystemMessage(TEXT("Admin progressao: /set level <1-999> Player | /set resetpoints Player"));
@@ -2179,6 +2528,12 @@ void ASpellRisePlayerController::ClientReceiveChatMessage_Implementation(const F
 	ReceiveChatMessageLocal(SanitizeChatMessageForLocalDelivery(Message));
 }
 
+void ASpellRisePlayerController::ClientReceivePublicChatMessage_Implementation(
+	const FSpellRiseChatMessage& Message)
+{
+	ReceiveChatMessageLocal(SanitizeChatMessageForLocalDelivery(Message));
+}
+
 void ASpellRisePlayerController::ReceiveChatMessageLocal(const FSpellRiseChatMessage& Message)
 {
 	const FSpellRiseChatMessage SanitizedMessage = SanitizeChatMessageForLocalDelivery(Message);
@@ -2187,8 +2542,53 @@ void ASpellRisePlayerController::ReceiveChatMessageLocal(const FSpellRiseChatMes
 		return;
 	}
 
-	BP_OnChatMessageReceived(SanitizedMessage);
+	NativeChatHistory.Add(SanitizedMessage);
+	constexpr int32 MaxLocalChatHistory = 300;
+	if (NativeChatHistory.Num() > MaxLocalChatHistory)
+	{
+		NativeChatHistory.RemoveAt(0, NativeChatHistory.Num() - MaxLocalChatHistory, EAllowShrinking::No);
+	}
 
+	BP_OnChatMessageReceived(SanitizedMessage);
+	if (SanitizedMessage.Channel == SpellRiseChatChannel::Whisper
+		&& !SanitizedMessage.ConversationId.IsEmpty())
+	{
+		if (!SanitizedMessage.bOutgoing
+			&& !SanitizedMessage.ConversationId.Equals(
+				ActiveWhisperConversationId,
+				ESearchCase::CaseSensitive))
+		{
+			int32& UnreadCount = WhisperUnreadByConversation.FindOrAdd(SanitizedMessage.ConversationId);
+			UnreadCount = FMath::Min(UnreadCount + 1, 999);
+			BP_OnWhisperUnreadChanged(SanitizedMessage.ConversationId, UnreadCount);
+		}
+		BP_OnWhisperConversationReceived(
+			SanitizedMessage.ConversationId,
+			SanitizedMessage.ConversationName,
+			SanitizedMessage.bOutgoing);
+	}
+
+}
+
+TArray<FSpellRiseChatMessage> ASpellRisePlayerController::GetWhisperConversationHistory(
+	const FString& ConversationId) const
+{
+	TArray<FSpellRiseChatMessage> Result;
+	const FString SafeConversationId = SanitizeBoundedString(ConversationId, MaxWhisperConversationIdChars);
+	if (SafeConversationId.IsEmpty())
+	{
+		return Result;
+	}
+
+	for (const FSpellRiseChatMessage& Message : NativeChatHistory)
+	{
+		if (Message.Channel == SpellRiseChatChannel::Whisper
+			&& Message.ConversationId.Equals(SafeConversationId, ESearchCase::CaseSensitive))
+		{
+			Result.Add(Message);
+		}
+	}
+	return Result;
 }
 
 void ASpellRisePlayerController::PushCombatLogMessage(const FString& MessageText)

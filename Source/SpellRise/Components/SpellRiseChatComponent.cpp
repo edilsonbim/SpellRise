@@ -1,9 +1,8 @@
-// Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
+// Serviço autoritativo de chat: valida identidade, payload, canal e abuso no servidor.
 #include "SpellRise/Components/SpellRiseChatComponent.h"
 
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerState.h"
-#include "Kismet/GameplayStatics.h"
 #include "Misc/DateTime.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
@@ -17,225 +16,265 @@ namespace
 	constexpr int32 ChatMaxNameChars = 32;
 	constexpr int32 ChatMaxTextChars = 256;
 	constexpr int32 ChatMaxTimeTextChars = 16;
+	constexpr double PublicRateWindowSeconds = 2.0;
+	constexpr int32 PublicRateMaxMessagesPerWindow = 4;
 
-	static FText BuildChatTimeText()
-	{
-		return FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
-	}
-
-	static FString SanitizeBoundedChatString(FString Value, const int32 MaxChars, const TCHAR* Fallback = TEXT(""))
+	FString SanitizeChatString(FString Value, const int32 MaxChars, const TCHAR* Fallback = TEXT(""))
 	{
 		Value.TrimStartAndEndInline();
 		Value.ReplaceInline(TEXT("\r"), TEXT(" "));
 		Value.ReplaceInline(TEXT("\n"), TEXT(" "));
 		Value.ReplaceInline(TEXT("\t"), TEXT(" "));
-
-		const int32 SafeMaxChars = FMath::Max(1, MaxChars);
-		if (Value.Len() > SafeMaxChars)
+		if (Value.Len() > MaxChars)
 		{
-			Value.LeftInline(SafeMaxChars, EAllowShrinking::No);
+			Value.LeftInline(MaxChars, EAllowShrinking::No);
 		}
-
 		if (Value.IsEmpty() && Fallback)
 		{
 			Value = Fallback;
 		}
-
 		return Value;
 	}
 
-	static FSpellRiseChatMessage BuildBoundedChatMessage(FName Name, const FText& Text, const FText& TimeText, const uint8 Channel)
+	FText BuildTimeText()
 	{
-		FSpellRiseChatMessage Message;
-		Message.Name = FName(*SanitizeBoundedChatString(Name.ToString(), ChatMaxNameChars, TEXT("System")));
-		Message.Text = FText::FromString(SanitizeBoundedChatString(Text.ToString(), ChatMaxTextChars));
-		Message.TimeText = FText::FromString(SanitizeBoundedChatString(TimeText.ToString(), ChatMaxTimeTextChars));
-		Message.Channel = Channel;
-		return Message;
+		return FText::FromString(FDateTime::Now().ToString(TEXT("%H:%M:%S")));
 	}
 
-	static ASpellRisePlayerController* FindSenderControllerByName(UWorld* World, const FName DeclaredName)
+	bool IsValidPlayerName(const FString& CandidateName, FString& OutError)
 	{
-		if (!World || DeclaredName.IsNone())
+		if (CandidateName.Len() < 3 || CandidateName.Len() > 24)
 		{
-			return nullptr;
-		}
-
-		const FString SenderName = DeclaredName.ToString();
-		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-		{
-			ASpellRisePlayerController* Controller = Cast<ASpellRisePlayerController>(It->Get());
-			if (!Controller)
-			{
-				continue;
-			}
-
-			const APlayerState* PS = Controller->PlayerState;
-			if (!PS)
-			{
-				continue;
-			}
-
-			if (PS->GetPlayerName().Equals(SenderName, ESearchCase::IgnoreCase))
-			{
-				return Controller;
-			}
-		}
-
-		return nullptr;
-	}
-
-	static bool TryParseNameCommand(const FString& MessageText, FString& OutNewName)
-	{
-		const FString TrimmedText = MessageText.TrimStartAndEnd();
-		if (!TrimmedText.StartsWith(TEXT("/name"), ESearchCase::IgnoreCase))
-		{
+			OutError = TEXT("Nome deve ter entre 3 e 24 caracteres.");
 			return false;
 		}
-
-		FString Payload = TrimmedText.RightChop(5).TrimStartAndEnd();
-		if (Payload.StartsWith(TEXT("\"")) && Payload.EndsWith(TEXT("\"")) && Payload.Len() >= 2)
+		for (const TCHAR Character : CandidateName)
 		{
-			Payload = Payload.Mid(1, Payload.Len() - 2);
-		}
-
-		OutNewName = Payload.TrimStartAndEnd();
-		return true;
-	}
-
-	static bool IsValidPlayerNameForChatCommand(const FString& CandidateName, FString& OutError)
-	{
-		const int32 NameLen = CandidateName.Len();
-		if (NameLen < 3)
-		{
-			OutError = TEXT("Nome muito curto. Minimo: 3 caracteres.");
-			return false;
-		}
-
-		if (NameLen > 24)
-		{
-			OutError = TEXT("Nome muito longo. Maximo: 24 caracteres.");
-			return false;
-		}
-
-		for (TCHAR Ch : CandidateName)
-		{
-			const bool bAllowed =
-				FChar::IsAlnum(Ch) ||
-				Ch == TEXT(' ') ||
-				Ch == TEXT('_') ||
-				Ch == TEXT('-');
-			if (!bAllowed)
+			if (!FChar::IsAlnum(Character)
+				&& Character != TEXT(' ')
+				&& Character != TEXT('_')
+				&& Character != TEXT('-'))
 			{
-				OutError = TEXT("Use only letters, numbers, spaces, '_' and '-'.");
+				OutError = TEXT("Use apenas letras, numeros, espaco, '_' e '-'.");
 				return false;
 			}
 		}
-
 		return true;
-	}
-
-	static void SendPrivateSystemMessage(ASpellRisePlayerController* TargetController, uint8 Channel, const FString& MessageText)
-	{
-		if (!TargetController || MessageText.IsEmpty())
-		{
-			return;
-		}
-
-		const FSpellRiseChatMessage Message = BuildBoundedChatMessage(
-			FName(TEXT("System")),
-			FText::FromString(MessageText),
-			BuildChatTimeText(),
-			Channel);
-		TargetController->ClientReceiveChatMessage(Message);
 	}
 }
 
 USpellRiseChatComponent::USpellRiseChatComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	SetIsReplicatedByDefault(true);
+	SetIsReplicatedByDefault(false);
 }
 
-void USpellRiseChatComponent::SendToMULTICAST(FName Name, const FText& Text, const FText& TimeText, uint8 Channel)
+bool USpellRiseChatComponent::HandleClientMessage(
+	ASpellRisePlayerController* SenderController,
+	const FString& RawText,
+	const uint8 RequestedChannel)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority())
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !SenderController || !SenderController->PlayerState)
+	{
+		return false;
+	}
+
+	const FString SafeText = SanitizeChatString(RawText, ChatMaxTextChars);
+	if (SafeText.IsEmpty())
+	{
+		return false;
+	}
+
+	if (SafeText.StartsWith(TEXT("/")))
+	{
+		if (SenderController->HandleServerChatCommand(SafeText))
+		{
+			return true;
+		}
+		if (SafeText.StartsWith(TEXT("/name"), ESearchCase::IgnoreCase))
+		{
+			return HandleNameCommand(SenderController, SafeText);
+		}
+		SendPrivateSystemMessage(SenderController, TEXT("Comando desconhecido. Use /help."));
+		return true;
+	}
+
+	if (RequestedChannel == SpellRiseChatChannel::Combat)
+	{
+		SendPrivateSystemMessage(SenderController, TEXT("Canal Combat e somente leitura."));
+		return true;
+	}
+
+	if (RequestedChannel != SpellRiseChatChannel::Global)
+	{
+		SendPrivateSystemMessage(
+			SenderController,
+			TEXT("Canal ainda sem roteador de membros. Use Global."),
+			SpellRiseChatChannel::Global);
+		return true;
+	}
+
+	FString RejectReason;
+	if (!CheckRateLimit(SenderController, RequestedChannel, RejectReason))
+	{
+		UE_LOG(LogSpellRiseChatRuntime, Warning,
+			TEXT("[Chat][PublicRejected] Reason=%s PlayerState=%s"),
+			*RejectReason,
+			*GetNameSafe(SenderController->PlayerState));
+		SendPrivateSystemMessage(SenderController, TEXT("Chat rejeitado: muitas mensagens em pouco tempo."));
+		return true;
+	}
+
+	BroadcastPublicMessage(BuildPublicMessage(SenderController, SafeText, RequestedChannel));
+	return true;
+}
+
+bool USpellRiseChatComponent::CheckRateLimit(
+	ASpellRisePlayerController* SenderController,
+	const uint8 Channel,
+	FString& OutRejectReason)
+{
+	OutRejectReason.Reset();
+	if (!SenderController || Channel != SpellRiseChatChannel::Global)
+	{
+		OutRejectReason = TEXT("invalid_context");
+		return false;
+	}
+
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	FChatRateState& State = PublicRateStates.FindOrAdd(SenderController);
+	if (Now - State.WindowStartSeconds > PublicRateWindowSeconds)
+	{
+		State.WindowStartSeconds = Now;
+		State.AcceptedInWindow = 0;
+		State.RejectedInWindow = 0;
+	}
+	if (State.AcceptedInWindow >= PublicRateMaxMessagesPerWindow)
+	{
+		++State.RejectedInWindow;
+		OutRejectReason = TEXT("rate_limit");
+		return false;
+	}
+	++State.AcceptedInWindow;
+	return true;
+}
+
+bool USpellRiseChatComponent::HandleNameCommand(
+	ASpellRisePlayerController* SenderController,
+	const FString& RawText)
+{
+	FString RequestedName = RawText.RightChop(5).TrimStartAndEnd();
+	if (RequestedName.StartsWith(TEXT("\""))
+		&& RequestedName.EndsWith(TEXT("\""))
+		&& RequestedName.Len() >= 2)
+	{
+		RequestedName = RequestedName.Mid(1, RequestedName.Len() - 2).TrimStartAndEnd();
+	}
+
+	FString ValidationError;
+	if (!IsValidPlayerName(RequestedName, ValidationError))
+	{
+		SendPrivateSystemMessage(SenderController, ValidationError);
+		return true;
+	}
+
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const APlayerController* Candidate = It->Get();
+		if (Candidate != SenderController
+			&& Candidate
+			&& Candidate->PlayerState
+			&& Candidate->PlayerState->GetPlayerName().Equals(RequestedName, ESearchCase::IgnoreCase))
+		{
+			SendPrivateSystemMessage(SenderController, TEXT("Nome ja esta em uso."));
+			return true;
+		}
+	}
+
+	SenderController->PlayerState->SetPlayerName(RequestedName);
+	if (UGameInstance* GameInstance = GetWorld() ? GetWorld()->GetGameInstance() : nullptr)
+	{
+		if (USpellRisePersistenceSubsystem* Persistence =
+			GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>())
+		{
+			Persistence->SaveCharacterForController(SenderController);
+		}
+	}
+	SendPrivateSystemMessage(
+		SenderController,
+		FString::Printf(TEXT("Nome alterado para: %s"), *RequestedName));
+	return true;
+}
+
+FSpellRiseChatMessage USpellRiseChatComponent::BuildPublicMessage(
+	ASpellRisePlayerController* SenderController,
+	const FString& Text,
+	const uint8 Channel) const
+{
+	FSpellRiseChatMessage Message;
+	const ASpellRisePlayerState* SenderPlayerState =
+		SenderController ? SenderController->GetPlayerState<ASpellRisePlayerState>() : nullptr;
+	const int32 Level = SenderPlayerState && SenderPlayerState->GetProgressionComponent()
+		? SenderPlayerState->GetProgressionComponent()->GetCharacterLevel()
+		: 1;
+	const FString PlayerName = SenderPlayerState
+		? SanitizeChatString(SenderPlayerState->GetPlayerName(), ChatMaxNameChars, TEXT("Player"))
+		: TEXT("Player");
+	Message.Name = FName(*SanitizeChatString(
+		FString::Printf(TEXT("%s [%d]"), *PlayerName, Level),
+		ChatMaxNameChars,
+		TEXT("Player")));
+	Message.Text = FText::FromString(SanitizeChatString(Text, ChatMaxTextChars));
+	Message.TimeText = BuildTimeText();
+	Message.Channel = Channel;
+	return Message;
+}
+
+void USpellRiseChatComponent::BroadcastPublicMessage(const FSpellRiseChatMessage& Message)
+{
+	if (!GetWorld())
 	{
 		return;
 	}
 
-	if (Channel == SpellRiseChatChannel::Combat)
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (ASpellRisePlayerController* TargetController =
+			Cast<ASpellRisePlayerController>(It->Get()))
+		{
+			TargetController->ClientReceivePublicChatMessage(Message);
+		}
+	}
+}
+
+void USpellRiseChatComponent::SendPrivateSystemMessage(
+	ASpellRisePlayerController* TargetController,
+	const FString& MessageText,
+	const uint8 Channel)
+{
+	if (!TargetController || MessageText.IsEmpty())
 	{
 		return;
 	}
+	FSpellRiseChatMessage Message;
+	Message.Name = FName(TEXT("System"));
+	Message.Text = FText::FromString(SanitizeChatString(MessageText, ChatMaxTextChars));
+	Message.TimeText = BuildTimeText();
+	Message.Channel = Channel;
+	TargetController->ClientReceiveChatMessage(Message);
+}
 
-	if (Text.IsEmpty())
-	{
-		return;
-	}
-
-	const FString RawText = Text.ToString();
-	FString RequestedName;
-	if (TryParseNameCommand(RawText, RequestedName))
-	{
-		ASpellRisePlayerController* SenderController = FindSenderControllerByName(GetWorld(), Name);
-		if (!SenderController || !SenderController->PlayerState)
-		{
-			return;
-		}
-
-		if (Channel != SpellRiseChatChannel::Global)
-		{
-			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, TEXT("Use /name only in global chat."));
-			return;
-		}
-
-		FString ValidationError;
-		if (!IsValidPlayerNameForChatCommand(RequestedName, ValidationError))
-		{
-			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, ValidationError);
-			return;
-		}
-
-		const FString OldName = SenderController->PlayerState->GetPlayerName();
-		if (OldName.Equals(RequestedName, ESearchCase::IgnoreCase))
-		{
-			SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, TEXT("Your name is already set to that."));
-			return;
-		}
-
-		SenderController->PlayerState->SetPlayerName(RequestedName);
-		if (UWorld* World = SenderController->GetWorld())
-		{
-			if (UGameInstance* GameInstance = World->GetGameInstance())
-			{
-				if (USpellRisePersistenceSubsystem* Persistence = GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>())
-				{
-					const bool bSaved = Persistence->SaveCharacterForController(SenderController);
-				}
-			}
-		}
-
-		const FString SuccessText = FString::Printf(TEXT("Name changed to: %s"), *RequestedName);
-		SendPrivateSystemMessage(SenderController, SpellRiseChatChannel::Global, SuccessText);
-		return;
-	}
-
-	FName DisplayName = Name;
-	if (ASpellRisePlayerController* SenderController = FindSenderControllerByName(GetWorld(), Name))
-	{
-		if (const ASpellRisePlayerState* SenderPlayerState = SenderController->GetPlayerState<ASpellRisePlayerState>())
-		{
-			const int32 Level = SenderPlayerState->GetProgressionComponent()
-				? SenderPlayerState->GetProgressionComponent()->GetCharacterLevel()
-				: 1;
-			DisplayName = FName(*FString::Printf(TEXT("%s [%d]"), *Name.ToString(), Level));
-		}
-	}
-
-	const FSpellRiseChatMessage Message = BuildBoundedChatMessage(DisplayName, Text, TimeText, Channel);
-
-	Multi_ReceivePublicMessage(Message);
+void USpellRiseChatComponent::SendToMULTICAST(
+	const FName Name,
+	const FText& Text,
+	const FText& TimeText,
+	const uint8 Channel)
+{
+	UE_LOG(LogSpellRiseChatRuntime, Warning,
+		TEXT("[Chat][LegacySendRejected] Name=%s Channel=%d Reason=use_explicit_controller_rpc"),
+		*Name.ToString(),
+		Channel);
 }
 
 void USpellRiseChatComponent::SendCombatToPlayer(
@@ -247,20 +286,10 @@ void USpellRiseChatComponent::SendCombatToPlayer(
 	{
 		return;
 	}
-
-	const FSpellRiseChatMessage Message = BuildBoundedChatMessage(
-		FName(TEXT("Combat")),
-		Text,
-		TimeText,
-		SpellRiseChatChannel::Combat);
-
+	FSpellRiseChatMessage Message;
+	Message.Name = FName(TEXT("Combat"));
+	Message.Text = FText::FromString(SanitizeChatString(Text.ToString(), ChatMaxTextChars));
+	Message.TimeText = FText::FromString(SanitizeChatString(TimeText.ToString(), ChatMaxTimeTextChars));
+	Message.Channel = SpellRiseChatChannel::Combat;
 	TargetPlayerController->ClientReceiveChatMessage(Message);
-}
-
-void USpellRiseChatComponent::Multi_ReceivePublicMessage_Implementation(const FSpellRiseChatMessage& Message)
-{
-	if (ASpellRisePlayerController* LocalPlayerController = Cast<ASpellRisePlayerController>(UGameplayStatics::GetPlayerController(this, 0)))
-	{
-		LocalPlayerController->ReceiveChatMessageLocal(Message);
-	}
 }

@@ -117,6 +117,7 @@
 - `USpellRisePlayerHUDViewModelComponent`: componente local/event-driven no `PlayerState` que agrega nome, progressao, primarios e recursos ja replicados para Widgets, sem Tick, RPC ou estado autoritativo duplicado.
 - `USpellRiseConstructionModeComponent`: isola o building mode no controller.
 - Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
+- Chat runtime: `ASpellRisePlayerController::ServerSubmitChatMessage` recebe somente texto/canal do owner; `USpellRiseChatComponent` no `GameState` sanitiza, aplica rate-limit e roteia Global/System. Whisper usa identidade estável, entrega client-only, block list server-side e histórico/unread exclusivamente local.
 
 ## Regras estruturais
 - dedicated server deve funcionar sem HUD/widget/câmera;
