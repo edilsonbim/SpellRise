@@ -1,11 +1,55 @@
 # Changelog
 
+- Corrigido hardening pós-downed: revive/reset agora cancela timers pendentes de morte/respawn e `ExecuteRespawn_Server` ignora execução se o Character não estiver em `Dead`, evitando `UnPossess/Destroy/RestartPlayer` após voltar para `Alive`.
+- Removido o bloqueio genérico `ActivationBlockedTags=GameplayAbility` do construtor base de `USpellRiseGameplayAbility`; o bloqueio por morte permanece via `State.Dead` e downed continua controlado por `bAllowWhileDowned`/`State.Downed`.
+- Adicionados `USpellRiseInventoryComponent`, `USpellRiseEquipmentComponent` e `USpellRiseInventoryViewModelComponent` ao `ASpellRisePlayerState`, em paralelo ao inventário Narrative durante a migração.
+- Adicionado `USpellRiseItemDefinition` e especializações data-driven; instâncias próprias usam `FGuid ItemInstanceId`, `FPrimaryAssetId DefinitionId`, quantidade, slot, durabilidade e revisão.
+- Inventário próprio replica por FastArray `OwnerOnly`, sem Tick, com operações server-side de add/remove/move/split/merge/drop e RPCs de intenção limitados por payload, request id e rate-limit.
+- Equipamento próprio adiciona nove slots, FastArray privado `OwnerOnly`, bloqueio 2H/OffHand e grants GAS por `ItemInstanceId`, atrás de flag default-off.
+- Contratos de persistência `15/3` e conversor legacy foram adicionados, mas os schemas ativos permanecem `14/2` até dual-read, full loot e rollback serem fechados.
+- Criado ViewModel event-driven para snapshots e intenções de UI. Layout UMG lateral, bindings, migração de assets e smoke DS+2 normal/lag/loss permanecem pendentes.
+
+- Removido o legado `USpellRiseEquipmentManagerComponent` e sua `USpellRiseEquipmentInstance`; GA, persistência de loadout e ativação Narrative de armas agora usam `USpellRiseWeaponComponent`. Itens não-arma mantêm fallback visual em `NarrativeEquipment`.
+
+- Removida `USpellRiseGA_DownedCrawl`; `USpellRiseLifeStateComponent::DownedAbilityClass` aceita uma ability Blueprint opcional. `USpellRiseGameplayAbility` ganhou `bAllowWhileDowned` para liberar somente abilities explicitamente permitidas.
+- Corrigido input pós-respawn: possession restaura explicitamente `GameOnly`, cursor e flags de input pelo PlayerController.
+- Interact tenta localizar player downed antes do bloqueio genérico de UI e registra `[DownedActionTrace][Input]`, permitindo diagnosticar o caminho em Dedicated Server client.
+- Seleção do player downed no client deixou de depender de colisão/sweep do visual: Interact escolhe deterministicamente o melhor alvo downed no cone da câmera e alcance configurado; servidor continua revalidando distância e LOS.
+- `State.Downed` deixou de alterar movimento e input: não limita `MaxWalkSpeed`, não muda `MovementMode`, não bloqueia `AddMovementInput` e não aplica `EnableInput`/`DisableInput` ou `SetIgnoreMoveInput`.
+- Client local downed recebe pós-processo em escala de cinza e borda vermelha persistente configurável; efeitos são removidos no revive, morte final ou respawn.
+- Configurações de downed/revive foram centralizadas e expostas no `USpellRiseLifeStateComponent`: duração, resultado ao expirar (`FinalDeath`/`AutomaticRevive`), alcance, cooldown e percentuais independentes de Health/Mana/Stamina por WIS 100..140.
+- Adicionado `USpellRiseLifeStateComponent` replicado como orquestrador autoritativo dos estados `Alive`, `Downed`, `ReviveRecovery` e `Dead`, incluindo timers, cooldown, recovery, revive, gank e lifecycle da GA de crawl.
+- `SpellRiseDeathScreenWidget` agora usa explicitamente o Blueprint `/Game/UI/Widgets/SpellRiseDeathScreenWidget` e expõe `OnShowDownedActions`, `OnHideDownedActions` e `OnLifeStateChanged`.
+- Trace de interação downed passou a usar object sweep `Pawn` e logs categorizados para deproject, ausência de hit, alvo encontrado e rejeição.
+- Build `SpellRiseEditor Win64 Development` aprovada em 2026-06-22 após integração do `USpellRiseLifeStateComponent`, Blueprint do DeathScreen e trace endurecido.
+- Removidos `USpellRiseDownedInteractableComponent` e os dois interactables Narrative de downed.
+- Interact agora prioriza trace nativo de player downed e abre `SpellRiseDeathScreenWidget`; o widget envia Revive/Gank por `ServerResolveDownedAction`, validado no servidor por owner, estado, distância e LOS.
+- Adicionada `USpellRiseGA_DownedCrawl`, server-initiated, para permitir locomoção lenta enquanto downed; revive cancela a GA e levanta, gank finaliza morte e full loot.
+- Build `SpellRiseEditor Win64 Development` aprovada com UHT em 2026-06-22 após remoção dos interactables Narrative e integração do widget/GA.
+
+- Refeito o fluxo de downed/revive: removidos seletor `Gank/Revive`, aceite da vítima, `PendingReviver`, `ServerRespondToRevive` e `ServerChooseDownedAction`.
+- Revive agora conclui após hold Narrative server-side de 5s; execução usa hold de 3s. Abilities C++ passam a bloquear ativação também por `State.Downed`.
+- Revive escala linearmente por WIS 100..140: vida `20%..30%`, mana/stamina `5%..10%` e `State.ReviveRecovery` `3s..5s`.
+- Após revive, `State.Downed.Cooldown` é aplicado por 300s configuráveis; dano letal durante o cooldown causa morte final direta.
+- Build `SpellRiseEditor Win64 Development` com UHT aprovada em 2026-06-22 para o rework de downed/revive; smoke DS+2 normal e lag/loss permanece pendente.
+
+- Fluxo downed atualizado: apresentação simples por animação Blueprint sem física/ragdoll, opções `Gank` e `Revive` habilitadas, revive pendente owner-only com expiração e aceite/rejeição `Y/N`; servidor revalida estado e distância antes de reviver ou finalizar.
+- `SpellRiseDeathScreenWidget` Blueprint passa a ser instanciado pela classe C++ do Character; título, ações, teclas e foco da confirmação são configurados no C++, mantendo o Graph apenas para layout/apresentação.
+- Corrigida apresentação owner-client do downed/morte com RPC client-only confiável; removido desenho nativo legado que sobrepunha o layout Blueprint e Gank/morte final agora troca o título para `Voce morreu`.
+- A interação Narrative do alvo downed foi consolidada em um único seletor usando `SpellRiseDeathScreenWidget`: `Y=Gank` e `N=Revive`; o servidor recebe alvo + escolha mínima e revalida contexto/distância antes de executar.
+- Corrigida visibilidade remota de `State.Downed`: `bIsDowned` agora replica como espelho público do estado autoritativo da ASC, permitindo que clientes reconheçam o alvo downed antes de abrir o seletor `Gank/Revive`.
+
 - Adicionados `/clear` local por aba e `/invite Player` server-side, com PartyId no PlayerState, roteamento do canal PARTY e NavigationMarker visível entre membros.
 - Party passou a exigir aceite `Y/N`, ganhou leader autoritativo, `/remove Player`, `/leader Player` e `/leave`; NavigationMarker agora exibe o nome do player.
 - Adicionado `/party`, saída automática no logout e reconciliação global local dos NavigationMarkers para corrigir marker visível apenas ao leader.
 - Chat passou a exibir horário `HH:mm`; markers de outros membros da Party ficam verdes e o próprio permanece branco; adicionada API local para abrir whisper por duplo clique no nome.
 
 ## Unreleased
+### Documentacao / Status
+- Sincronizado o recorte reportado pelo operador em 2026-06-22: ability bar ativa corrigida; indicador da ability selecionada, remake do chat com funcoes de player/admin e whisper, e Party v1 feitos. `Dead`/`revive` e clamp de atributos continuam em progresso.
+- Registrados como pendentes: inventario sem equipar, drag and drop e remake geral do inventario, block 2H, cue do tornado, mapa incompleto, projetil de flecha, settings de hotkeys, socket de arma no `VisualOverride`, ragdoll, luzes, evolucao da talent tree, durabilidade e spell de retorno de dano.
+- Status informados pelo operador nao foram promovidos a `Verified`; build e smoke nao foram executados nesta atualizacao documental.
+
 ### Build / Tooling
 - Build policy consolidada em Unreal Source.
 - Adicionado plugin Editor-only `CodexBlueprintBridge` para inspecao segura de Blueprints via commandlet JSON; validado com `ListBlueprints` sem alteracao de assets.
@@ -40,7 +84,7 @@
 - Contrato anterior de escala final por atributo primario foi substituido pelos boosters ofensivos; STR/AGI/INT/WIS permanecem apenas como fonte de recursos/status.
 - `ExecCalc_Damage` passa a escalar dano da ability por nivel da escola e dano da arma por nivel da arma, cada um com 50% fixo + ate 50% por progressao; `AbilityLevel` deixa de afetar dano e permanece restrito a custo/cooldown. O debug `sr.Damage.Debug` agora registra as contribuicoes separadas de ability e arma.
 - `USpellRiseProgressionComponent` passa a expor `EnsureSchoolLevelFromTalent_Server` e `EnsureProgressionLevelFromAbilityDefinitionTalent_Server`, permitindo que talentos de escola como `DA_Talent_Fire` atualizem `SchoolLevels` autoritativos no `PlayerState` em vez de cair no fluxo de arma com tag vazia.
-- Implementado fluxo player-only de `State.Downed`: ao zerar vida, o player agoniza por 60s com vida travada em 1, sem input/abilities/regen; morte final, full loot e respawn foram movidos para `FinalizeDeath_Server`.
+- Implementado fluxo player-only de `State.Downed`: ao zerar vida, o player agoniza por 60s com vida travada em 1 e regen parada; morte final, full loot e respawn foram movidos para `FinalizeDeath_Server`.
 - Adicionado `USpellRiseDownedInteractableComponent` para interações Narrative de revive/finish em alvo agonizando; revive server-side retorna com `20% MaxHealth`, `0 Mana` e `0 Stamina`.
 - `USpellRiseDeathScreenWidget` passa a expor `RequestAcceptDeath`, permitindo UI chamar `ServerAcceptDeath` enquanto o player está em `State.Downed`.
 - Ragdoll, fade/camera e tela de morte foram suprimidos temporariamente no fluxo de morte/downed para testar a mecanica server-side limpa.
@@ -143,3 +187,11 @@
 - Implementado caminho C++ para request de drop com limpeza de vínculos de equipamento antes da remoção do item.
 - Incluídas tentativas de robustez para spawn de pickup no servidor (fallback de classe + inicialização refletida).
 - Pendente: validação final do spawn do pickup em cliente DS no fluxo de drop (ver BUG-2026-04-06-035).
+# 2026-06-23
+
+- Extraído o gerenciamento de Enhanced Input para `USpellRiseInputRouterComponent`, local e não replicado.
+- Removidos do `ASpellRisePlayerController` os IMCs, Input Actions, prioridades e fallback legado `DefaultMappingContext`.
+- Removido do `ASpellRiseCharacterBase` o fallback legado `IMC_Default` e sua adição direta ao subsystem.
+- O router foi consolidado em cinco contextos (`Global`, `Movement`, `Combat`, `Building`, `UI`), com prioridades internas fixas e descoberta das actions diretamente nos IMCs por nomes canônicos.
+- Removidas todas as propriedades editáveis de `Input Action` e prioridades do componente; `IA_ToggleUIInteraction` e `IA_DebugGrantExperience` também são resolvidas pelo `IMC_Global`.
+- Build `SpellRiseEditor Win64 Development` aprovada com UHT usando `C:\UnrealSource\UnrealEngine`.

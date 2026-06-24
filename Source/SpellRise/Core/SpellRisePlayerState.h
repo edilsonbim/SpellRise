@@ -24,6 +24,9 @@ class UDerivedStatsAttributeSet;
 class USpellRiseProgressionComponent;
 class USpellRisePlayerHUDViewModelComponent;
 class UNarrativeInventoryComponent;
+class USpellRiseInventoryComponent;
+class USpellRiseEquipmentComponent;
+class USpellRiseInventoryViewModelComponent;
 class AActor;
 class AController;
 
@@ -59,6 +62,9 @@ public:
 	USpellRiseAbilitySystemComponent* GetSpellRiseASC() const;
 	USpellRiseAbilityHotbarComponent* GetAbilityHotbarComponent() const { return AbilityHotbarComponent; }
 	UNarrativeInventoryComponent* GetNarrativeInventoryComponent() const { return NarrativeInventoryComponent; }
+	USpellRiseInventoryComponent* GetInventoryComponent() const { return InventoryComponent; }
+	USpellRiseEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
+	USpellRiseInventoryViewModelComponent* GetInventoryViewModelComponent() const { return InventoryViewModelComponent; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|HUD")
 	USpellRisePlayerHUDViewModelComponent* GetPlayerHUDViewModelComponent() const { return PlayerHUDViewModelComponent; }
@@ -196,6 +202,15 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UNarrativeInventoryComponent> NarrativeInventoryComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseInventoryComponent> InventoryComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Equipment", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseEquipmentComponent> EquipmentComponent = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Inventory|UI", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseInventoryViewModelComponent> InventoryViewModelComponent = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GAS", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UBasicAttributeSet> BasicAttributeSet = nullptr;

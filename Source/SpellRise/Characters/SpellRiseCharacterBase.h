@@ -10,6 +10,7 @@
 #include "GameplayTagContainer.h"
 #include "SpellRise/Components/FallDamageComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityGrantTypes.h"
+#include "SpellRise/Inventory/SpellRiseItemTypes.h"
 
 class UInputMappingContext;
 class UInputAction;
@@ -29,10 +30,12 @@ class UCatalystComponent;
 class UDerivedStatsAttributeSet;
 class UAbilitySystemComponent;
 class ASpellRisePlayerState;
-class USpellRiseEquipmentManagerComponent;
 class USpellRiseWeaponComponent;
-class USpellRiseDownedInteractableComponent;
+class USpellRiseLifeStateComponent;
+enum class ESpellRiseLifeState : uint8;
 class UNarrativeInventoryComponent;
+class USpellRiseInventoryComponent;
+class USpellRiseEquipmentComponent;
 
 #include "SpellRiseCharacterBase.generated.h"
 
@@ -112,6 +115,9 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
 	bool IsDowned() const;
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Death")
+	USpellRiseLifeStateComponent* GetLifeStateComponent() const { return LifeStateComponent; }
+
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category="SpellRise|Death")
 	void ServerAcceptDeath();
 
@@ -121,9 +127,15 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Death")
 	bool FinishDownedByInteractor_Server(ASpellRiseCharacterBase* Finisher);
 
-	void SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context);
+	UFUNCTION(Server, Reliable, Category="SpellRise|Death")
+	void ServerResolveDownedAction(ASpellRiseCharacterBase* TargetCharacter, bool bRevive);
 
-	const UInputMappingContext* GetDefaultInputMappingContext() const { return IMC_Default; }
+	void ShowDownedActionWidget(ASpellRiseCharacterBase* TargetCharacter);
+	void BeginDownedCrawl();
+	void EndDownedCrawl();
+	void HandleLifeStatePresentation(ESpellRiseLifeState NewState, ESpellRiseLifeState OldState);
+
+	void SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context);
 
 	UFUNCTION()
 	void OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount);
@@ -137,8 +149,17 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="SpellRise|Death")
 	void HandleDowned();
 
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Death")
+	void BP_PlayDownedPresentation();
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|Death")
+	void BP_StopDownedPresentation();
+
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleDowned();
+
+	UFUNCTION(Client, Reliable)
+	void ClientUpdateDeathWidget(bool bFinalDeath);
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void MultiHandleRevivedFromDowned();
@@ -157,9 +178,6 @@ public:
 
 	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="SpellRise|Equipment")
 	void MultiRefreshEquipmentVisuals();
-
-	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
-	USpellRiseEquipmentManagerComponent* GetSpellRiseEquipmentManager() const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Weapon")
 	USpellRiseWeaponComponent* GetSpellRiseWeaponComponent() const;
@@ -348,12 +366,18 @@ public:
 	FGameplayTag DownedStateTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
+	FGameplayTag DownedCooldownTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
+	FGameplayTag ReviveRecoveryTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death")
 	TSubclassOf<UGameplayEffect> GE_Death;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
 	bool bIsDead = false;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
 	bool bIsDowned = false;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Loot")
@@ -365,11 +389,35 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Respawn", meta=(ClampMin="0.0"))
 	float RespawnDelaySeconds = 30.f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Downed", meta=(ClampMin="1.0"))
+	UPROPERTY(Transient)
 	float DownedDurationSeconds = 60.f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Downed", meta=(ClampMin="0.0", ClampMax="1.0"))
-	float DownedReviveHealthPercent = 0.2f;
+	UPROPERTY(Transient)
+	float DownedCooldownSeconds = 300.f;
+
+	UPROPERTY(Transient)
+	float ReviveHealthPercentAt100Wisdom = 0.20f;
+
+	UPROPERTY(Transient)
+	float ReviveHealthPercentAt140Wisdom = 0.30f;
+
+	UPROPERTY(Transient)
+	float ReviveResourcePercentAt100Wisdom = 0.05f;
+
+	UPROPERTY(Transient)
+	float ReviveResourcePercentAt140Wisdom = 0.10f;
+
+	UPROPERTY(Transient)
+	float ReviveRecoverySecondsAt100Wisdom = 3.f;
+
+	UPROPERTY(Transient)
+	float ReviveRecoverySecondsAt140Wisdom = 5.f;
+
+	UPROPERTY(Transient)
+	float DownedInteractionMaxDistance = 350.f;
+
+	UPROPERTY(Transient)
+	float DownedCrawlSpeed = 90.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Death|Corpse", meta=(ClampMin="0.0"))
 	float CorpseDespawnDelaySeconds = 20.f;
@@ -425,15 +473,17 @@ public:
 	UPROPERTY(Transient)
 	TObjectPtr<class USpellRiseDeathScreenWidget> LocalDeathScreenWidget = nullptr;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death|Downed")
-	TObjectPtr<USpellRiseDownedInteractableComponent> DownedReviveInteractable = nullptr;
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Death|UI")
+	TSubclassOf<class USpellRiseDeathScreenWidget> DeathScreenWidgetClass;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death|Downed")
-	TObjectPtr<USpellRiseDownedInteractableComponent> DownedFinishInteractable = nullptr;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Death")
+	TObjectPtr<USpellRiseLifeStateComponent> LifeStateComponent = nullptr;
 
 	FTimerHandle RespawnTimerHandle;
 	FTimerHandle CorpseDespawnTimerHandle;
 	FTimerHandle DownedExpirationTimerHandle;
+	FTimerHandle DownedCooldownTimerHandle;
+	FTimerHandle ReviveRecoveryTimerHandle;
 	FTimerHandle LocalDeathScreenTimerHandle;
 	FTimerHandle LocalDeathScreenHideTimerHandle;
 	FTimerHandle ASCInitializationRetryTimerHandle;
@@ -449,6 +499,12 @@ public:
 	TObjectPtr<UNarrativeInventoryComponent> CachedNarrativeInventoryForWeight = nullptr;
 
 	UPROPERTY(Transient)
+	TObjectPtr<USpellRiseInventoryComponent> CachedNativeInventoryForWeight = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USpellRiseEquipmentComponent> CachedEquipmentComponent = nullptr;
+
+	UPROPERTY(Transient)
 	int32 CachedInventoryEncumbranceMoveState = -1;
 
 	UPROPERTY(Transient)
@@ -461,9 +517,6 @@ public:
 	float GameplayMovementInputScale = 1.f;
 
 protected:
-	UPROPERTY(EditDefaultsOnly, Category="Input")
-	TObjectPtr<UInputMappingContext> IMC_Default = nullptr;
-
 	void InitASCActorInfo();
 	void ScheduleASCInitializationRetry();
 	void HandleASCInitializationRetry();
@@ -475,6 +528,10 @@ protected:
 	UNarrativeInventoryComponent* ResolveNarrativeInventoryComponent() const;
 	void BindNarrativeInventoryWeightDelegates(UNarrativeInventoryComponent* Inventory);
 	void UnbindNarrativeInventoryWeightDelegates();
+	void BindNativeInventoryWeightDelegates(USpellRiseInventoryComponent* Inventory);
+	void UnbindNativeInventoryWeightDelegates();
+	void BindEquipmentDelegates(USpellRiseEquipmentComponent* Equipment);
+	void UnbindEquipmentDelegates();
 	void RefreshInventoryEncumbranceMovement(const TCHAR* Context);
 	void RefreshMovementSpeedFromAttributes(const TCHAR* Context);
 	void RecalculateDerivedStats();
@@ -488,6 +545,12 @@ protected:
 
 	UFUNCTION()
 	void OnNarrativeInventoryUpdatedForWeight();
+
+	UFUNCTION()
+	void OnNativeInventoryUpdatedForWeight(ESpellRiseInventoryChangeType ChangeType, FSpellRiseItemInstance Item);
+
+	UFUNCTION()
+	void OnNativeEquipmentChanged();
 	void ApplyRegenStartupEffects();
 	void ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass);
 	void StartResourceRegen_Server();
@@ -501,7 +564,11 @@ protected:
 	void ScheduleDownedExpiration_Server();
 	void ExecuteDownedExpiration_Server();
 	void ClearDownedState_Server();
-	void SetDownedInteractablesEnabled(bool bEnabled);
+	void ClearPendingDeathTimers_Server();
+	bool ValidateDownedInteractor_Server(const ASpellRiseCharacterBase* Interactor) const;
+	void StartDownedCooldown_Server();
+	void ClearDownedCooldown_Server();
+	void ClearReviveRecovery_Server();
 	void ScheduleRespawn_Server();
 	void ExecuteRespawn_Server();
 	void ScheduleCorpseDespawn_Server();
@@ -512,8 +579,10 @@ protected:
 	void StopAllCharacterAudio(bool bIncludeAttachedActors);
 	void ResetLocalDeathPresentation();
 	void TriggerLocalDamageScreenEffect();
+	void SetLocalDownedVisualEffect(bool bEnabled);
 	void ShowLocalDeathScreenText();
 	void HideLocalDeathScreenText();
+	void RefreshLocalDownedPrompt();
 	void RemoveRuntimeGrantedAbilitiesOnDeath_Server();
 	void DestroyDeathAttachments_Server(USkeletalMeshComponent* VisualMesh);
 	void ConfigureDeathRagdoll(USkeletalMeshComponent* VisualMesh, const FVector& PreDeathVelocity);
@@ -523,10 +592,14 @@ protected:
 	void ForceServerAnimTick();
 	void EnsureAnimInstanceInitialized();
 	void RefreshRuntimeTickPolicy();
+	void SendFinalDeathNotification(ASpellRiseCharacterBase* Finalizer, FName Reason);
+	void SendReviveNotification(ASpellRiseCharacterBase* Reviver);
 	USkeletalMeshComponent* FindCharacterSkeletalMeshComponentByName(FName ComponentName) const;
 	UChildActorComponent* FindCharacterChildActorComponentByName(FName ComponentName) const;
 	USkeletalMeshComponent* ResolveSkeletalMeshFromChildActorComponent(FName ComponentName) const;
 	UCameraComponent* FindCharacterCameraComponentByName(FName ComponentName) const;
+
+	friend class USpellRiseLifeStateComponent;
 	void HandleArchetypeChanged(ESpellRiseArchetype OldArchetype);
 	void SyncDeadStateFromASC(const TCHAR* Context);
 	bool IsAllowedServerEventTag(const FGameplayTag& EventTag) const;

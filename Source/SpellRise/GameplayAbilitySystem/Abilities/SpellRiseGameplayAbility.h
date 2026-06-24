@@ -55,6 +55,9 @@ class SPELLRISE_API USpellRiseGameplayAbility : public UGameplayAbility
 public:
 	USpellRiseGameplayAbility();
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Ability|LifeState")
+	bool bAllowWhileDowned = false;
+
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UI")
 	bool ShouldShowInAbilityBar = false;

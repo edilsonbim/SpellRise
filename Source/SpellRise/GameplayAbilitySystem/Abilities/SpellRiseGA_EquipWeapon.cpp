@@ -3,7 +3,7 @@
 
 #include "EquippableItem.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
-#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseGAEquipWeapon, Log, All);
 
@@ -35,10 +35,10 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 		return;
 	}
 
-	USpellRiseEquipmentManagerComponent* EquipmentManager = Character->GetSpellRiseEquipmentManager();
-	if (!EquipmentManager)
+	USpellRiseWeaponComponent* WeaponComponent = Character->GetSpellRiseWeaponComponent();
+	if (!WeaponComponent)
 	{
-		UE_LOG(LogSpellRiseGAEquipWeapon, Warning, TEXT("ActivateAbility abortada: EquipmentManager ausente. Character=%s"), *GetNameSafe(Character));
+		UE_LOG(LogSpellRiseGAEquipWeapon, Warning, TEXT("ActivateAbility abortada: WeaponComponent ausente. Character=%s"), *GetNameSafe(Character));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 		return;
 	}
@@ -50,7 +50,7 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 			*GetNameSafe(Character),
 			QuickSlotIndexToActivate,
 			ActorInfo->IsLocallyControlled() ? TEXT("true") : TEXT("false"));
-		const bool bActivated = EquipmentManager->RequestActivateQuickWeaponSlot(QuickSlotIndexToActivate);
+		const bool bActivated = WeaponComponent->ActivateQuickSlot(QuickSlotIndexToActivate);
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, !bActivated);
 		return;
 	}
@@ -73,8 +73,8 @@ void USpellRiseGA_EquipWeapon::ActivateAbility(
 		Character->HasAuthority() ? TEXT("true") : TEXT("false"));
 
 	const bool bRequested = bUnequipInstead
-		? EquipmentManager->RequestUnequipItem(ItemToHandle)
-		: EquipmentManager->RequestEquipItem(ItemToHandle);
+		? WeaponComponent->UnequipWeaponItem(ItemToHandle)
+		: WeaponComponent->EquipWeapon(ItemToHandle);
 
 	if (!bRequested)
 	{

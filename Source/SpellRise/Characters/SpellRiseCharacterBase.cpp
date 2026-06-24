@@ -12,7 +12,6 @@
 #include "Components/InputComponent.h"
 #include "Components/MeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameModeBase.h"
@@ -20,7 +19,6 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameplayEffect.h"
-#include "InputMappingContext.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -36,8 +34,8 @@
 #include "SpellRise/Core/SpellRiseGameState.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
-#include "SpellRise/Characters/SpellRiseDownedInteractableComponent.h"
-#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
+#include "SpellRise/Characters/SpellRiseLifeStateComponent.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
 #include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
@@ -48,6 +46,7 @@
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Inventory/SpellRiseFullLootSubsystem.h"
+#include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
 #include "SpellRise/Security/SpellRiseAuditTrail.h"
 #include "SpellRise/UI/SpellRiseDamageEdgeWidget.h"
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
@@ -72,6 +71,18 @@ namespace SpellRiseTags
 	static const FGameplayTag& State_Downed()
 	{
 		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Downed"));
+		return Tag;
+	}
+
+	static const FGameplayTag& State_Downed_Cooldown()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Downed.Cooldown"));
+		return Tag;
+	}
+
+	static const FGameplayTag& State_ReviveRecovery()
+	{
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.ReviveRecovery"));
 		return Tag;
 	}
 
@@ -413,21 +424,19 @@ ASpellRiseCharacterBase::ASpellRiseCharacterBase()
 
 	FallDamageComponent = CreateDefaultSubobject<UFallDamageComponent>(TEXT("FallDamageComponent"));
 	WeaponComponent = CreateDefaultSubobject<USpellRiseWeaponComponent>(TEXT("WeaponComponent"));
-	DownedReviveInteractable = CreateDefaultSubobject<USpellRiseDownedInteractableComponent>(TEXT("DownedReviveInteractable"));
-	DownedFinishInteractable = CreateDefaultSubobject<USpellRiseDownedInteractableComponent>(TEXT("DownedFinishInteractable"));
+	LifeStateComponent = CreateDefaultSubobject<USpellRiseLifeStateComponent>(TEXT("LifeStateComponent"));
+
+	static ConstructorHelpers::FClassFinder<USpellRiseDeathScreenWidget> DeathScreenWidgetFinder(
+		TEXT("/Game/UI/Widgets/SpellRiseDeathScreenWidget"));
+	if (DeathScreenWidgetFinder.Succeeded())
+	{
+		DeathScreenWidgetClass = DeathScreenWidgetFinder.Class;
+	}
 
 	DeadStateTag = SpellRiseTags::State_Dead();
 	DownedStateTag = SpellRiseTags::State_Downed();
-	if (DownedReviveInteractable)
-	{
-		DownedReviveInteractable->InteractionMode = ESpellRiseDownedInteractionMode::Revive;
-		DownedReviveInteractable->Activate(false);
-	}
-	if (DownedFinishInteractable)
-	{
-		DownedFinishInteractable->InteractionMode = ESpellRiseDownedInteractionMode::Finish;
-		DownedFinishInteractable->Deactivate();
-	}
+	DownedCooldownTag = SpellRiseTags::State_Downed_Cooldown();
+	ReviveRecoveryTag = SpellRiseTags::State_ReviveRecovery();
 	BleedingBlocksRegenTag = SpellRiseTags::Status_Bleeding();
 	ManaRegenPenaltyTag = SpellRiseTags::Debuff_ManaRegenPenalty();
 	StaminaRegenPausedTag = SpellRiseTags::State_Resource_StaminaRegenPaused();
@@ -540,6 +549,8 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(ResourceRegenTimerHandle);
 	}
 	UnbindNarrativeInventoryWeightDelegates();
+	UnbindNativeInventoryWeightDelegates();
+	UnbindEquipmentDelegates();
 	ResetLocalDeathPresentation();
 	Super::EndPlay(EndPlayReason);
 }
@@ -637,31 +648,10 @@ void ASpellRiseCharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerI
 		return;
 	}
 
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		if (ULocalPlayer* LP = PC->GetLocalPlayer())
-		{
-			if (UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
-			{
-				if (IMC_Default)
-				{
-					Subsystem->AddMappingContext(IMC_Default, 0);
-				}
-			}
-		}
-	}
-
-
-
 }
 
 void ASpellRiseCharacterBase::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
 {
-	if (IsDowned())
-	{
-		return;
-	}
-
 	if (!bForce)
 	{
 		if (bInventoryWeightMovementBlocked
@@ -1084,11 +1074,6 @@ UCameraComponent* ASpellRiseCharacterBase::GetActiveAimCameraComponent() const
 	return nullptr;
 }
 
-USpellRiseEquipmentManagerComponent* ASpellRiseCharacterBase::GetSpellRiseEquipmentManager() const
-{
-	return FindComponentByClass<USpellRiseEquipmentManagerComponent>();
-}
-
 USpellRiseWeaponComponent* ASpellRiseCharacterBase::GetSpellRiseWeaponComponent() const
 {
 	return WeaponComponent ? WeaponComponent.Get() : FindComponentByClass<USpellRiseWeaponComponent>();
@@ -1099,6 +1084,7 @@ void ASpellRiseCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME_CONDITION_NOTIFY(ASpellRiseCharacterBase, Archetype, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME(ASpellRiseCharacterBase, bIsDowned);
 }
 
 void ASpellRiseCharacterBase::MultiRefreshEquipmentVisuals_Implementation()
@@ -1163,30 +1149,11 @@ void ASpellRiseCharacterBase::ServerHandleNarrativeItemActivationForEquipment_Im
 		}
 	}
 
-	USpellRiseEquipmentManagerComponent* ResolvedEquipmentManager = GetSpellRiseEquipmentManager();
-	if (!ResolvedEquipmentManager)
-	{
-		UE_LOG(LogSpellRiseEquipTrace, Warning,
-			TEXT("Character.HandleItemActivation abortado: EquipmentManager ausente para item nao-weapon. Item=%s ShouldEquip=%s"),
-			*GetNameSafe(EquippableItem),
-			bShouldEquip ? TEXT("true") : TEXT("false"));
-		return;
-	}
-
-	const bool bHandledBySpellRise = bShouldEquip
-		? ResolvedEquipmentManager->RequestEquipItem(EquippableItem)
-		: ResolvedEquipmentManager->RequestUnequipItem(EquippableItem);
-
-	if (bHandledBySpellRise)
-	{
-		return;
-	}
-
 	const bool bLooksLikeWeaponItem = (EquippableItem->GetClass()->FindPropertyByName(TEXT("WeaponClass")) != nullptr);
 	if (bLooksLikeWeaponItem)
 	{
 		UE_LOG(LogSpellRiseEquipTrace, Warning,
-			TEXT("Character.HandleItemActivation weapon rejeitada pelo SpellRiseEquipmentManager sem fallback Narrative. Item=%s"),
+			TEXT("Character.HandleItemActivation weapon rejeitada pelo SpellRiseWeaponComponent sem fallback Narrative. Item=%s"),
 			*GetNameSafe(EquippableItem));
 		return;
 	}
@@ -1483,6 +1450,11 @@ void ASpellRiseCharacterBase::HandleArchetypeChanged(ESpellRiseArchetype OldArch
 
 bool ASpellRiseCharacterBase::IsDead() const
 {
+	if (LifeStateComponent)
+	{
+		return LifeStateComponent->IsDead();
+	}
+
 	if (const USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC())
 	{
 		if (DeadStateTag.IsValid())
@@ -1496,6 +1468,11 @@ bool ASpellRiseCharacterBase::IsDead() const
 
 bool ASpellRiseCharacterBase::IsDowned() const
 {
+	if (LifeStateComponent)
+	{
+		return LifeStateComponent->IsDowned();
+	}
+
 	if (const USpellRiseAbilitySystemComponent* ASC = GetSpellRiseASC())
 	{
 		if (DownedStateTag.IsValid())
@@ -1524,12 +1501,6 @@ void ASpellRiseCharacterBase::SR_ProcessAbilityInput(float DeltaSeconds, bool bG
 	USpellRiseAbilitySystemComponent* SRASC = GetSpellRiseASC();
 	if (!SRASC)
 	{
-		return;
-	}
-
-	if (IsDowned())
-	{
-		SR_ClearAbilityInput();
 		return;
 	}
 
@@ -1597,6 +1568,17 @@ void ASpellRiseCharacterBase::InitASCActorInfo()
 	GetSpellRiseASC()->InitAbilityActorInfo(OwnerActor, this);
 	GetSpellRiseASC()->RefreshAbilityActorInfo();
 	RefreshMovementSpeedFromAttributes(TEXT("InitASCActorInfo"));
+	if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		if (USpellRiseEquipmentComponent* Equipment = SRPlayerState->GetEquipmentComponent())
+		{
+			BindEquipmentDelegates(Equipment);
+			if (HasAuthority() && WeaponComponent)
+			{
+				WeaponComponent->SyncFromEquipmentComponent(Equipment);
+			}
+		}
+	}
 
 	if (UWorld* World = GetWorld())
 	{
@@ -1663,6 +1645,10 @@ void ASpellRiseCharacterBase::PossessedBy(AController* NewController)
 	SyncDeadStateFromASC(TEXT("PossessedBy"));
 	ResetLocalDeathPresentation();
 	SetCharacterInputEnabled(!IsDead());
+	if (ASpellRisePlayerController* SpellRisePC = Cast<ASpellRisePlayerController>(NewController))
+	{
+		SpellRisePC->RestoreGameplayInputAfterUI(TEXT("CharacterPossessed"));
+	}
 	RefreshRuntimeTickPolicy();
 
 	if (!GetSpellRiseASC())
@@ -1906,6 +1892,14 @@ void ASpellRiseCharacterBase::SyncNarrativeInventoryWeightCapacityFromCarryWeigh
 	}
 
 	Inventory->SetWeightCapacity(DesiredWeightCapacity);
+	if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		if (USpellRiseInventoryComponent* NativeInventory = SRPlayerState->GetInventoryComponent())
+		{
+			NativeInventory->SetMaxWeight_Server(DesiredWeightCapacity);
+			BindNativeInventoryWeightDelegates(NativeInventory);
+		}
+	}
 	RefreshInventoryEncumbranceMovement(Context);
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
@@ -1941,6 +1935,60 @@ void ASpellRiseCharacterBase::UnbindNarrativeInventoryWeightDelegates()
 	{
 		CachedNarrativeInventoryForWeight->OnInventoryUpdated.RemoveDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
 		CachedNarrativeInventoryForWeight = nullptr;
+	}
+}
+
+void ASpellRiseCharacterBase::BindNativeInventoryWeightDelegates(USpellRiseInventoryComponent* Inventory)
+{
+	if (CachedNativeInventoryForWeight == Inventory)
+	{
+		return;
+	}
+	UnbindNativeInventoryWeightDelegates();
+	CachedNativeInventoryForWeight = Inventory;
+	if (CachedNativeInventoryForWeight)
+	{
+		CachedNativeInventoryForWeight->OnInventoryChanged.AddUniqueDynamic(
+			this,
+			&ASpellRiseCharacterBase::OnNativeInventoryUpdatedForWeight);
+	}
+}
+
+void ASpellRiseCharacterBase::UnbindNativeInventoryWeightDelegates()
+{
+	if (CachedNativeInventoryForWeight)
+	{
+		CachedNativeInventoryForWeight->OnInventoryChanged.RemoveDynamic(
+			this,
+			&ASpellRiseCharacterBase::OnNativeInventoryUpdatedForWeight);
+		CachedNativeInventoryForWeight = nullptr;
+	}
+}
+
+void ASpellRiseCharacterBase::BindEquipmentDelegates(USpellRiseEquipmentComponent* Equipment)
+{
+	if (CachedEquipmentComponent == Equipment)
+	{
+		return;
+	}
+	UnbindEquipmentDelegates();
+	CachedEquipmentComponent = Equipment;
+	if (CachedEquipmentComponent)
+	{
+		CachedEquipmentComponent->OnEquipmentChanged.AddUniqueDynamic(
+			this,
+			&ASpellRiseCharacterBase::OnNativeEquipmentChanged);
+	}
+}
+
+void ASpellRiseCharacterBase::UnbindEquipmentDelegates()
+{
+	if (CachedEquipmentComponent)
+	{
+		CachedEquipmentComponent->OnEquipmentChanged.RemoveDynamic(
+			this,
+			&ASpellRiseCharacterBase::OnNativeEquipmentChanged);
+		CachedEquipmentComponent = nullptr;
 	}
 }
 
@@ -2011,15 +2059,32 @@ void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* C
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponent();
-	if (!Movement || !Inventory)
+	ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
+	USpellRiseInventoryComponent* NativeInventory = SRPlayerState ? SRPlayerState->GetInventoryComponent() : nullptr;
+	USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState ? SRPlayerState->GetEquipmentComponent() : nullptr;
+	if (!Movement || (!Inventory && !NativeInventory))
 	{
 		return;
 	}
 
-	BindNarrativeInventoryWeightDelegates(Inventory);
+	if (Inventory)
+	{
+		BindNarrativeInventoryWeightDelegates(Inventory);
+	}
+	if (NativeInventory)
+	{
+		BindNativeInventoryWeightDelegates(NativeInventory);
+	}
 
-	const float CurrentWeight = FMath::Max(0.f, Inventory->GetCurrentWeight());
-	const float WeightCapacity = FMath::Max(0.f, Inventory->GetWeightCapacity());
+	const bool bUseNativeInventory = NativeInventory
+		&& (!NativeInventory->GetItems().IsEmpty()
+			|| (NativeEquipment && !NativeEquipment->GetPrivateEquipment().Entries.IsEmpty()));
+	const float CurrentWeight = bUseNativeInventory
+		? FMath::Max(0.f, NativeInventory->GetCurrentWeight() + (NativeEquipment ? NativeEquipment->GetEquippedWeight() : 0.0f))
+		: FMath::Max(0.f, Inventory ? Inventory->GetCurrentWeight() : 0.0f);
+	const float WeightCapacity = bUseNativeInventory
+		? FMath::Max(0.f, NativeInventory->GetMaxWeight())
+		: FMath::Max(0.f, Inventory ? Inventory->GetWeightCapacity() : 0.0f);
 
 	float SpeedMultiplier = 1.f;
 	int32 NewMoveState = 0;
@@ -2093,6 +2158,22 @@ void ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight()
 	RefreshInventoryEncumbranceMovement(TEXT("InventoryUpdated"));
 }
 
+void ASpellRiseCharacterBase::OnNativeInventoryUpdatedForWeight(
+	ESpellRiseInventoryChangeType,
+	FSpellRiseItemInstance)
+{
+	RefreshInventoryEncumbranceMovement(TEXT("NativeInventoryUpdated"));
+}
+
+void ASpellRiseCharacterBase::OnNativeEquipmentChanged()
+{
+	RefreshInventoryEncumbranceMovement(TEXT("NativeEquipmentUpdated"));
+	if (HasAuthority() && WeaponComponent && CachedEquipmentComponent)
+	{
+		WeaponComponent->SyncFromEquipmentComponent(CachedEquipmentComponent);
+	}
+}
+
 void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Data)
 {
 	if (!HasAuthority() || !GetSpellRiseASC())
@@ -2164,9 +2245,9 @@ void ASpellRiseCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data
 		return;
 	}
 
-	if (GetPlayerState<ASpellRisePlayerState>())
+	if (LifeStateComponent)
 	{
-		EnterDownedState_Server();
+		LifeStateComponent->HandleLethalHealth_Server();
 		return;
 	}
 
@@ -2288,46 +2369,11 @@ void ASpellRiseCharacterBase::SetCharacterInputEnabled(bool bEnabled)
 
 void ASpellRiseCharacterBase::ApplyDownedMovementBlock()
 {
-	SR_ClearAbilityInput();
-	if (GetSpellRiseASC())
-	{
-		GetSpellRiseASC()->SR_ClearAbilityInput();
-	}
-
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->StopMovementImmediately();
-		Movement->DisableMovement();
-	}
-
-	SetCharacterInputEnabled(false);
 }
 
 void ASpellRiseCharacterBase::RestoreMovementAfterDowned(bool bForceLocalPresentation)
 {
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->StopMovementImmediately();
-		if (bForceLocalPresentation || (!IsDead() && !IsDowned()))
-		{
-			Movement->SetMovementMode(MOVE_Walking);
-		}
-	}
-
-	if (bForceLocalPresentation || (!IsDead() && !IsDowned()))
-	{
-		SetCharacterInputEnabled(true);
-
-		if (IsLocallyControlled())
-		{
-			if (APlayerController* PC = Cast<APlayerController>(GetController()))
-			{
-				EnableInput(PC);
-				PC->SetIgnoreMoveInput(bInventoryWeightMovementBlocked);
-				PC->SetIgnoreLookInput(false);
-			}
-		}
-	}
+	(void)bForceLocalPresentation;
 }
 
 void ASpellRiseCharacterBase::ApplyRegenStartupEffects()
@@ -2490,6 +2536,12 @@ void ASpellRiseCharacterBase::ResetDeathStateAndResources_Server()
 	}
 
 	ClearDownedState_Server();
+	ClearReviveRecovery_Server();
+	ClearDownedCooldown_Server();
+	if (LifeStateComponent)
+	{
+		LifeStateComponent->ResetForSpawn_Server();
+	}
 	bIsDead = false;
 	bIsDowned = false;
 	bFullLootProcessedForCurrentDeath = false;
@@ -2876,34 +2928,10 @@ void ASpellRiseCharacterBase::OnDeadTagChanged(FGameplayTag CallbackTag, int32 N
 	RefreshRuntimeTickPolicy();
 	if (HasAuthority())
 	{
-		if (UWorld* World = GetWorld())
-		{
-			World->GetTimerManager().ClearTimer(RespawnTimerHandle);
-			World->GetTimerManager().ClearTimer(CorpseDespawnTimerHandle);
-			World->GetTimerManager().ClearTimer(DownedExpirationTimerHandle);
-		}
+		ClearPendingDeathTimers_Server();
 		ClearDownedState_Server();
 		ApplyRegenStartupEffects();
 		StartResourceRegen_Server();
-	}
-}
-
-void ASpellRiseCharacterBase::SetDownedInteractablesEnabled(bool bEnabled)
-{
-	if (DownedReviveInteractable)
-	{
-		if (bEnabled)
-		{
-			DownedReviveInteractable->Activate(false);
-		}
-		else
-		{
-			DownedReviveInteractable->Deactivate();
-		}
-	}
-	if (DownedFinishInteractable)
-	{
-		DownedFinishInteractable->Deactivate();
 	}
 }
 
@@ -2929,12 +2957,11 @@ void ASpellRiseCharacterBase::EnterDownedState_Server()
 	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), 1.f);
 	GetSpellRiseASC()->CancelAllAbilities();
 	StopResourceRegen_Server();
-	ApplyDownedMovementBlock();
-	SetDownedInteractablesEnabled(true);
 	SyncDeadStateFromASC(TEXT("EnterDownedState_Server"));
 	RefreshRuntimeTickPolicy();
 	ScheduleDownedExpiration_Server();
 	MultiHandleDowned();
+	ClientUpdateDeathWidget(false);
 
 	UE_LOG(LogSpellRiseDeathLoot, Log, TEXT("[Death][Downed] Character=%s Duration=%.2f"), *GetNameSafe(this), FMath::Max(1.f, DownedDurationSeconds));
 }
@@ -2986,7 +3013,21 @@ void ASpellRiseCharacterBase::ClearDownedState_Server()
 	}
 
 	bIsDowned = false;
-	SetDownedInteractablesEnabled(false);
+}
+
+void ASpellRiseCharacterBase::ClearPendingDeathTimers_Server()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RespawnTimerHandle);
+		World->GetTimerManager().ClearTimer(CorpseDespawnTimerHandle);
+		World->GetTimerManager().ClearTimer(DownedExpirationTimerHandle);
+	}
 }
 
 void ASpellRiseCharacterBase::FinalizeDeath_Server(FName Reason, ASpellRiseCharacterBase* Finalizer)
@@ -2997,6 +3038,8 @@ void ASpellRiseCharacterBase::FinalizeDeath_Server(FName Reason, ASpellRiseChara
 	}
 
 	ClearDownedState_Server();
+	ClearReviveRecovery_Server();
+	ClearDownedCooldown_Server();
 	bIsDead = true;
 
 	if (GE_Death)
@@ -3023,6 +3066,7 @@ void ASpellRiseCharacterBase::FinalizeDeath_Server(FName Reason, ASpellRiseChara
 	StopResourceRegen_Server();
 	SyncDeadStateFromASC(TEXT("FinalizeDeath_Server"));
 	RefreshRuntimeTickPolicy();
+	ClientUpdateDeathWidget(true);
 	ProcessFullLootDrop_Server(GetActorLocation());
 	ScheduleCorpseDespawn_Server();
 	ScheduleRespawn_Server();
@@ -3033,16 +3077,23 @@ void ASpellRiseCharacterBase::FinalizeDeath_Server(FName Reason, ASpellRiseChara
 
 bool ASpellRiseCharacterBase::ReviveFromDowned_Server(ASpellRiseCharacterBase* Reviver)
 {
-	if (!HasAuthority() || !GetSpellRiseASC() || !Reviver || Reviver == this || !IsDowned() || IsDead())
+	if (LifeStateComponent)
+	{
+		return LifeStateComponent->Revive_Server(Reviver);
+	}
+
+	if (!HasAuthority() || !GetSpellRiseASC() || !IsDowned() || IsDead()
+		|| (Reviver && !ValidateDownedInteractor_Server(Reviver)))
 	{
 		return false;
 	}
 
-	if (Reviver->IsDead() || Reviver->IsDowned())
+	if (Reviver && (Reviver->IsDead() || Reviver->IsDowned()))
 	{
 		return false;
 	}
 
+	ClearPendingDeathTimers_Server();
 	ClearDownedState_Server();
 	GetSpellRiseASC()->CancelAllAbilities();
 
@@ -3062,34 +3113,76 @@ bool ASpellRiseCharacterBase::ReviveFromDowned_Server(ASpellRiseCharacterBase* R
 		Capsule->SetGenerateOverlapEvents(true);
 	}
 
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->SetMovementMode(MOVE_Walking);
-	}
-
+	const float Wisdom = GetSpellRiseASC()->GetNumericAttribute(UCombatAttributeSet::GetWisdomAttribute());
+	const float WisdomAlpha = FMath::Clamp((Wisdom - 100.f) / 40.f, 0.f, 1.f);
+	const float HealthPercent = FMath::Lerp(ReviveHealthPercentAt100Wisdom, ReviveHealthPercentAt140Wisdom, WisdomAlpha);
+	const float ResourcePercent = FMath::Lerp(ReviveResourcePercentAt100Wisdom, ReviveResourcePercentAt140Wisdom, WisdomAlpha);
+	const float RecoverySeconds = FMath::Lerp(ReviveRecoverySecondsAt100Wisdom, ReviveRecoverySecondsAt140Wisdom, WisdomAlpha);
 	const float MaxHealthValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxHealthAttribute());
-	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), FMath::Max(1.f, MaxHealthValue * FMath::Clamp(DownedReviveHealthPercent, 0.f, 1.f)));
-	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), 0.f);
-	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaAttribute(), 0.f);
+	const float MaxManaValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxManaAttribute());
+	const float MaxStaminaValue = GetSpellRiseASC()->GetNumericAttribute(UResourceAttributeSet::GetMaxStaminaAttribute());
+	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetHealthAttribute(), FMath::Max(1.f, MaxHealthValue * FMath::Clamp(HealthPercent, 0.f, 1.f)));
+	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetManaAttribute(), MaxManaValue * FMath::Clamp(ResourcePercent, 0.f, 1.f));
+	GetSpellRiseASC()->SetNumericAttributeBase(UResourceAttributeSet::GetStaminaAttribute(), MaxStaminaValue * FMath::Clamp(ResourcePercent, 0.f, 1.f));
+
+	if (ReviveRecoveryTag.IsValid())
+	{
+		GetSpellRiseASC()->AddLooseGameplayTag(ReviveRecoveryTag);
+	}
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ReviveRecoveryTimerHandle);
+		if (RecoverySeconds > 0.f)
+		{
+			World->GetTimerManager().SetTimer(
+				ReviveRecoveryTimerHandle,
+				this,
+				&ASpellRiseCharacterBase::ClearReviveRecovery_Server,
+				RecoverySeconds,
+				false);
+		}
+		else
+		{
+			ClearReviveRecovery_Server();
+		}
+	}
+	StartDownedCooldown_Server();
 
 	bIsDead = false;
 	bIsDowned = false;
 	SyncDeadStateFromASC(TEXT("ReviveFromDowned_Server"));
 	ResetLocalDeathPresentation();
-	RestoreMovementAfterDowned();
 	RefreshRuntimeTickPolicy();
 	ApplyRegenStartupEffects();
 	StartResourceRegen_Server();
 	MultiHandleRevivedFromDowned();
-	SendDownedReviveCombatChat(this, Reviver);
+	if (Reviver)
+	{
+		SendDownedReviveCombatChat(this, Reviver);
+	}
 
-	UE_LOG(LogSpellRiseDeathLoot, Log, TEXT("[Death][Revived] Character=%s Reviver=%s"), *GetNameSafe(this), *GetNameSafe(Reviver));
+	UE_LOG(
+		LogSpellRiseDeathLoot,
+		Log,
+		TEXT("[Death][Revived] Character=%s Reviver=%s Wisdom=%.2f HealthPct=%.3f ResourcePct=%.3f Recovery=%.2f DownedCooldown=%.2f"),
+		*GetNameSafe(this),
+		*GetNameSafe(Reviver),
+		Wisdom,
+		HealthPercent,
+		ResourcePercent,
+		RecoverySeconds,
+		FMath::Max(0.f, DownedCooldownSeconds));
 	return true;
 }
 
 bool ASpellRiseCharacterBase::FinishDownedByInteractor_Server(ASpellRiseCharacterBase* Finisher)
 {
-	if (!HasAuthority() || !Finisher || Finisher == this || !IsDowned() || IsDead())
+	if (LifeStateComponent)
+	{
+		return LifeStateComponent->Gank_Server(Finisher);
+	}
+
+	if (!HasAuthority() || !IsDowned() || IsDead() || !ValidateDownedInteractor_Server(Finisher))
 	{
 		return false;
 	}
@@ -3101,6 +3194,79 @@ bool ASpellRiseCharacterBase::FinishDownedByInteractor_Server(ASpellRiseCharacte
 
 	FinalizeDeath_Server(TEXT("finished_by_player"), Finisher);
 	return true;
+}
+
+void ASpellRiseCharacterBase::ServerResolveDownedAction_Implementation(
+	ASpellRiseCharacterBase* TargetCharacter,
+	bool bRevive)
+{
+	FString RejectReason;
+	if (!ValidateServerRpcOwnerContext(RejectReason))
+	{
+		AuditRejectedServerRpc(TEXT("ServerResolveDownedAction"), RejectReason);
+		return;
+	}
+
+	USpellRiseLifeStateComponent* TargetLifeState = TargetCharacter ? TargetCharacter->GetLifeStateComponent() : nullptr;
+	FString LifeStateRejectReason;
+	if (!TargetCharacter || TargetCharacter == this || IsDead() || IsDowned()
+		|| !TargetLifeState || !TargetLifeState->ValidateInteractor_Server(this, &LifeStateRejectReason))
+	{
+		AuditRejectedServerRpc(
+			TEXT("ServerResolveDownedAction"),
+			LifeStateRejectReason.IsEmpty() ? TEXT("invalid_target_context") : LifeStateRejectReason);
+		return;
+	}
+
+	const bool bSuccess = bRevive
+		? TargetCharacter->ReviveFromDowned_Server(this)
+		: TargetCharacter->FinishDownedByInteractor_Server(this);
+	if (!bSuccess)
+	{
+		AuditRejectedServerRpc(TEXT("ServerResolveDownedAction"), bRevive ? TEXT("revive_failed") : TEXT("gank_failed"));
+	}
+}
+
+void ASpellRiseCharacterBase::ShowDownedActionWidget(ASpellRiseCharacterBase* TargetCharacter)
+{
+	if (!IsLocallyControlled() || !TargetCharacter || !TargetCharacter->IsDowned())
+	{
+		return;
+	}
+
+	ShowLocalDeathScreenText();
+	if (LocalDeathScreenWidget)
+	{
+		LocalDeathScreenWidget->ConfigureDownedAction(TargetCharacter);
+	}
+	if (LifeStateComponent)
+	{
+		LifeStateComponent->ShowDownedActions_Local(TargetCharacter);
+	}
+}
+
+void ASpellRiseCharacterBase::BeginDownedCrawl()
+{
+}
+
+void ASpellRiseCharacterBase::HandleLifeStatePresentation(
+	ESpellRiseLifeState NewState,
+	ESpellRiseLifeState OldState)
+{
+	if (NewState == ESpellRiseLifeState::Downed)
+	{
+		SetLocalDownedVisualEffect(true);
+		return;
+	}
+
+	if (OldState == ESpellRiseLifeState::Downed)
+	{
+		SetLocalDownedVisualEffect(false);
+	}
+}
+
+void ASpellRiseCharacterBase::EndDownedCrawl()
+{
 }
 
 void ASpellRiseCharacterBase::ServerAcceptDeath_Implementation()
@@ -3118,7 +3284,84 @@ void ASpellRiseCharacterBase::ServerAcceptDeath_Implementation()
 		return;
 	}
 
+	if (LifeStateComponent)
+	{
+		LifeStateComponent->AcceptDeath_Server();
+		return;
+	}
+
 	FinalizeDeath_Server(TEXT("accepted_by_player"));
+}
+
+bool ASpellRiseCharacterBase::ValidateDownedInteractor_Server(const ASpellRiseCharacterBase* Interactor) const
+{
+	if (!HasAuthority() || !Interactor || Interactor == this || Interactor->IsDead() || Interactor->IsDowned())
+	{
+		return false;
+	}
+
+	return FVector::DistSquared(GetActorLocation(), Interactor->GetActorLocation())
+		<= FMath::Square(FMath::Max(50.f, DownedInteractionMaxDistance));
+}
+
+void ASpellRiseCharacterBase::StartDownedCooldown_Server()
+{
+	if (!HasAuthority() || !GetSpellRiseASC())
+	{
+		return;
+	}
+
+	ClearDownedCooldown_Server();
+	const float CooldownSeconds = FMath::Max(0.f, DownedCooldownSeconds);
+	if (CooldownSeconds <= 0.f || !DownedCooldownTag.IsValid())
+	{
+		return;
+	}
+
+	GetSpellRiseASC()->AddLooseGameplayTag(DownedCooldownTag);
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			DownedCooldownTimerHandle,
+			this,
+			&ASpellRiseCharacterBase::ClearDownedCooldown_Server,
+			CooldownSeconds,
+			false);
+	}
+}
+
+void ASpellRiseCharacterBase::ClearDownedCooldown_Server()
+{
+	if (!HasAuthority() || !GetSpellRiseASC())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DownedCooldownTimerHandle);
+	}
+	if (DownedCooldownTag.IsValid() && GetSpellRiseASC()->HasMatchingGameplayTag(DownedCooldownTag))
+	{
+		GetSpellRiseASC()->RemoveLooseGameplayTag(DownedCooldownTag);
+	}
+}
+
+void ASpellRiseCharacterBase::ClearReviveRecovery_Server()
+{
+	if (!HasAuthority() || !GetSpellRiseASC())
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ReviveRecoveryTimerHandle);
+	}
+	if (ReviveRecoveryTag.IsValid() && GetSpellRiseASC()->HasMatchingGameplayTag(ReviveRecoveryTag))
+	{
+		GetSpellRiseASC()->RemoveLooseGameplayTag(ReviveRecoveryTag);
+	}
 }
 
 void ASpellRiseCharacterBase::ScheduleCorpseDespawn_Server()
@@ -3249,6 +3492,17 @@ void ASpellRiseCharacterBase::ExecuteRespawn_Server()
 {
 	if (!HasAuthority())
 	{
+		return;
+	}
+
+	if (!IsDead())
+	{
+		UE_LOG(LogSpellRiseDeathLoot, Warning,
+			TEXT("[Death][RespawnSkipped] Character=%s Reason=not_dead LifeStateComponent=%s Downed=%d"),
+			*GetNameSafe(this),
+			*GetNameSafe(LifeStateComponent),
+			IsDowned() ? 1 : 0);
+		ClearPendingDeathTimers_Server();
 		return;
 	}
 
@@ -3428,13 +3682,104 @@ void ASpellRiseCharacterBase::TriggerLocalDamageScreenEffect()
 		true);
 }
 
+void ASpellRiseCharacterBase::SetLocalDownedVisualEffect(bool bEnabled)
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsLocallyControlled())
+	{
+		return;
+	}
+
+	if (UCameraComponent* Camera = GetActiveAimCameraComponent())
+	{
+		Camera->PostProcessSettings.bOverride_ColorSaturation = bEnabled;
+		if (bEnabled)
+		{
+			Camera->PostProcessSettings.ColorSaturation = FVector4(0.f, 0.f, 0.f, 1.f);
+			Camera->PostProcessBlendWeight = FMath::Max(Camera->PostProcessBlendWeight, 1.f);
+		}
+	}
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	if (!LocalDamageEdgeWidget)
+	{
+		LocalDamageEdgeWidget = CreateWidget<USpellRiseDamageEdgeWidget>(
+			PC,
+			USpellRiseDamageEdgeWidget::StaticClass());
+		if (LocalDamageEdgeWidget)
+		{
+			LocalDamageEdgeWidget->AddToViewport(1000);
+		}
+	}
+
+	if (LocalDamageEdgeWidget)
+	{
+		const float EdgeAlpha = LifeStateComponent
+			? LifeStateComponent->DownedRedEdgeAlpha
+			: 0.65f;
+		LocalDamageEdgeWidget->SetPersistentDamage(EdgeAlpha, bEnabled);
+	}
+}
+
 void ASpellRiseCharacterBase::ShowLocalDeathScreenText()
 {
-	UE_LOG(LogSpellRiseDeathLoot, Verbose, TEXT("[Death][DebugPresentationSuppressed] Character=%s"), *GetNameSafe(this));
+	if (GetNetMode() == NM_DedicatedServer || !IsLocallyControlled())
+	{
+		return;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+
+	if (!LocalDeathScreenWidget)
+	{
+		const TSubclassOf<USpellRiseDeathScreenWidget> WidgetClass = DeathScreenWidgetClass
+			? DeathScreenWidgetClass
+			: TSubclassOf<USpellRiseDeathScreenWidget>(USpellRiseDeathScreenWidget::StaticClass());
+		LocalDeathScreenWidget = CreateWidget<USpellRiseDeathScreenWidget>(PC, WidgetClass);
+		if (LocalDeathScreenWidget)
+		{
+			LocalDeathScreenWidget->AddToViewport(1100);
+			if (LifeStateComponent)
+			{
+				LifeStateComponent->OnLifeStateChanged.AddUniqueDynamic(
+					LocalDeathScreenWidget,
+					&USpellRiseDeathScreenWidget::HandleLifeStateChanged);
+				LocalDeathScreenWidget->HandleLifeStateChanged(
+					LifeStateComponent->GetLifeState(),
+					LifeStateComponent->GetLifeState());
+			}
+			UE_LOG(LogSpellRiseDeathLoot, Log,
+				TEXT("[Death][WidgetCreated] Character=%s WidgetClass=%s ConfiguredClass=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(LocalDeathScreenWidget->GetClass()),
+				*GetNameSafe(DeathScreenWidgetClass));
+		}
+		else
+		{
+			UE_LOG(LogSpellRiseDeathLoot, Error,
+				TEXT("[Death][WidgetCreateFailed] Character=%s ConfiguredClass=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(DeathScreenWidgetClass));
+		}
+	}
+
+	RefreshLocalDownedPrompt();
 }
 
 void ASpellRiseCharacterBase::HideLocalDeathScreenText()
 {
+	if (LifeStateComponent)
+	{
+		LifeStateComponent->HideDownedActions_Local();
+	}
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(LocalDeathScreenTimerHandle);
@@ -3443,6 +3788,7 @@ void ASpellRiseCharacterBase::HideLocalDeathScreenText()
 
 	if (LocalDeathScreenWidget)
 	{
+		LocalDeathScreenWidget->OnHideDownedActions();
 		LocalDeathScreenWidget->RemoveFromParent();
 		LocalDeathScreenWidget = nullptr;
 	}
@@ -3473,10 +3819,37 @@ void ASpellRiseCharacterBase::MultiHandleDowned_Implementation()
 	HandleDowned();
 }
 
+void ASpellRiseCharacterBase::ClientUpdateDeathWidget_Implementation(bool bFinalDeath)
+{
+	ShowLocalDeathScreenText();
+	if (!LocalDeathScreenWidget)
+	{
+		UE_LOG(LogSpellRiseDeathLoot, Warning, TEXT("[Death][WidgetMissing] Character=%s FinalDeath=%d"), *GetNameSafe(this), bFinalDeath ? 1 : 0);
+		return;
+	}
+
+	if (bFinalDeath)
+	{
+		LocalDeathScreenWidget->SetMessage(FText::FromString(TEXT("Voce morreu")));
+	}
+	else
+	{
+		RefreshLocalDownedPrompt();
+	}
+
+	UE_LOG(
+		LogSpellRiseDeathLoot,
+		Log,
+		TEXT("[Death][WidgetUpdated] Character=%s Class=%s FinalDeath=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(LocalDeathScreenWidget->GetClass()),
+		bFinalDeath ? 1 : 0);
+}
+
 void ASpellRiseCharacterBase::MultiHandleRevivedFromDowned_Implementation()
 {
 	ResetLocalDeathPresentation();
-	SetDownedInteractablesEnabled(false);
+	BP_StopDownedPresentation();
 	RestoreMovementAfterDowned(true);
 
 	if (UWorld* World = GetWorld())
@@ -3507,9 +3880,43 @@ void ASpellRiseCharacterBase::HandleDeath_Implementation()
 
 void ASpellRiseCharacterBase::HandleDowned_Implementation()
 {
-	ApplyDownedMovementBlock();
-	SetDownedInteractablesEnabled(true);
+	if (USkeletalMeshComponent* VisualMesh = GetVisualMeshComponent())
+	{
+		VisualMesh->SetSimulatePhysics(false);
+		VisualMesh->SetAllBodiesSimulatePhysics(false);
+		VisualMesh->SetAllBodiesPhysicsBlendWeight(0.f);
+		VisualMesh->bBlendPhysics = false;
+		VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		VisualMesh->SetVisibility(true, true);
+	}
+	BP_PlayDownedPresentation();
+	ShowLocalDeathScreenText();
 	UE_LOG(LogSpellRiseDeathLoot, Verbose, TEXT("[Death][DownedPresentation] Character=%s Downed=%d Dead=%d"), *GetNameSafe(this), IsDowned() ? 1 : 0, IsDead() ? 1 : 0);
+}
+
+void ASpellRiseCharacterBase::RefreshLocalDownedPrompt()
+{
+	if (!IsLocallyControlled() || !LocalDeathScreenWidget)
+	{
+		return;
+	}
+
+	LocalDeathScreenWidget->SetMessage(FText::FromString(TEXT("Voce esta downed")));
+}
+
+void ASpellRiseCharacterBase::SendFinalDeathNotification(
+	ASpellRiseCharacterBase* Finalizer,
+	FName Reason)
+{
+	SendFinalDeathCombatChat(this, Finalizer, Reason);
+}
+
+void ASpellRiseCharacterBase::SendReviveNotification(ASpellRiseCharacterBase* Reviver)
+{
+	if (Reviver)
+	{
+		SendDownedReviveCombatChat(this, Reviver);
+	}
 }
 
 void ASpellRiseCharacterBase::ConfigureDeathRagdoll(USkeletalMeshComponent* VisualMesh, const FVector& PreDeathVelocity)

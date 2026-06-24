@@ -32,11 +32,39 @@
 - Evidência de log (paths):
 
 ## Open Issues
-### Sincronizacao de status — 2026-06-21
-- Reportado como corrigido, aguardando validacao formal: dano/TTK, bonus dos atributos base e vendor.
-- Reportado como feito, aguardando smoke formal: boosters de atributos base.
-- Em progresso: `dead`/`revive` e clamp de atributos.
-- Abertos: barra ativa, inventario sem equipar, block 2H, mapa incompleto e socket de arma no override.
+### BUG-2026-06-24-057
+- Date: 2026-06-24
+- Severity: High
+- Status: Fixed
+- Area: Death / Downed / Respawn / GAS
+- Issue: apos sair de `State.Downed`, o player podia ficar sem movimento/abilities; logs mostraram `Alive` seguido de `PCOnUnPossess` sem nova posse e falhas GAS com `FailureTags=GameplayAbility.FireBall`.
+- Reproduction: entrar em downed, sair por revive automatico/recovery e tentar mover/usar skill.
+- Expected: ao voltar para `Alive`, o Pawn permanece possuido, IMCs seguem pelo contrato normal e abilities podem ativar salvo custo/cooldown/tags explicitas.
+- Actual: logs recentes indicaram `Downed -> ReviveRecovery -> Alive` e depois `UnPossess`; em outro ponto, `GA_FireBall` falhava por tag de ability.
+- Root Cause: timers legados de morte/respawn podiam sobreviver ao revive/reset e o construtor base bloqueava ativacao por qualquer tag filha de `GameplayAbility`.
+- Fix: revive/reset cancela timers pendentes de morte/respawn; `ExecuteRespawn_Server` agora aborta se o character nao estiver morto; removido `ActivationBlockedTags=GameplayAbility` da base de abilities, mantendo bloqueio por `State.Dead` e regra downed por `bAllowWhileDowned`.
+- Net Scope: morte/loot | GAS
+- Authority Boundary: servidor continua decidindo `LifeState`, respawn e activation/commit/cost/cooldown pelo ASC no `PlayerState`.
+- Prediction Path (Client): sem mudanca de input/movimento; cliente apenas envia input e apresenta estado replicado.
+- Server Validation: respawn final segue restrito a `FinalizeDeath_Server`; ability segue GAS `CanActivateAbility`.
+- RPCs afetados: nenhum RPC novo.
+- OnRep afetados: `LifeState` e tags GAS existentes; sem propriedade replicada nova.
+- Replication Condition envolvida: nenhuma nova.
+- FailureTags observadas (GA): `GameplayAbility.FireBall`.
+- Overflow (`FBitReader::SetOverflowed`): nao observado nos logs revisados.
+- Cenário com lag/loss: pendente.
+- Tested On: 2026-06-24, build `SpellRiseEditor Win64 Development` PASS via `C:\UnrealSource\UnrealEngine`.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Gameplay/GAS
+
+### Sincronizacao de status — 2026-06-22
+- Reportado como corrigido, aguardando validacao formal: dano/TTK, bonus dos atributos base, vendor e ability bar ativa.
+- Reportado como feito, aguardando validacao formal: boosters dos atributos base, indicador visual da ability selecionada e remake do chat com funcoes de player/admin e whisper.
+- Reportado como feito v1, aguardando smoke multiplayer: Party.
+- `dead`/`revive` refeito em C++ e build aprovado em 2026-06-22; smoke multiplayer pendente. Clamp de atributos continua em progresso.
+- Abertos: inventario sem equipar, drag and drop/remake geral do inventario, block 2H, cue do tornado, mapa incompleto, projetil de flecha, hotkeys, socket de arma no override, ragdoll, luzes, talent tree, durabilidade e spell de retorno de dano.
 
 ### BUG-2026-06-14-056
 - Date: 2026-06-14
@@ -257,7 +285,7 @@
 ### BUG-2026-06-14-052
 - Date: 2026-06-14
 - Severity: High
-- Status: Open
+- Status: Fixed, pending validation
 - Area: Equipment / Socket / Projectile
 - Issue: sockets precisam ser corrigidos.
 - Reproduction: equipar/desequipar armas e disparar projeteis verificando attach points, muzzle/origem e visual em outros clients.
@@ -314,14 +342,17 @@
 - Issue: implementar/fechar `dead` e `revive`.
 - Reproduction: morrer, aguardar janela de morte, tentar revive/respawn e validar estado final.
 - Expected: estado de morte autoritativo, bloqueio de input/abilities, full loot conforme regra, revive/respawn validado no servidor e reconciliação limpa no client.
-- Actual: pendente de implementacao/revisao final.
-- Root Cause: fluxo ainda nao fechado em contrato de producao.
-- Fix: pendente.
+- Actual: o fluxo anterior misturava seleção `Gank/Revive`, confirmação da vítima, RPCs próprios e estado duplicado, sem cooldown contra chain-downed.
+- Root Cause: contrato de interação e transição de estado fragmentado entre widget, Character, Narrative e tags GAS.
+- Fix: removidos componentes Narrative do alvo; Interact abre `SpellRiseDeathScreenWidget`, e RPC mínimo Revive/Gank é revalidado por estado, distância e LOS. `State.Downed` não altera movimento/input; revive/gank seguem server-side.
+- Tested On: build `SpellRiseEditor Win64 Development` aprovada em 2026-06-22; runtime multiplayer pendente.
+- Rebuild após remoção dos interactables Narrative e adição da `USpellRiseGA_DownedCrawl`: aprovado em 2026-06-22 com UHT e link.
+- Diagnóstico 2026-06-23: logs confirmaram widget Blueprint criado e input explicitamente desabilitado ao entrar em Downed; não havia entrada de `DownedActionTrace`, indicando que Interact parava antes da seleção. GA C++ removida, movimento base desacoplado e restauração de input no possession endurecida.
 - Net Scope: morte/loot | GAS | atributos
 - Authority Boundary: servidor decide morte, revive, respawn, recursos, loot e estado final.
 - Prediction Path (Client): UI/tela de morte local apenas.
 - Server Validation: owner/contexto, estado atual, distancia/LOS se revive por outro player, cooldown/custo/item, rate-limit e anti-spam.
-- RPCs afetados: revive/respawn existentes ou futuros devem seguir contrato obrigatório de RPC.
+- RPCs afetados: removidos RPCs antigos; adicionado `ServerResolveDownedAction(TargetCharacter,bRevive)` owner-bound.
 - OnRep afetados: estado de morte, atributos, tags GAS, inventario/loot quando aplicavel.
 - Replication Condition envolvida: pendente; preferir owner-only para UI privada e replicacao publica apenas do estado necessario.
 - Overflow (`FBitReader::SetOverflowed`): risco medio por burst de morte/loot/respawn; validar DS+2 normal e lag/loss.

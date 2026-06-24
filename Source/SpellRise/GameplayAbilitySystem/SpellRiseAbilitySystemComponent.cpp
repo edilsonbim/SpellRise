@@ -7,7 +7,6 @@
 #include "GameplayTagContainer.h"
 #include "GameFramework/Pawn.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
-#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 
@@ -79,7 +78,6 @@ void USpellRiseAbilitySystemComponent::BeginPlay()
 void USpellRiseAbilitySystemComponent::NotifyAbilityCommit(UGameplayAbility* Ability)
 {
 	Super::NotifyAbilityCommit(Ability);
-	BroadcastEquipmentAbilityStateChanged();
 }
 
 void USpellRiseAbilitySystemComponent::NotifyAbilityActivated(
@@ -87,7 +85,6 @@ void USpellRiseAbilitySystemComponent::NotifyAbilityActivated(
 	UGameplayAbility* Ability)
 {
 	Super::NotifyAbilityActivated(Handle, Ability);
-	BroadcastEquipmentAbilityStateChanged();
 }
 
 void USpellRiseAbilitySystemComponent::NotifyAbilityEnded(
@@ -96,21 +93,6 @@ void USpellRiseAbilitySystemComponent::NotifyAbilityEnded(
 	const bool bWasCancelled)
 {
 	Super::NotifyAbilityEnded(Handle, Ability, bWasCancelled);
-	BroadcastEquipmentAbilityStateChanged();
-}
-
-void USpellRiseAbilitySystemComponent::BroadcastEquipmentAbilityStateChanged() const
-{
-	AActor* CurrentAvatarActor = GetAvatarActor();
-	if (!CurrentAvatarActor)
-	{
-		return;
-	}
-
-	if (USpellRiseEquipmentManagerComponent* EquipmentManager = CurrentAvatarActor->FindComponentByClass<USpellRiseEquipmentManagerComponent>())
-	{
-		EquipmentManager->OnHUDEquipmentSlotsChanged.Broadcast();
-	}
 }
 
 void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
@@ -156,7 +138,6 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectAppliedToSelf(
 
 	if (GameplayEffectSpecHasCooldownTag(Spec))
 	{
-		BroadcastEquipmentAbilityStateChanged();
 	}
 }
 
@@ -167,7 +148,6 @@ void USpellRiseAbilitySystemComponent::OnActiveGameplayEffectAddedToSelf(
 {
 	if (GameplayEffectSpecHasCooldownTag(Spec))
 	{
-		BroadcastEquipmentAbilityStateChanged();
 	}
 }
 
@@ -206,7 +186,6 @@ void USpellRiseAbilitySystemComponent::OnGameplayEffectRemovedFromSelf(const FAc
 
 	if (HasCooldownTag(AssetTags))
 	{
-		BroadcastEquipmentAbilityStateChanged();
 	}
 }
 

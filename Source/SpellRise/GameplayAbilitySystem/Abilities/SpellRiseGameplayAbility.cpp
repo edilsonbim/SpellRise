@@ -97,12 +97,6 @@ USpellRiseGameplayAbility::USpellRiseGameplayAbility()
 	{
 		ActivationBlockedTags.AddTag(DeadStateTag);
 	}
-
-	const FGameplayTag GameplayAbilityTag = FGameplayTag::RequestGameplayTag(TEXT("GameplayAbility"), false);
-	if (GameplayAbilityTag.IsValid())
-	{
-		ActivationBlockedTags.AddTag(GameplayAbilityTag);
-	}
 }
 
 void USpellRiseGameplayAbility::SetAbilityLevel(int32 NewLevel)
@@ -283,6 +277,16 @@ bool USpellRiseGameplayAbility::CanActivateAbility(
 	const FGameplayTagContainer* TargetTags,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
+	const FGameplayTag DownedStateTag = FGameplayTag::RequestGameplayTag(TEXT("State.Downed"), false);
+	if (!bAllowWhileDowned
+		&& ActorInfo
+		&& ActorInfo->AbilitySystemComponent.IsValid()
+		&& DownedStateTag.IsValid()
+		&& ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(DownedStateTag))
+	{
+		return false;
+	}
+
 	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
 	{
 		return false;

@@ -28,6 +28,9 @@
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "SpellRise/UI/SpellRisePlayerHUDViewModelComponent.h"
 #include "InventoryComponent.h"
+#include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
+#include "SpellRise/UI/SpellRiseInventoryViewModelComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseRespawnSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCombatLog, Log, All);
@@ -351,6 +354,9 @@ ASpellRisePlayerState::ASpellRisePlayerState()
 	ProgressionComponent = CreateDefaultSubobject<USpellRiseProgressionComponent>(TEXT("ProgressionComponent"));
 	PlayerHUDViewModelComponent = CreateDefaultSubobject<USpellRisePlayerHUDViewModelComponent>(TEXT("PlayerHUDViewModelComponent"));
 	NarrativeInventoryComponent = CreateDefaultSubobject<UNarrativeInventoryComponent>(TEXT("NarrativeInventoryComponent"));
+	InventoryComponent = CreateDefaultSubobject<USpellRiseInventoryComponent>(TEXT("InventoryComponent"));
+	EquipmentComponent = CreateDefaultSubobject<USpellRiseEquipmentComponent>(TEXT("EquipmentComponent"));
+	InventoryViewModelComponent = CreateDefaultSubobject<USpellRiseInventoryViewModelComponent>(TEXT("InventoryViewModelComponent"));
 
 	BasicAttributeSet = CreateDefaultSubobject<UBasicAttributeSet>(TEXT("BasicAttributeSet"));
 	CombatAttributeSet = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributeSet"));

@@ -4,7 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "SpellRise/Characters/SpellRiseLifeStateComponent.h"
 #include "SpellRiseDeathScreenWidget.generated.h"
+
+class UTextBlock;
 
 UCLASS()
 class SPELLRISE_API USpellRiseDeathScreenWidget : public UUserWidget
@@ -18,27 +21,44 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Death")
 	void RequestAcceptDeath();
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Death")
+	void ConfigureDownedAction(class ASpellRiseCharacterBase* TargetCharacter);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Death")
+	void RequestDownedAction(bool bRevive);
+
+	UFUNCTION()
+	void HandleLifeStateChanged(ESpellRiseLifeState NewState, ESpellRiseLifeState OldState);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|UI|Death|Presentation")
+	void OnShowDownedActions(ASpellRiseCharacterBase* TargetCharacter);
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|UI|Death|Presentation")
+	void OnHideDownedActions();
+
+	UFUNCTION(BlueprintImplementableEvent, Category="SpellRise|UI|Death|Presentation")
+	void OnLifeStateChanged(ESpellRiseLifeState NewState, ESpellRiseLifeState OldState);
+
 protected:
 	virtual void NativeConstruct() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
-	virtual int32 NativePaint(
-		const FPaintArgs& Args,
-		const FGeometry& AllottedGeometry,
-		const FSlateRect& MyCullingRect,
-		FSlateWindowElementList& OutDrawElements,
-		int32 LayerId,
-		const FWidgetStyle& InWidgetStyle,
-		bool bParentEnabled) const override;
 
 private:
-	UPROPERTY(EditAnywhere, Category="SpellRise|UI|Death")
-	FLinearColor TextColor = FLinearColor(0.45f, 0.02f, 0.02f, 1.f);
+	void HandleReviveAction();
+	void HandleGankAction();
 
-	UPROPERTY(EditAnywhere, Category="SpellRise|UI|Death", meta=(ClampMin="16", ClampMax="120"))
-	int32 FontSize = 60;
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UTextBlock> TextBlock_InteractableName = nullptr;
 
-	UPROPERTY(EditAnywhere, Category="SpellRise|UI|Death")
-	FSoftObjectPath PreferredFontObjectPath = FSoftObjectPath(TEXT("/NarrativeCommonUI/Fonts/RobotoCondensed-Bold.RobotoCondensed-Bold"));
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_YesAction = nullptr;
+
+	UPROPERTY(meta=(BindWidgetOptional))
+	TObjectPtr<UTextBlock> Text_NoAction = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class ASpellRiseCharacterBase> DownedActionTarget = nullptr;
 
 	UPROPERTY(Transient)
 	FText Message;

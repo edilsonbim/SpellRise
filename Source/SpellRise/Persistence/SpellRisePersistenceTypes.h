@@ -3,8 +3,17 @@
 // Cabeçalho de interface: declara contratos, propriedades e pontos de integração Unreal.
 
 #include "CoreMinimal.h"
+#include "Engine/AssetManagerTypes.h"
 #include "GameplayTagContainer.h"
 #include "SpellRisePersistenceTypes.generated.h"
+
+namespace SpellRisePersistenceSchema
+{
+	inline constexpr int32 CharacterLegacy = 14;
+	inline constexpr int32 CharacterInventoryV3 = 15;
+	inline constexpr int32 InventoryLegacy = 2;
+	inline constexpr int32 InventoryItemInstances = 3;
+}
 
 UENUM()
 enum class ESpellRiseSaveOwnerScope : uint8
@@ -67,6 +76,104 @@ struct FSpellRiseSavedInventoryComponent
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedNarrativeItem> Items;
+};
+
+/**
+ * Estado persistente de uma instância de item no schema de inventário 3.
+ * LegacyItemClassPath permanece durante uma janela de rollback/migração e não
+ * deve ser usado como identidade pelo runtime novo.
+ */
+USTRUCT()
+struct FSpellRiseSavedItemInstanceV3
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGuid ItemInstanceId;
+
+	UPROPERTY()
+	FPrimaryAssetId DefinitionId;
+
+	UPROPERTY()
+	FString LegacyItemClassPath;
+
+	UPROPERTY()
+	FGuid ContainerId;
+
+	UPROPERTY()
+	int32 SlotIndex = INDEX_NONE;
+
+	UPROPERTY()
+	int32 Quantity = 0;
+
+	UPROPERTY()
+	int32 Durability = 0;
+
+	UPROPERTY()
+	TMap<FName, FString> ControlledProperties;
+};
+
+USTRUCT()
+struct FSpellRiseSavedInventoryContainerV3
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGuid ContainerId;
+
+	UPROPERTY()
+	uint8 OwnerScope = static_cast<uint8>(ESpellRiseSaveOwnerScope::Unknown);
+
+	UPROPERTY()
+	uint8 ContainerRole = static_cast<uint8>(ESpellRiseSaveContainerRole::Unknown);
+
+	UPROPERTY()
+	FName ComponentName;
+
+	UPROPERTY()
+	int32 Capacity = 0;
+
+	UPROPERTY()
+	float WeightCapacity = 0.0f;
+
+	UPROPERTY()
+	int32 Currency = 0;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedItemInstanceV3> Items;
+};
+
+USTRUCT()
+struct FSpellRiseSavedEquipmentEntryV3
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName SlotName;
+
+	UPROPERTY()
+	FGuid ItemInstanceId;
+};
+
+USTRUCT()
+struct FSpellRiseInventorySaveDataV3
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	int32 SchemaVersion = SpellRisePersistenceSchema::InventoryItemInstances;
+
+	UPROPERTY()
+	FString SteamId64;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedInventoryContainerV3> Containers;
+
+	UPROPERTY()
+	TArray<FSpellRiseSavedEquipmentEntryV3> EquippedItems;
+
+	UPROPERTY()
+	int32 ActiveWeaponQuickSlotIndex = INDEX_NONE;
 };
 
 USTRUCT()
@@ -271,6 +378,9 @@ struct FSpellRiseCharacterSaveData
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedInventoryComponent> InventoryComponents;
+
+	UPROPERTY()
+	FSpellRiseInventorySaveDataV3 NativeInventory;
 };
 
 USTRUCT()
@@ -286,6 +396,9 @@ struct FSpellRiseInventorySaveData
 
 	UPROPERTY()
 	TArray<FSpellRiseSavedInventoryComponent> InventoryComponents;
+
+	UPROPERTY()
+	FSpellRiseInventorySaveDataV3 NativeInventory;
 };
 
 USTRUCT()

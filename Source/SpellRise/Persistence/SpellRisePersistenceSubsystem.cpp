@@ -27,7 +27,9 @@
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Core/SpellRisePlayerController.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
-#include "SpellRise/Equipment/SpellRiseEquipmentManagerComponent.h"
+#include "SpellRise/Equipment/SpellRiseWeaponComponent.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
+#include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/CatalystAttributeSet.h"
@@ -704,29 +706,16 @@ namespace
 			return;
 		}
 
-		const USpellRiseEquipmentManagerComponent* EquipmentManager = Character->GetSpellRiseEquipmentManager();
-		if (!EquipmentManager)
+		const USpellRiseWeaponComponent* WeaponComponent = Character->GetSpellRiseWeaponComponent();
+		if (!WeaponComponent)
 		{
 			return;
 		}
 
-		for (const FSpellRiseHUDEquipmentSlotView& SlotView : EquipmentManager->GetHUDEquipmentSlotViews())
+		OutActiveWeaponQuickSlotIndex = WeaponComponent->ActiveQuickSlotIndex;
+		for (int32 QuickSlotIndex = 0; QuickSlotIndex < WeaponComponent->QuickWeaponSlots.Num(); ++QuickSlotIndex)
 		{
-			if (!SlotView.Item || !SlotView.Item->GetClass())
-			{
-				continue;
-			}
-
-			FSpellRiseSavedEquippedItem SavedItem;
-			SavedItem.SlotName = SlotView.SlotName.ToString();
-			SavedItem.ItemClassPath = SlotView.Item->GetClass()->GetPathName();
-			OutEquippedItems.Add(MoveTemp(SavedItem));
-		}
-
-		OutActiveWeaponQuickSlotIndex = EquipmentManager->GetActiveQuickWeaponSlotIndex();
-		for (int32 QuickSlotIndex = 0; QuickSlotIndex < 2; ++QuickSlotIndex)
-		{
-			const UEquippableItem* QuickSlotItem = EquipmentManager->GetQuickWeaponItemByIndex(QuickSlotIndex);
+			const UEquippableItem* QuickSlotItem = WeaponComponent->QuickWeaponSlots[QuickSlotIndex].Item;
 			if (!QuickSlotItem || !QuickSlotItem->GetClass())
 			{
 				continue;
@@ -738,7 +727,7 @@ namespace
 			OutWeaponLoadoutSlots.Add(MoveTemp(SavedSlot));
 		}
 
-		if (const UEquippableItem* OffHandItem = EquipmentManager->GetActiveOffHandItem())
+		if (const UEquippableItem* OffHandItem = WeaponComponent->OffHandWeapon.Item)
 		{
 			if (OffHandItem->GetClass())
 			{
@@ -754,38 +743,50 @@ namespace
 			return;
 		}
 
-		USpellRiseEquipmentManagerComponent* EquipmentManager = Character->GetSpellRiseEquipmentManager();
-		if (!EquipmentManager)
+		if (!Character->HasAuthority())
 		{
 			return;
 		}
 
-		TArray<TSubclassOf<UEquippableItem>> EquippedItemClasses;
-		EquippedItemClasses.Reserve(Data.EquippedItems.Num());
-		for (const FSpellRiseSavedEquippedItem& SavedItem : Data.EquippedItems)
+		USpellRiseWeaponComponent* WeaponComponent = Character->GetSpellRiseWeaponComponent();
+		ASpellRisePlayerState* PlayerState = Character->GetPlayerState<ASpellRisePlayerState>();
+		UNarrativeInventoryComponent* Inventory = PlayerState
+			? UInventoryFunctionLibrary::GetInventoryComponentFromTarget(PlayerState)
+			: nullptr;
+		if (!WeaponComponent || !Inventory)
 		{
-			if (TSubclassOf<UEquippableItem> ItemClass = LoadEquippableItemClass(SavedItem.ItemClassPath))
-			{
-				EquippedItemClasses.Add(ItemClass);
-			}
+			return;
 		}
 
-		TArray<TSubclassOf<UEquippableItem>> QuickWeaponSlotClasses;
-		QuickWeaponSlotClasses.SetNum(2);
 		for (const FSpellRiseSavedWeaponLoadoutSlot& SavedSlot : Data.WeaponLoadoutSlots)
 		{
-			if (!QuickWeaponSlotClasses.IsValidIndex(SavedSlot.QuickSlotIndex))
+			const TSubclassOf<UEquippableItem> ItemClass = LoadEquippableItemClass(SavedSlot.ItemClassPath);
+			if (!ItemClass || SavedSlot.QuickSlotIndex < 0)
 			{
 				continue;
 			}
-			QuickWeaponSlotClasses[SavedSlot.QuickSlotIndex] = LoadEquippableItemClass(SavedSlot.ItemClassPath);
+
+			const TArray<UNarrativeItem*> MatchingItems = Inventory->FindItemsOfClass(ItemClass, false);
+			if (UEquippableItem* Item = MatchingItems.Num() > 0 ? Cast<UEquippableItem>(MatchingItems[0]) : nullptr)
+			{
+				WeaponComponent->AssignQuickSlot(Item, SavedSlot.QuickSlotIndex);
+			}
 		}
 
-		EquipmentManager->ApplyPersistentEquipment_Server(
-			EquippedItemClasses,
-			QuickWeaponSlotClasses,
-			Data.ActiveWeaponQuickSlotIndex,
-			LoadEquippableItemClass(Data.OffHandItemClassPath));
+		if (Data.ActiveWeaponQuickSlotIndex >= 0)
+		{
+			WeaponComponent->ActivateQuickSlot(Data.ActiveWeaponQuickSlotIndex);
+		}
+
+		const TSubclassOf<UEquippableItem> OffHandClass = LoadEquippableItemClass(Data.OffHandItemClassPath);
+		if (OffHandClass)
+		{
+			const TArray<UNarrativeItem*> MatchingItems = Inventory->FindItemsOfClass(OffHandClass, false);
+			if (UEquippableItem* Item = MatchingItems.Num() > 0 ? Cast<UEquippableItem>(MatchingItems[0]) : nullptr)
+			{
+				WeaponComponent->EquipWeapon(Item);
+			}
+		}
 	}
 
 	void SetTalentTreeTalentPoints(UActorComponent* TalentComponent, const int32 TalentPoints)
@@ -2990,6 +2991,53 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 		OutData.InventoryComponents.Add(MoveTemp(SavedComponent));
 	}
 
+	OutData.NativeInventory = FSpellRiseInventorySaveDataV3();
+	OutData.NativeInventory.SchemaVersion = SpellRisePersistenceSchema::InventoryItemInstances;
+	OutData.NativeInventory.SteamId64 = OutData.SteamId64;
+	if (const USpellRiseInventoryComponent* NativeInventory = SRPlayerState->GetInventoryComponent())
+	{
+		FSpellRiseSavedInventoryContainerV3& Container = OutData.NativeInventory.Containers.AddDefaulted_GetRef();
+		Container.ContainerId = FGuid(0x5352494E, 0x56454E54, 0x4F525930, 0x00000001);
+		Container.OwnerScope = static_cast<uint8>(ESpellRiseSaveOwnerScope::PlayerState);
+		Container.ContainerRole = static_cast<uint8>(ESpellRiseSaveContainerRole::Inventory);
+		Container.ComponentName = NativeInventory->GetFName();
+		Container.Capacity = NativeInventory->GetMaxSlots();
+		Container.WeightCapacity = NativeInventory->GetMaxWeight();
+		for (const FSpellRiseItemInstance& RuntimeItem : NativeInventory->GetItems())
+		{
+			FSpellRiseSavedItemInstanceV3& SavedItem = Container.Items.AddDefaulted_GetRef();
+			SavedItem.ItemInstanceId = RuntimeItem.ItemInstanceId;
+			SavedItem.DefinitionId = RuntimeItem.DefinitionId;
+			SavedItem.ContainerId = Container.ContainerId;
+			SavedItem.SlotIndex = RuntimeItem.SlotIndex;
+			SavedItem.Quantity = RuntimeItem.Quantity;
+			SavedItem.Durability = RuntimeItem.Durability;
+		}
+	}
+	if (const USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState->GetEquipmentComponent())
+	{
+		FSpellRiseSavedInventoryContainerV3& Container = OutData.NativeInventory.Containers.AddDefaulted_GetRef();
+		Container.ContainerId = FGuid(0x53524551, 0x5549504D, 0x454E5430, 0x00000001);
+		Container.OwnerScope = static_cast<uint8>(ESpellRiseSaveOwnerScope::PlayerState);
+		Container.ContainerRole = static_cast<uint8>(ESpellRiseSaveContainerRole::Equipment);
+		Container.ComponentName = NativeEquipment->GetFName();
+		Container.Capacity = 9;
+		for (const FSpellRiseEquippedItemEntry& RuntimeItem : NativeEquipment->GetPrivateEquipment().Entries)
+		{
+			FSpellRiseSavedItemInstanceV3& SavedItem = Container.Items.AddDefaulted_GetRef();
+			SavedItem.ItemInstanceId = RuntimeItem.ItemInstanceId;
+			SavedItem.DefinitionId = RuntimeItem.DefinitionId;
+			SavedItem.ContainerId = Container.ContainerId;
+			SavedItem.SlotIndex = static_cast<int32>(RuntimeItem.Slot);
+			SavedItem.Quantity = 1;
+			SavedItem.Durability = RuntimeItem.Durability;
+
+			FSpellRiseSavedEquipmentEntryV3& SavedEquipment = OutData.NativeInventory.EquippedItems.AddDefaulted_GetRef();
+			SavedEquipment.SlotName = *UEnum::GetValueAsString(RuntimeItem.Slot);
+			SavedEquipment.ItemInstanceId = RuntimeItem.ItemInstanceId;
+		}
+	}
+
 	return true;
 }
 
@@ -3066,6 +3114,67 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 		}
 		else
 		{
+		}
+	}
+
+	if (USpellRiseInventoryComponent* NativeInventory = SRPlayerState->GetInventoryComponent();
+		NativeInventory && NativeInventory->IsNativeInventoryEnabled())
+	{
+		NativeInventory->ResetInventory_Server();
+		if (USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState->GetEquipmentComponent())
+		{
+			NativeEquipment->ResetEquipment_Server();
+		}
+
+		TMap<FGuid, ESpellRiseEquipmentSlot> EquipmentSlotsByItemId;
+		for (const FSpellRiseSavedEquipmentEntryV3& SavedEquipment : Data.NativeInventory.EquippedItems)
+		{
+			const UEnum* SlotEnum = StaticEnum<ESpellRiseEquipmentSlot>();
+			const int64 SlotValue = SlotEnum ? SlotEnum->GetValueByNameString(SavedEquipment.SlotName.ToString()) : INDEX_NONE;
+			if (SlotValue != INDEX_NONE)
+			{
+				EquipmentSlotsByItemId.Add(SavedEquipment.ItemInstanceId, static_cast<ESpellRiseEquipmentSlot>(SlotValue));
+			}
+		}
+
+		for (const FSpellRiseSavedInventoryContainerV3& Container : Data.NativeInventory.Containers)
+		{
+			for (const FSpellRiseSavedItemInstanceV3& SavedItem : Container.Items)
+			{
+				FSpellRiseItemInstance RuntimeItem;
+				RuntimeItem.ItemInstanceId = SavedItem.ItemInstanceId;
+				RuntimeItem.DefinitionId = SavedItem.DefinitionId;
+				RuntimeItem.SlotIndex = SavedItem.SlotIndex;
+				RuntimeItem.Quantity = SavedItem.Quantity;
+				RuntimeItem.Durability = SavedItem.Durability;
+				FString NativeRejectReason;
+				const bool bEquipmentContainer =
+					Container.ContainerRole == static_cast<uint8>(ESpellRiseSaveContainerRole::Equipment);
+				if (!NativeInventory->InsertItem_Server(
+						RuntimeItem,
+						bEquipmentContainer ? INDEX_NONE : RuntimeItem.SlotIndex,
+						NativeRejectReason))
+				{
+					UE_LOG(LogSpellRisePersistence, Warning,
+						TEXT("[NativeInventory][RestoreRejected] Item=%s Definition=%s Reason=%s"),
+						*SavedItem.ItemInstanceId.ToString(),
+						*SavedItem.DefinitionId.ToString(),
+						*NativeRejectReason);
+					continue;
+				}
+
+				const ESpellRiseEquipmentSlot* EquipmentSlot = EquipmentSlotsByItemId.Find(SavedItem.ItemInstanceId);
+				USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState->GetEquipmentComponent();
+				if (EquipmentSlot && NativeEquipment)
+				{
+					FSpellRiseEquipmentItemData EquipmentItem;
+					if (NativeInventory->Equipment_TakeItem(SavedItem.ItemInstanceId, EquipmentItem, NativeRejectReason)
+						&& !NativeEquipment->RestoreEquippedItem_Server(EquipmentItem, *EquipmentSlot, NativeRejectReason))
+					{
+						NativeInventory->Equipment_ReturnItem(EquipmentItem, SavedItem.SlotIndex, NativeRejectReason);
+					}
+				}
+			}
 		}
 	}
 
@@ -3251,6 +3360,7 @@ void USpellRisePersistenceSubsystem::BuildInventorySnapshotFromCharacterData(con
 	OutInventoryData.SchemaVersion = PersistenceInventorySchemaVersion;
 	OutInventoryData.SteamId64 = SteamId64;
 	OutInventoryData.InventoryComponents = CharacterData.InventoryComponents;
+	OutInventoryData.NativeInventory = CharacterData.NativeInventory;
 }
 
 void USpellRisePersistenceSubsystem::MergeInventorySnapshotIntoCharacterData(const FSpellRiseInventorySaveData& InventoryData, FSpellRiseCharacterSaveData& InOutCharacterData) const
@@ -3258,10 +3368,12 @@ void USpellRisePersistenceSubsystem::MergeInventorySnapshotIntoCharacterData(con
 	if (InventoryData.SchemaVersion >= PersistenceInventorySchemaVersion)
 	{
 		InOutCharacterData.InventoryComponents = InventoryData.InventoryComponents;
+		InOutCharacterData.NativeInventory = InventoryData.NativeInventory;
 	}
 	else
 	{
 		InOutCharacterData.InventoryComponents.Reset();
+		InOutCharacterData.NativeInventory = FSpellRiseInventorySaveDataV3();
 	}
 }
 

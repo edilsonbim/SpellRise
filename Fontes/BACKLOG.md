@@ -63,11 +63,16 @@
 
 ## Gameplay — P0 bloqueante
 - Corrigido, pendente de validacao formal: persistir ability hotbar, armas e itens equipados no snapshot server-side; validar restore em DS+2 e reconexao sem criar item ausente no inventario restaurado.
-- Implementar/fechar fluxo de dead e revive (em progresso): estado `Downed`, aceitar morte, finalizar, levantar/reviver, full loot apenas na morte final, respawn e reconciliação.
+- Rework AAA centralizado em `USpellRiseLifeStateComponent`; Blueprint explícito do DeathScreen, eventos de apresentação, trace/logs, GA de crawl, recursos por WIS, recovery/cooldown e full loot implementados. Build `SpellRiseEditor Win64 Development` aprovada em 2026-06-22; smoke multiplayer pendente.
 - Colocar clamp autoritativo nos atributos (em progresso), preservando caps canonicos, GAS e reconciliacao da UI.
-- Corrigir inventario que nao equipa item: revisar fluxo Narrative Inventory -> equipamento -> grant/remove GAS -> attach visual, mantendo decisão no servidor.
-- Corrigir barra ativa e garantir refresh imediato por evento, sem depender de fechar e reabrir widget.
-- Corrigir bloqueio com arma 2H, validando estado/equipamento no servidor.
+- Implementado e compilado, pendente de validação formal: `USpellRiseItemDefinition`, inventário próprio com FastArray `OwnerOnly`, slots/peso/stack/split/merge/drop, equipamento próprio com nove slots, bloqueio 2H/OffHand, grants GAS por GUID e componentes integrados no `PlayerState`.
+- Implementado e compilado, pendente de validação formal: persistência de personagem schema `15` e inventário schema `3`, mantendo leitura legacy `14/2` e conversor determinístico para instâncias por GUID.
+- Pendente migração runtime: remover dependência direta do `WeaponComponent` em `UEquippableItem`, projetar estado visual no avatar e manter grants exclusivamente no `EquipmentComponent`.
+- Pendente migração de sistemas: peso/movimento, full loot, loot bags, vendor, baús/containers e assets/tabelas continuam Narrative.
+- Pendente UI/assets: montar inventário lateral UMG, ligar `USpellRiseInventoryViewModelComponent`, drag-and-drop, split/tooltips e rollback visual; não alterar estado definitivo no widget.
+- Pendente validação: migração `14/2 -> 15/3`, itens iguais/ambíguos, GUID após reconexão, split/merge/equip/drop sem perda ou duplicação, respawn, late join, spam reliable e DS+2 normal/lag/loss.
+- Reportado como corrigido pelo operador em 2026-06-22, pendente de validacao formal: barra ativa com refresh imediato por evento, sem depender de fechar e reabrir widget.
+- Bloqueio 2H/OffHand implementado no equipamento próprio; falta integrar o `WeaponComponent`, assets e validar multiplayer.
 
 ## Gameplay — P1 alta
 - Implementado e com build `SpellRiseEditor Win64 Development` aprovada em 2026-06-19: gasto autoritativo de `AttributePoints` em STR/AGI/INT/WIS via RPC owner-bound no `PlayerState`, com validacao de perfil, owner, saldo, atributo canonico, quantidade `1..10`, cap `100`, rate-limit `5/s`, mutacao pelo ASC e dirty-save server-side. Pendente ligar BP/UI e validar DS+2 normal + lag/loss + reconexao.
@@ -75,15 +80,16 @@
 - Reportado como corrigido pelo operador, pendente de validacao formal: cálculo de dano/TTK com dano base da ability, arma equipada, nível da arma, escola, resist/penetration/crit e curvas de balanceamento.
 - Corrigir socket de arma no `VisualOverride`: garantir attach correto quando o visual do personagem troca mesh/skeleton, sem depender de lógica de UI.
 - Corrigir sockets de equipamento/projeteis: revisar attach points usados por equip/unequip, arma equipada/stowed e spawn de projeteis.
+- Refazer cue do tornado: manter `GameplayCue` como apresentação e preservar hit/dano/estado final no servidor.
 - Melhorar talent tree: permitir nível setável por talento, curva de gasto de talent points e validação server-side do custo.
 - Decidir tecnicamente entre rework do `TalentTreeComponent` e extensao C++ da implementacao atual, preservando autoridade no servidor.
-- Implementar drag and drop no inventario com pedido validado ao servidor.
-- Diferenciar visualmente a ability selecionada no widget.
+- Ligar drag-and-drop UMG ao ViewModel; backend aceita somente intenção mínima e reconcilia pelo FastArray autoritativo.
+- Reportado como feito pelo operador em 2026-06-22, pendente de validacao visual/formal: diferenciar visualmente a ability selecionada no widget.
 - Corrigir mapa para abrir e enquadrar todo o conteudo.
 - balance pass de resist / penetration / crit sob TTK alvo.
 
 ## Gameplay — P2 média
-- Incluir durabilidade de itens: desgaste e reparo decididos no servidor, persistidos e auditáveis, com UI apenas apresentando o estado replicado.
+- Estrutura de durabilidade existe no item/runtime/schema 3; desgaste, reparo, regras por definição e UI continuam pendentes.
 - Reportado como corrigido pelo operador, pendente de validacao formal: bônus de STR/AGI/INT/WIS e seus impactos em AttributeSet/MMC/ExecCalc/UI.
 - Reportado como feito pelo operador; C++ e UI implementados, pendente smoke formal: quatro boosters por categoria com custos `200/400/800/1600 TalentPoints`, todos compraveis e loadout limitado a quatro ativos; cada ativo concede `+10` ao primario correspondente, Melee/Bow/Spell dão `+5%` de dano e Divine dá `+5%` de dano e `+10%` de cura.
 - Criar menu de settings para hotkeys: permitir remapeamento de inputs/hotbar sem mover estado autoritativo para UI/PlayerController.
@@ -94,6 +100,10 @@
 - Refazer visual da talent tree com animações interativas por escolas, mantendo UI client-only e sem estado autoritativo no widget.
 - Revisar luzes: ajustar iluminação/custo visual sem impactar DS/headless.
 - Corrigir vendor foi reportado pelo operador; manter pendente de validacao formal do fluxo de compra/venda server-side.
+
+## Sistemas sociais
+- Reportado como feito pelo operador em 2026-06-22, pendente de validacao formal: remake do chat com funcoes de player/admin e whisper.
+- Reportado como feito v1 pelo operador em 2026-06-22, pendente de smoke multiplayer: Party com convite/aceite, liderança, remoção, saída, canal e marcadores entre membros.
 
 ## Engenharia contínua
 - automação multiplayer em CI;

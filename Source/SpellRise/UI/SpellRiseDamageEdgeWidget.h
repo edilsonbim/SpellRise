@@ -15,6 +15,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Damage")
 	void PlayDamageFlash(float InPeakAlpha, float InFadeInDuration, float InFadeOutDuration);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|UI|Damage")
+	void SetPersistentDamage(float InAlpha, bool bEnabled);
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -54,4 +57,7 @@ private:
 
 	UPROPERTY(Transient)
 	bool bFlashActive = false;
+
+	UPROPERTY(Transient)
+	bool bPersistentDamage = false;
 };

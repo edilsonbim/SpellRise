@@ -6,9 +6,8 @@
 #include "Components/ActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Engine/LocalPlayer.h"
+#include "EngineUtils.h"
 #include "Engine/World.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Character.h"
@@ -19,10 +18,8 @@
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/SpectatorPawnMovement.h"
-#include "InputAction.h"
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
-#include "InputMappingContext.h"
 #include "InventoryComponent.h"
 #include "InventoryFunctionLibrary.h"
 #include "InteractionComponent.h"
@@ -32,7 +29,9 @@
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Characters/SpellRiseLifeStateComponent.h"
 #include "SpellRise/Components/SpellRiseChatComponent.h"
+#include "SpellRise/Components/SpellRiseInputRouterComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent.h"
 #include "SpellRise/Feedback/NumberPops/SpellRiseNumberPopComponent_NiagaraText.h"
 #include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
@@ -366,34 +365,6 @@ namespace
 		return true;
 	}
 
-	void UpdateEnhancedInputContext(
-		UEnhancedInputLocalPlayerSubsystem* Subsystem,
-		UInputMappingContext* Context,
-		int32 Priority,
-		bool bShouldBeActive,
-		const TCHAR* ContextLabel)
-	{
-		if (!Subsystem || !Context || !ContextLabel)
-		{
-			return;
-		}
-
-		const bool bHasContext = Subsystem->HasMappingContext(Context);
-		if (bShouldBeActive)
-		{
-			if (!bHasContext)
-			{
-				Subsystem->AddMappingContext(Context, Priority);
-			}
-
-			return;
-		}
-
-		if (bHasContext)
-		{
-			Subsystem->RemoveMappingContext(Context);
-		}
-	}
 }
 
 ASpellRisePlayerController::ASpellRisePlayerController()
@@ -402,6 +373,7 @@ ASpellRisePlayerController::ASpellRisePlayerController()
 	PrimaryActorTick.bStartWithTickEnabled = false;
 	bShowMouseCursor = false;
 	NumberPopComponent = CreateDefaultSubobject<USpellRiseNumberPopComponent_NiagaraText>(TEXT("NumberPopComponent"));
+	InputRouterComponent = CreateDefaultSubobject<USpellRiseInputRouterComponent>(TEXT("InputRouterComponent"));
 }
 
 void ASpellRisePlayerController::ProcessEvent(UFunction* Function, void* Parameters)
@@ -1484,7 +1456,10 @@ void ASpellRisePlayerController::BeginPlay()
 		LogInputFocusSnapshot(TEXT("BeginPlay.SetInputModeGameOnly"));
 	}
 
-	SetupEnhancedInput();
+	if (InputRouterComponent)
+	{
+		InputRouterComponent->InitializeLocalInput();
+	}
 
 	if (APawn* InitialPawn = GetPawn())
 	{
@@ -1566,95 +1541,6 @@ void ASpellRisePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	Super::EndPlay(EndPlayReason);
 }
 
-void ASpellRisePlayerController::SetupEnhancedInput()
-{
-	if (!IsLocalController())
-	{
-		return;
-	}
-
-	ULocalPlayer* LP = GetLocalPlayer();
-	if (!LP)
-	{
-		return;
-	}
-
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
-	if (!Subsystem)
-	{
-		return;
-	}
-
-	const bool bHasEnhancedInputContexts =
-		IMC_CoreMovement.Get() ||
-		IMC_CoreCamera.Get() ||
-		IMC_Combat.Get() ||
-		IMC_Interaction.Get() ||
-		IMC_UI.Get() ||
-		IMC_System.Get();
-
-	if (bHasEnhancedInputContexts)
-	{
-		RefreshEnhancedInputContexts();
-		return;
-	}
-
-	UInputMappingContext* MappingContextToApply = DefaultMappingContext.Get();
-	int32 MappingPriority = DefaultMappingPriority;
-	if (!MappingContextToApply)
-	{
-		if (const ASpellRiseCharacterBase* ControlledCharacter = Cast<ASpellRiseCharacterBase>(GetPawn()))
-		{
-			MappingContextToApply = const_cast<UInputMappingContext*>(ControlledCharacter->GetDefaultInputMappingContext());
-			MappingPriority = 0;
-		}
-	}
-
-	if (!MappingContextToApply)
-	{
-		return;
-	}
-
-	if (!Subsystem->HasMappingContext(MappingContextToApply))
-	{
-		Subsystem->AddMappingContext(MappingContextToApply, MappingPriority);
-	}
-}
-
-void ASpellRisePlayerController::RefreshEnhancedInputContexts()
-{
-	if (!IsLocalController())
-	{
-		return;
-	}
-
-	ULocalPlayer* LP = GetLocalPlayer();
-	if (!LP)
-	{
-		return;
-	}
-
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
-	if (!Subsystem)
-	{
-		return;
-	}
-
-	const bool bUIInputContextActive = ShouldEnableUIInputContext();
-
-	UpdateEnhancedInputContext(Subsystem, IMC_CoreMovement.Get(), IMC_CoreMovementPriority, true, TEXT("CoreMovement"));
-	UpdateEnhancedInputContext(Subsystem, IMC_CoreCamera.Get(), IMC_CoreCameraPriority, true, TEXT("CoreCamera"));
-	UpdateEnhancedInputContext(
-		Subsystem,
-		IMC_Combat.Get(),
-		IMC_CombatPriority,
-		!bUIInteractionModeActive,
-		TEXT("Combat"));
-	UpdateEnhancedInputContext(Subsystem, IMC_Interaction.Get(), IMC_InteractionPriority, true, TEXT("Interaction"));
-	UpdateEnhancedInputContext(Subsystem, IMC_UI.Get(), IMC_UIPriority, bUIInputContextActive, TEXT("UI"));
-	UpdateEnhancedInputContext(Subsystem, IMC_System.Get(), IMC_SystemPriority, true, TEXT("System"));
-}
-
 void ASpellRisePlayerController::RestoreGameplayInputAfterUI(const FName Source)
 {
 	if (!IsLocalController() || GetNetMode() == NM_DedicatedServer)
@@ -1677,8 +1563,10 @@ void ASpellRisePlayerController::RestoreGameplayInputAfterUI(const FName Source)
 		ControlledPawn->EnableInput(this);
 	}
 
-	SetupEnhancedInput();
-	RefreshEnhancedInputContexts();
+	if (InputRouterComponent)
+	{
+		InputRouterComponent->InitializeLocalInput();
+	}
 
 	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
 		TEXT("[InputFocus][RestoreGameplay] Source=%s Controller=%s Pawn=%s"),
@@ -1713,7 +1601,10 @@ void ASpellRisePlayerController::ToggleUIInteractionMode()
 	SetIgnoreMoveInput(false);
 	SetIgnoreLookInput(true);
 
-	RefreshEnhancedInputContexts();
+	if (InputRouterComponent)
+	{
+		InputRouterComponent->RefreshContexts();
+	}
 
 	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
 		TEXT("[InputFocus][UIInteraction] Active=1 Controller=%s Pawn=%s"),
@@ -1786,138 +1677,10 @@ void ASpellRisePlayerController::AuditRejectedInventoryRpc(const TCHAR* RpcName,
 void ASpellRisePlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
-
-	if (!IsLocalController())
+	if (InputRouterComponent)
 	{
-		return;
+		InputRouterComponent->BindInput(InputComponent);
 	}
-
-	UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent);
-	if (!EIC)
-	{
-		return;
-	}
-
-	if (!IA_Attack)
-	{
-
-	}
-	else
-	{
-		EIC->BindAction(IA_Attack, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAttackPressed);
-		EIC->BindAction(IA_Attack, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAttackReleased);
-		EIC->BindAction(IA_Attack, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAttackReleased);
-	}
-
-	if (IA_Primary)
-	{
-		EIC->BindAction(IA_Primary, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnPrimaryPressed);
-		EIC->BindAction(IA_Primary, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnPrimaryReleased);
-		EIC->BindAction(IA_Primary, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnPrimaryReleased);
-	}
-
-	if (IA_Secondary)
-	{
-		EIC->BindAction(IA_Secondary, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnSecondaryPressed);
-		EIC->BindAction(IA_Secondary, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnSecondaryReleased);
-		EIC->BindAction(IA_Secondary, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnSecondaryReleased);
-	}
-
-	if (IA_Interact)
-	{
-		EIC->BindAction(IA_Interact, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnInteractPressed);
-		EIC->BindAction(IA_Interact, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnInteractReleased);
-		EIC->BindAction(IA_Interact, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnInteractReleased);
-	}
-
-	if (IA_ClearSelection)
-	{
-		EIC->BindAction(IA_ClearSelection, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnClearSelectionPressed);
-	}
-
-	if (IA_Sprint)
-	{
-		EIC->BindAction(IA_Sprint, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnSprintPressed);
-		EIC->BindAction(IA_Sprint, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnSprintReleased);
-		EIC->BindAction(IA_Sprint, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnSprintReleased);
-	}
-
-	if (IA_Ability1)
-	{
-		EIC->BindAction(IA_Ability1, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility1Pressed);
-		EIC->BindAction(IA_Ability1, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility1Released);
-		EIC->BindAction(IA_Ability1, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility1Released);
-	}
-
-	if (IA_Ability2)
-	{
-		EIC->BindAction(IA_Ability2, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility2Pressed);
-		EIC->BindAction(IA_Ability2, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility2Released);
-		EIC->BindAction(IA_Ability2, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility2Released);
-	}
-
-	if (IA_Ability3)
-	{
-		EIC->BindAction(IA_Ability3, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility3Pressed);
-		EIC->BindAction(IA_Ability3, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility3Released);
-		EIC->BindAction(IA_Ability3, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility3Released);
-	}
-
-	if (IA_Ability4)
-	{
-		EIC->BindAction(IA_Ability4, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility4Pressed);
-		EIC->BindAction(IA_Ability4, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility4Released);
-		EIC->BindAction(IA_Ability4, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility4Released);
-	}
-
-	if (IA_Ability5)
-	{
-		EIC->BindAction(IA_Ability5, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility5Pressed);
-		EIC->BindAction(IA_Ability5, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility5Released);
-		EIC->BindAction(IA_Ability5, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility5Released);
-	}
-
-	if (IA_Ability6)
-	{
-		EIC->BindAction(IA_Ability6, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility6Pressed);
-		EIC->BindAction(IA_Ability6, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility6Released);
-		EIC->BindAction(IA_Ability6, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility6Released);
-	}
-
-	if (IA_Ability7)
-	{
-		EIC->BindAction(IA_Ability7, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility7Pressed);
-		EIC->BindAction(IA_Ability7, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility7Released);
-		EIC->BindAction(IA_Ability7, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility7Released);
-	}
-
-	if (IA_Ability8)
-	{
-		EIC->BindAction(IA_Ability8, ETriggerEvent::Started, this, &ASpellRisePlayerController::OnAbility8Pressed);
-		EIC->BindAction(IA_Ability8, ETriggerEvent::Completed, this, &ASpellRisePlayerController::OnAbility8Released);
-		EIC->BindAction(IA_Ability8, ETriggerEvent::Canceled, this, &ASpellRisePlayerController::OnAbility8Released);
-	}
-
-	if (ToggleUIInteractionKey.IsValid())
-	{
-		InputComponent->BindKey(
-			ToggleUIInteractionKey,
-			IE_Pressed,
-			this,
-			&ASpellRisePlayerController::OnToggleUIInteractionPressed);
-	}
-
-#if !UE_BUILD_SHIPPING
-	if (DebugGrantExperienceKey.IsValid())
-	{
-		InputComponent->BindKey(
-			DebugGrantExperienceKey,
-			IE_Pressed,
-			this,
-			&ASpellRisePlayerController::OnDebugGrantExperiencePressed);
-	}
-#endif
-
 }
 
 void ASpellRisePlayerController::OnToggleUIInteractionPressed()
@@ -2074,8 +1837,10 @@ void ASpellRisePlayerController::HandlePawnChangedRuntime(APawn* NewPawn, const 
 	{
 		SetIgnoreMoveInput(false);
 		SetIgnoreLookInput(false);
-		SetupEnhancedInput();
-		RefreshEnhancedInputContexts();
+		if (InputRouterComponent)
+		{
+			InputRouterComponent->InitializeLocalInput();
+		}
 		LogInputFocusSnapshot(SourceLabel ? SourceLabel : TEXT("HandlePawnChangedRuntime"));
 	}
 
@@ -2125,8 +1890,8 @@ void ASpellRisePlayerController::OnAttackPressed()
 		return;
 	}
 
-	// Evita press/release duplicado quando IA_Attack e IA_Primary mapeiam o mesmo botão.
-	if (IA_Primary != nullptr)
+	// Primary é o contrato canônico; Attack legado não recebe binding no router.
+	if (InputRouterComponent && InputRouterComponent->HasMappedAction(TEXT("Primary")))
 	{
 		return;
 	}
@@ -2141,7 +1906,7 @@ void ASpellRisePlayerController::OnAttackReleased()
 		return;
 	}
 
-	if (IA_Primary != nullptr)
+	if (InputRouterComponent && InputRouterComponent->HasMappedAction(TEXT("Primary")))
 	{
 		return;
 	}
@@ -2357,69 +2122,9 @@ void ASpellRisePlayerController::ToggleActiveAbilityHotbarGroup()
 
 FText ASpellRisePlayerController::GetAbilityHotbarPhysicalSlotInputText(const int32 PhysicalSlotIndex) const
 {
-	const UInputAction* AbilityAction = nullptr;
-	switch (PhysicalSlotIndex)
-	{
-	case 0:
-		AbilityAction = IA_Ability1.Get();
-		break;
-	case 1:
-		AbilityAction = IA_Ability2.Get();
-		break;
-	case 2:
-		AbilityAction = IA_Ability3.Get();
-		break;
-	case 3:
-		AbilityAction = IA_Ability4.Get();
-		break;
-	case 4:
-		AbilityAction = IA_Ability5.Get();
-		break;
-	case 5:
-		AbilityAction = IA_Ability6.Get();
-		break;
-	case 6:
-		AbilityAction = IA_Ability7.Get();
-		break;
-	case 7:
-		AbilityAction = IA_Ability8.Get();
-		break;
-	default:
-		break;
-	}
-
-	if (!AbilityAction)
-	{
-		return FText::AsNumber(PhysicalSlotIndex + 1);
-	}
-
-	const UInputMappingContext* ContextsToSearch[] =
-	{
-		IMC_Combat.Get(),
-		IMC_CoreMovement.Get(),
-		IMC_CoreCamera.Get(),
-		IMC_Interaction.Get(),
-		IMC_UI.Get(),
-		IMC_System.Get()
-	};
-
-	for (const UInputMappingContext* Context : ContextsToSearch)
-	{
-		if (!Context)
-		{
-			continue;
-		}
-
-		for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
-		{
-			if (Mapping.Action == AbilityAction && Mapping.Key.IsValid())
-			{
-				return Mapping.Key.GetDisplayName(false);
-			}
-		}
-	}
-
-	return FText::AsNumber(PhysicalSlotIndex + 1);
+	return InputRouterComponent
+		? InputRouterComponent->GetAbilitySlotInputText(PhysicalSlotIndex)
+		: FText::AsNumber(PhysicalSlotIndex + 1);
 }
 
 void ASpellRisePlayerController::OnPrimaryPressed()
@@ -2464,6 +2169,17 @@ void ASpellRisePlayerController::OnSecondaryReleased()
 
 void ASpellRisePlayerController::OnInteractPressed()
 {
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose,
+		TEXT("[DownedActionTrace][Input] Controller=%s Pawn=%s Blocked=%d"),
+		*GetNameSafe(this),
+		*GetNameSafe(GetPawn()),
+		IsGameplayInputBlocked() ? 1 : 0);
+
+	if (TryOpenDownedActionWidget())
+	{
+		return;
+	}
+
 	if (IsGameplayInputBlocked())
 	{
 		return;
@@ -2475,6 +2191,80 @@ void ASpellRisePlayerController::OnInteractPressed()
 	}
 
 	SendAbilityInputTagPressed(InputTag_Interact());
+}
+
+bool ASpellRisePlayerController::TryOpenDownedActionWidget() const
+{
+	if (!IsLocalController())
+	{
+		return false;
+	}
+
+	ASpellRiseCharacterBase* Interactor = Cast<ASpellRiseCharacterBase>(GetPawn());
+	if (!Interactor || Interactor->IsDead() || Interactor->IsDowned())
+	{
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !PlayerCameraManager)
+	{
+		return false;
+	}
+
+	const FVector ViewLocation = PlayerCameraManager->GetCameraLocation();
+	const FVector ViewForward = PlayerCameraManager->GetCameraRotation().Vector();
+	ASpellRiseCharacterBase* BestTarget = nullptr;
+	float BestScore = -FLT_MAX;
+
+	for (TActorIterator<ASpellRiseCharacterBase> It(World); It; ++It)
+	{
+		ASpellRiseCharacterBase* Candidate = *It;
+		if (!Candidate || Candidate == Interactor || !Candidate->IsDowned() || Candidate->IsDead())
+		{
+			continue;
+		}
+
+		const float MaxDistance = Candidate->GetLifeStateComponent()
+			? Candidate->GetLifeStateComponent()->InteractionMaxDistance
+			: 350.f;
+		const FVector ToCandidate = Candidate->GetActorLocation() - ViewLocation;
+		const float Distance = ToCandidate.Size();
+		if (Distance > MaxDistance || Distance <= KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+
+		const float AimDot = FVector::DotProduct(ViewForward, ToCandidate / Distance);
+		if (AimDot < 0.35f)
+		{
+			continue;
+		}
+
+		const float Score = (AimDot * 1000.f) - Distance;
+		if (Score > BestScore)
+		{
+			BestScore = Score;
+			BestTarget = Candidate;
+		}
+	}
+
+	if (!BestTarget)
+	{
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Verbose,
+			TEXT("[DownedActionTrace][Reject] Reason=no_downed_target_in_cone Controller=%s"),
+			*GetNameSafe(this));
+		return false;
+	}
+
+	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+		TEXT("[DownedActionTrace][Target] Interactor=%s Target=%s Distance=%.2f Score=%.2f"),
+		*GetNameSafe(Interactor),
+		*GetNameSafe(BestTarget),
+		FVector::Dist(Interactor->GetActorLocation(), BestTarget->GetActorLocation()),
+		BestScore);
+	Interactor->ShowDownedActionWidget(BestTarget);
+	return true;
 }
 
 void ASpellRisePlayerController::OnInteractReleased()

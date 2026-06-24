@@ -5,15 +5,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagContainer.h"
-#include "InputCoreTypes.h"
 #include "TimerManager.h"
 #include "SpellRiseChatTypes.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilityHotbarComponent.h"
 #include "SpellRisePlayerController.generated.h"
 
-class UInputMappingContext;
-class UInputAction;
 class UGameplayAbility;
+class USpellRiseInputRouterComponent;
 class USpellRiseNumberPopComponent_NiagaraText;
 class USpellRiseAbilitySystemComponent;
 class UNarrativeInteractionComponent;
@@ -196,107 +194,18 @@ protected:
 	virtual void OnUnPossess() override;
 	virtual void AcknowledgePossession(APawn* InPawn) override;
 
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced")
-	TObjectPtr<UInputMappingContext> DefaultMappingContext = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced", meta=(ClampMin="0"))
-	int32 DefaultMappingPriority = 0;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Contexts")
-	TObjectPtr<UInputMappingContext> IMC_CoreMovement = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Contexts")
-	TObjectPtr<UInputMappingContext> IMC_CoreCamera = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Contexts")
-	TObjectPtr<UInputMappingContext> IMC_Combat = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Contexts")
-	TObjectPtr<UInputMappingContext> IMC_Interaction = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Contexts")
-	TObjectPtr<UInputMappingContext> IMC_UI = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Contexts")
-	TObjectPtr<UInputMappingContext> IMC_System = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Priority")
-	int32 IMC_CoreMovementPriority = 0;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Priority")
-	int32 IMC_CoreCameraPriority = 1;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Priority")
-	int32 IMC_CombatPriority = 5;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Priority")
-	int32 IMC_InteractionPriority = 6;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Priority")
-	int32 IMC_UIPriority = 20;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Enhanced|Priority")
-	int32 IMC_SystemPriority = 30;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Attack = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Primary = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Secondary = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Interact = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_ClearSelection = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Sprint = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability1 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability2 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability3 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability4 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability5 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability6 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability7 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
-	TObjectPtr<UInputAction> IA_Ability8 = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Debug|Progression")
-	FKey DebugGrantExperienceKey = EKeys::F9;
-
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Debug|Progression", meta=(ClampMin="1.0", UIMin="1.0"))
 	float DebugExperienceGrantAmount = 100.0f;
-
-	UPROPERTY(EditDefaultsOnly, Category="Input|UI")
-	FKey ToggleUIInteractionKey = EKeys::F10;
 
 	UPROPERTY(EditDefaultsOnly, Category="Input|Actions")
 	TSubclassOf<UGameplayAbility> AttackAbilityClass;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Input", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<USpellRiseInputRouterComponent> InputRouterComponent = nullptr;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Feedback", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<USpellRiseNumberPopComponent_NiagaraText> NumberPopComponent = nullptr;
 
-	void SetupEnhancedInput();
-	void RefreshEnhancedInputContexts();
 	void OnAttackPressed();
 	void OnAttackReleased();
 	void OnPrimaryPressed();
@@ -350,6 +259,7 @@ private:
 	void HandleAbilitySlotPressed(int32 SlotIndex);
 	void HandleAbilitySlotReleased(int32 SlotIndex);
 	bool TryExecuteNarrativeInteract(bool bPressed) const;
+	bool TryOpenDownedActionWidget() const;
 	bool IsControlledCharacterDead() const;
 	bool IsGameplayInputBlocked() const;
 	UNarrativeInteractionComponent* ResolveNarrativeInteractionComponent() const;
@@ -359,6 +269,8 @@ private:
 
 	void PushCombatLogMessage(const FString& MessageText);
 	bool ShouldEnableUIInputContext() const;
+
+	friend class USpellRiseInputRouterComponent;
 
 	UPROPERTY(Transient)
 	double LastDebugExperienceGrantTimeSeconds = -1.0;

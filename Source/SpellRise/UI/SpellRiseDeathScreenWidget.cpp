@@ -1,16 +1,17 @@
 // Cabeçalho de implementação: executa a lógica runtime preservando autoridade do servidor e integração Unreal.
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
 
-#include "Fonts/FontMeasure.h"
-#include "Framework/Application/SlateApplication.h"
-#include "Rendering/DrawElements.h"
-#include "Styling/CoreStyle.h"
-#include "UObject/SoftObjectPath.h"
+#include "Components/TextBlock.h"
+#include "InputCoreTypes.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 
 void USpellRiseDeathScreenWidget::SetMessage(const FText& InMessage)
 {
 	Message = InMessage;
+	if (TextBlock_InteractableName)
+	{
+		TextBlock_InteractableName->SetText(InMessage);
+	}
 	Invalidate(EInvalidateWidget::Paint);
 }
 
@@ -28,9 +29,79 @@ void USpellRiseDeathScreenWidget::RequestAcceptDeath()
 	}
 }
 
+void USpellRiseDeathScreenWidget::ConfigureDownedAction(ASpellRiseCharacterBase* TargetCharacter)
+{
+	DownedActionTarget = TargetCharacter;
+	SetMessage(FText::FromString(TEXT("Escolha: Reviver ou Gankar")));
+	if (Text_YesAction)
+	{
+		Text_YesAction->SetText(FText::FromString(TEXT("Revive")));
+	}
+	if (Text_NoAction)
+	{
+		Text_NoAction->SetText(FText::FromString(TEXT("Gank")));
+	}
+	SetVisibility(ESlateVisibility::Visible);
+	SetIsFocusable(true);
+	SetKeyboardFocus();
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		FInputModeGameAndUI InputMode;
+		InputMode.SetWidgetToFocus(TakeWidget());
+		InputMode.SetHideCursorDuringCapture(false);
+		PC->SetInputMode(InputMode);
+		PC->SetShowMouseCursor(true);
+	}
+	OnShowDownedActions(TargetCharacter);
+}
+
+void USpellRiseDeathScreenWidget::RequestDownedAction(bool bRevive)
+{
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (ASpellRiseCharacterBase* Character = Cast<ASpellRiseCharacterBase>(PC->GetPawn()))
+		{
+			Character->ServerResolveDownedAction(DownedActionTarget, bRevive);
+		}
+	}
+
+	DownedActionTarget = nullptr;
+	OnHideDownedActions();
+	SetVisibility(ESlateVisibility::Collapsed);
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		PC->SetInputMode(FInputModeGameOnly());
+		PC->SetShowMouseCursor(false);
+	}
+}
+
+void USpellRiseDeathScreenWidget::HandleReviveAction()
+{
+	if (DownedActionTarget)
+	{
+		RequestDownedAction(true);
+	}
+}
+
+void USpellRiseDeathScreenWidget::HandleGankAction()
+{
+	if (DownedActionTarget)
+	{
+		RequestDownedAction(false);
+	}
+}
+
+void USpellRiseDeathScreenWidget::HandleLifeStateChanged(
+	ESpellRiseLifeState NewState,
+	ESpellRiseLifeState OldState)
+{
+	OnLifeStateChanged(NewState, OldState);
+}
+
 void USpellRiseDeathScreenWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	SetIsFocusable(true);
 	SetVisibility(ESlateVisibility::Visible);
 	SetIsEnabled(true);
 
@@ -40,81 +111,28 @@ void USpellRiseDeathScreenWidget::NativeConstruct()
 	}
 }
 
-FReply USpellRiseDeathScreenWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+FReply USpellRiseDeathScreenWidget::NativeOnKeyDown(
+	const FGeometry& InGeometry,
+	const FKeyEvent& InKeyEvent)
 {
-	RequestAcceptDeath();
-	return FReply::Handled();
+	if (DownedActionTarget)
+	{
+		if (InKeyEvent.GetKey() == EKeys::Y)
+		{
+			HandleReviveAction();
+			return FReply::Handled();
+		}
+		if (InKeyEvent.GetKey() == EKeys::N)
+		{
+			HandleGankAction();
+			return FReply::Handled();
+		}
+	}
+
+	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 
-int32 USpellRiseDeathScreenWidget::NativePaint(
-	const FPaintArgs& Args,
-	const FGeometry& AllottedGeometry,
-	const FSlateRect& MyCullingRect,
-	FSlateWindowElementList& OutDrawElements,
-	int32 LayerId,
-	const FWidgetStyle& InWidgetStyle,
-	bool bParentEnabled) const
+FReply USpellRiseDeathScreenWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	const int32 ResultLayerId = Super::NativePaint(
-		Args,
-		AllottedGeometry,
-		MyCullingRect,
-		OutDrawElements,
-		LayerId,
-		InWidgetStyle,
-		bParentEnabled);
-
-	if (Message.IsEmpty())
-	{
-		return ResultLayerId;
-	}
-
-	FSlateFontInfo FontInfo = FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), FontSize);
-	if (PreferredFontObjectPath.IsValid())
-	{
-		if (UObject* FontObject = PreferredFontObjectPath.TryLoad())
-		{
-			FontInfo.FontObject = FontObject;
-			FontInfo.TypefaceFontName = TEXT("Regular");
-		}
-	}
-	FVector2D TextSize(320.f, 60.f);
-	if (FSlateApplication::IsInitialized())
-	{
-		if (FSlateRenderer* Renderer = FSlateApplication::Get().GetRenderer())
-		{
-			const TSharedRef<FSlateFontMeasure> FontMeasure = Renderer->GetFontMeasureService();
-			TextSize = FontMeasure->Measure(Message, FontInfo);
-		}
-	}
-
-	const FVector2D LocalSize = AllottedGeometry.GetLocalSize();
-	const FVector2D DrawPosition(
-		FMath::Max(0.f, (LocalSize.X - TextSize.X) * 0.5f),
-		FMath::Max(0.f, (LocalSize.Y - TextSize.Y) * 0.5f));
-
-	const FLinearColor ShadowColor(0.f, 0.f, 0.f, 0.8f);
-	FSlateDrawElement::MakeText(
-		OutDrawElements,
-		ResultLayerId + 1,
-		AllottedGeometry.ToPaintGeometry(
-			FVector2f(LocalSize),
-			FSlateLayoutTransform(FVector2f(DrawPosition + FVector2D(2.f, 2.f)))),
-		Message,
-		FontInfo,
-		ESlateDrawEffect::None,
-		ShadowColor);
-
-	FSlateDrawElement::MakeText(
-		OutDrawElements,
-		ResultLayerId + 2,
-		AllottedGeometry.ToPaintGeometry(
-			FVector2f(LocalSize),
-			FSlateLayoutTransform(FVector2f(DrawPosition))),
-		Message,
-		FontInfo,
-		ESlateDrawEffect::None,
-		TextColor);
-
-	return ResultLayerId + 2;
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }

@@ -15,6 +15,7 @@ class UGameplayEffect;
 class USkeletalMeshComponent;
 class USpellRiseAbilitySystemComponent;
 class USpellRiseWeaponDefinition;
+class USpellRiseEquipmentComponent;
 
 USTRUCT(BlueprintType)
 struct FSpellRiseWeaponSlotState
@@ -79,6 +80,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Weapon")
 	bool EquipWeaponClass(TSubclassOf<AActor> WeaponActorClass, int32 SlotIndex = 0, bool bDrawImmediately = true);
+	void SyncFromEquipmentComponent(const USpellRiseEquipmentComponent* EquipmentComponent);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Weapon")
 	bool UnequipWeapon();
@@ -241,6 +243,9 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Security")
 	bool bAllowWeaponClassEquipOnPlayerControlledOwner = false;
+
+	UPROPERTY(Transient)
+	bool bExternalEquipmentAuthorityActive = false;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Weapon|Attach")
 	FName DefaultEquippedSocket = TEXT("weaponSocket");

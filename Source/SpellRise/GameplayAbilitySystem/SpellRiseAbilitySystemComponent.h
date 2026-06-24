@@ -51,8 +51,6 @@ protected:
 	void OnGameplayEffectAppliedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle ActiveHandle);
 	void OnActiveGameplayEffectAddedToSelf(UAbilitySystemComponent* SourceASC, const FGameplayEffectSpec& Spec, FActiveGameplayEffectHandle ActiveHandle);
 	void OnGameplayEffectRemovedFromSelf(const FActiveGameplayEffect& ActiveEffect);
-	void BroadcastEquipmentAbilityStateChanged() const;
-
 public:
 
 

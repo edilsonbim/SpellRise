@@ -4,11 +4,13 @@
 - `ASpellRiseGameModeBase` define `GameState`, `PlayerController` e `PlayerState` custom.
 - O owner autoritativo do GAS é `ASpellRisePlayerState`.
 - `ASpellRiseCharacterBase` consome `ASC` e `AttributeSets` do `PlayerState`.
+- `USpellRiseInputRouterComponent`, subobjeto local e não replicado do `ASpellRisePlayerController`, gerencia exclusivamente cinco contextos: `IMC_Global`, `IMC_Movement`, `IMC_Combat`, `IMC_Building` e `IMC_UI`. As `Input Actions` são descobertas nos próprios IMCs por nomes canônicos e não são declaradas como propriedades no componente. O `PlayerController` mantém somente handlers/roteamento de intenção; o `Character` não adiciona mapping contexts.
 
 ## Fonte de verdade de gameplay (única)
 - Estado autoritativo de gameplay: `USpellRiseAbilitySystemComponent` + `GameplayEffects` + `GameplayTags`.
 - O servidor é a única autoridade que pode mutar esse estado.
 - Variáveis fora do ASC (ex.: caches/UI/espelhos locais) não podem decidir resultado final de gameplay.
+- `USpellRiseEquipmentComponent` no `PlayerState` é a nova fonte autoritativa de slots, grants GAS e identidade equipada. `USpellRiseWeaponComponent` no `Character` continua responsável pela execução/apresentação de armas, mas sua migração do contrato Narrative ainda está pendente.
 
 ## GAS Layout
 ### Ability System
@@ -19,15 +21,20 @@
 - Hotbar de abilities é persistida no snapshot de personagem como slots owner-only do `PlayerState`; restore roda no servidor e revalida payload de slot/definition.
 - Requisitos/contribuicao de arma ficam em `USpellRiseGameplayAbility::WeaponProgressionTag`; Blueprints de ability não devem implementar checagem estrutural de arma por classe.
 - `USpellRiseGameplayAbility` declara `DamageChannelTag`, `DamageTypeTag`, `SchoolProgressionTag` e `bUsesEquippedWeaponDamage` para o pipeline de dano.
+- A base `USpellRiseGameplayAbility` bloqueia ativacao por `State.Dead`; `State.Downed` é bloqueado por padrao em `CanActivateAbility` e só é liberado quando a ability marca `bAllowWhileDowned`.
+- A tag raiz `GameplayAbility` não deve ser usada como `ActivationBlockedTags` genérica na classe base, pois tags filhas como `GameplayAbility.FireBall` bloqueiam a propria ativacao pelo matching hierarquico.
 - Grants de abilities persistentes/startup/progressão são responsabilidade do `ASpellRisePlayerState`; o `Character` apenas inicializa `ActorInfo` como avatar atual.
 - `SourceObject` de grants persistentes deve ser estável (`PlayerState`, item, instância de equipamento ou asset persistente), nunca o pawn quando a ability deve sobreviver morte/respawn.
 
 ### Inventario e loot
-- O inventario de player vive no `ASpellRisePlayerState` via `UNarrativeInventoryComponent`.
-- O `Character` pode consumir o inventario do `PlayerState` para capacidade/peso/movimento, mas nao e owner nem source autoritativo do inventario.
-- Resolucao de inventario para pawn/controller deve priorizar `PlayerState`; componentes legados no pawn nao devem ser usados como fonte de verdade de player.
-- Full loot, persistencia e UI devem coletar o inventario de player pelo `PlayerState`, mantendo o source estavel durante morte/respawn.
-- Itens equipados e loadout de armas são persistidos por classe de item + slot; restore só reaplica itens que existem no inventario restaurado do `PlayerState`, sem criar item confiando no cliente.
+- O `ASpellRisePlayerState` cria em paralelo `USpellRiseInventoryComponent`, `USpellRiseEquipmentComponent`, `USpellRiseInventoryViewModelComponent` e o legado `UNarrativeInventoryComponent`.
+- O inventário próprio usa `USpellRiseItemDefinition : UPrimaryDataAsset`, identidade por `FGuid ItemInstanceId` + `FPrimaryAssetId DefinitionId`, capacidade por slots/peso e `FFastArraySerializer` privado `OwnerOnly`.
+- O equipamento próprio mantém nove slots e FastArray privado `OwnerOnly`. O descriptor público no Character permanece pendente; não há fan-out visual pelo PlayerState.
+- Equipar/desequipar é uma transferência server-side pelo bridge de inventário. Grants e efeitos GAS são registrados por `ItemInstanceId` com source estável no `PlayerState`; `OnRep` nunca aplica grants.
+- A persistência corrente permanece em `14/2`. Os contratos `15/3` com GUID e `PrimaryAssetId` estão implementados, mas só poderão ser ativados após dual-read e full loot nativo.
+- Narrative continua ativo para compatibilidade de assets e para fluxos ainda não migrados: full loot, loot bags, vendor/containers, peso/movimento e integração atual do `WeaponComponent`.
+- O `Character` não é owner nem fonte autoritativa de inventário/equipamento. A apresentação no Pawn deve ser reconstruível após respawn a partir do estado estável no `PlayerState`.
+- UI nova deve consumir `USpellRiseInventoryViewModelComponent`, ser event-driven e enviar apenas intenções; widgets/assets UMG ainda precisam ser ligados e migrados manualmente.
 
 ### Attribute Sets
 - `UBasicAttributeSet`
@@ -51,7 +58,7 @@
 - XP comum marca o personagem como dirty para autosave periódico; level-up força atualização de rede owner-only imediata, evitando save/replication burst por kill em cenários 100+ players.
 - Guarda niveis autoritativos de arma e escola/familia por `GameplayTag`.
 - Replicacao owner-only para UI/UX.
-- Persistencia de personagem schema 13 salva `CharacterLevel`, `Experience`, `TalentPoints`, `CraftPoints`, `AttributePoints`, contadores de boosters comprados/ativos, `WeaponSkillLevels`, `SchoolLevels`, hotbar de abilities, itens equipados e loadout de armas/offhand no `snapshot_json`.
+- Persistencia de personagem schema 15 salva progressão, hotbar e o contrato paralelo de inventário/equipamento próprio; inventário separado usa schema 3. Schemas 14/2 continuam legíveis para migração.
 - `Character` nao e fonte de verdade para progressao.
 - `TalentTreeComponent` em Blueprint deve vincular talentos chamando `EnsureProgressionLevelFromAbilityDefinitionTalent_Server` no `USpellRiseProgressionComponent` do `PlayerState` quando houver `USpellRiseAbilityDefinition`; para fluxos especificos, pode chamar `EnsureWeaponSkillLevelFromTalent_Server` ou `EnsureSchoolLevelFromTalent_Server`. O BP nao deve mutar arrays de progressao diretamente.
 - `ExecCalc`/helpers server-side devem consultar este componente para nivel de arma/escola quando o novo pipeline de dano for consolidado.
@@ -80,13 +87,28 @@
 - apresenta UI/VFX/SFX.
 
 ## Fluxo de morte / agonizando
-1. Player com `Health <= 0` entra em `State.Downed`, trava `Health=1`, cancela abilities, para regen e bloqueia input.
-2. O servidor inicia timer de 60s; ragdoll/tela de morte ficam suprimidos temporariamente para debug da mecanica.
-3. Revive usa Narrative Interaction hold de 5s e chama `ReviveFromDowned_Server`, restaurando `20% MaxHealth`, `0 Mana` e `0 Stamina`.
-4. Finish usa ação server-side `FinishDownedByInteractor_Server`; quando exposta por Blueprint/Narrative, deve validar alvo downed, interactor vivo e distância/trace do Narrative.
-5. Aceitar morte usa `ServerAcceptDeath` chamado pela UI do jogador downed.
-6. Full loot, `State.Dead`, corpse despawn e respawn só acontecem em `FinalizeDeath_Server`.
-7. AI não entra em downed no v1; continua no fluxo de morte direta.
+1. `USpellRiseLifeStateComponent`, replicado no Character, é o orquestrador autoritativo de `Alive`, `Downed`, `ReviveRecovery` e `Dead`; Character apenas encaminha dano letal e executa apresentação/serviços de loot e respawn.
+2. Player com `Health <= 0` entra em `State.Downed` somente se não possuir `State.Downed.Cooldown`; durante cooldown, dano letal chama morte final diretamente.
+3. Downed trava `Health=1`, cancela abilities ofensivas, para regen e expira server-side após 60s. `bIsDowned` permanece apenas como espelho legado público.
+4. O input Interact faz sweep local por objeto `Pawn`, registra diagnóstico e abre explicitamente o Blueprint `/Game/UI/Widgets/SpellRiseDeathScreenWidget` com `Reviver/Gankar`.
+5. A escolha envia `TargetCharacter + bool bRevive` por `ServerResolveDownedAction`; o componente do alvo revalida owner, estados, distância e LOS antes de reviver ou finalizar.
+5. O revive restaura recursos por WIS: em WIS 100, `20% Health`, `5% Mana` e `5% Stamina`; em WIS 140, `30% Health`, `10% Mana` e `10% Stamina`; valores intermediários usam interpolação linear clampada.
+7. Enquanto downed, o componente não altera `CharacterMovement` nem flags de input; pode ativar uma `DownedAbilityClass` configurada em Blueprint somente para comportamento/apresentação explicitamente desejado. Não existe mais GA C++ específica.
+7. Após revive, o ASC recebe `State.ReviveRecovery` por 3s em WIS 100 até 5s em WIS 140 e `State.Downed.Cooldown` por 300s configuráveis.
+8. Aceitar morte usa `ServerAcceptDeath`; full loot, `State.Dead`, corpse despawn e respawn só acontecem em `FinalizeDeath_Server`.
+9. Revive/reset cancela timers pendentes de morte/respawn; `ExecuteRespawn_Server` deve abortar se o Character nao estiver em `Dead`.
+10. O componente expõe `OnShowDownedActions(Target)`, `OnHideDownedActions` e `OnLifeStateChanged`; eventos são apresentação, nunca autoridade.
+11. AI não entra em downed; continua no fluxo de morte direta.
+
+### Configuração do Life State
+- Todas as regras editáveis ficam no `USpellRiseLifeStateComponent` do Character Blueprint.
+- `DownedDurationSeconds`: tempo máximo agonizando.
+- `DownedExpirationResult`: `FinalDeath` ou `AutomaticRevive`.
+- `DownedCooldownSeconds`: intervalo após revive no qual novo dano letal causa morte final.
+- `InteractionMaxDistance`: alcance de interação Revive/Gank.
+- `State.Downed` não altera `CharacterMovement.MaxWalkSpeed`, `MovementMode`, `AddMovementInput`, `EnableInput`, `DisableInput` ou flags `SetIgnoreMoveInput/SetIgnoreLookInput`.
+- `DownedRedEdgeAlpha`: intensidade persistente da borda vermelha enquanto downed; o client local também aplica saturação zero na câmera.
+- Percentuais de Health/Mana/Stamina e duração de recovery são configuráveis separadamente para WIS 100 e WIS 140, com interpolação linear.
 
 ## Fluxo de combate
 1. Ability prepara spec/SetByCaller.
@@ -115,6 +137,7 @@
 - `ASpellRisePlayerController`: input de gameplay e glue local de UX.
 - `USpellRiseAbilityHotbarComponent`: loadout owner-only de hotbar, validado no servidor e consumido pelo input local.
 - `USpellRisePlayerHUDViewModelComponent`: componente local/event-driven no `PlayerState` que agrega nome, progressao, primarios e recursos ja replicados para Widgets, sem Tick, RPC ou estado autoritativo duplicado.
+- `USpellRiseInventoryViewModelComponent`: projeção local/event-driven de inventário/equipamento para UMG; não replica, não persiste e não decide operações.
 - `USpellRiseConstructionModeComponent`: isola o building mode no controller.
 - Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
 - Chat runtime: `ASpellRisePlayerController::SubmitChatMessageForConversation` recebe da UI texto/canal/conversation ID e roteia para RPCs owner-bound; `USpellRiseChatComponent` no `GameState` sanitiza, aplica rate-limit e roteia Global/System. Whisper usa identidade estável, entrega client-only e block list server-side. Histórico/unread são exclusivamente locais e o mapa Blueprint detalhado vive em `CHAT_BLUEPRINT_MAP.md`.

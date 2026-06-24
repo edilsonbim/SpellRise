@@ -5,6 +5,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ChildActorComponent.h"
 #include "Engine/ActorChannel.h"
+#include "Engine/AssetManager.h"
 #include "Engine/World.h"
 #include "EquippableItem.h"
 #include "GameFramework/Character.h"
@@ -16,6 +17,8 @@
 #include "UObject/UnrealType.h"
 
 #include "SpellRise/Equipment/SpellRiseWeaponBase.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
+#include "SpellRise/Inventory/SpellRiseItemDefinition.h"
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseWeaponComponent, Log, All);
@@ -175,6 +178,11 @@ void USpellRiseWeaponComponent::BeginPlay()
 
 void USpellRiseWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		RemoveActiveWeaponGrants_Server();
+		RemoveOffHandWeaponGrants_Server();
+	}
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -223,6 +231,42 @@ bool USpellRiseWeaponComponent::EquipWeaponClass(TSubclassOf<AActor> WeaponActor
 	}
 
 	return EquipWeaponClass_Server(WeaponActorClass, SlotIndex, bDrawImmediately);
+}
+
+void USpellRiseWeaponComponent::SyncFromEquipmentComponent(const USpellRiseEquipmentComponent* EquipmentComponent)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !EquipmentComponent)
+	{
+		return;
+	}
+
+	FSpellRiseEquippedItemEntry MainHand;
+	if (!EquipmentComponent->GetEquippedItem(ESpellRiseEquipmentSlot::MainHand, MainHand))
+	{
+		bExternalEquipmentAuthorityActive = true;
+		UnequipWeapon_Server(nullptr);
+		bExternalEquipmentAuthorityActive = false;
+		return;
+	}
+
+	UAssetManager& AssetManager = UAssetManager::Get();
+	const FSoftObjectPath ItemPath = AssetManager.GetPrimaryAssetPath(MainHand.DefinitionId);
+	const USpellRiseWeaponItemDefinition* ItemDefinition =
+		Cast<USpellRiseWeaponItemDefinition>(ItemPath.TryLoad());
+	const USpellRiseWeaponDefinition* WeaponDefinition = ItemDefinition
+		? ItemDefinition->WeaponDefinition.LoadSynchronous()
+		: nullptr;
+	UClass* WeaponActorClass = WeaponDefinition
+		? WeaponDefinition->WeaponActorClassRef.LoadSynchronous()
+		: nullptr;
+	if (!WeaponActorClass)
+	{
+		return;
+	}
+
+	bExternalEquipmentAuthorityActive = true;
+	EquipWeaponClass_Server(WeaponActorClass, 0, true);
+	bExternalEquipmentAuthorityActive = false;
 }
 
 bool USpellRiseWeaponComponent::UnequipWeapon()
@@ -589,7 +633,7 @@ bool USpellRiseWeaponComponent::EquipWeaponClass_Server(TSubclassOf<AActor> Weap
 	}
 
 	const APawn* OwnerPawn = Cast<APawn>(GetOwner());
-	if (OwnerPawn && OwnerPawn->IsPlayerControlled() && !bAllowWeaponClassEquipOnPlayerControlledOwner)
+	if (OwnerPawn && OwnerPawn->IsPlayerControlled() && !bAllowWeaponClassEquipOnPlayerControlledOwner && !bExternalEquipmentAuthorityActive)
 	{
 		UE_LOG(LogSpellRiseWeaponComponent, Warning,
 			TEXT("[Weapon][EquipClassRejected] Reason=player_class_equip_disabled Owner=%s WeaponClass=%s Slot=%d"),
@@ -636,7 +680,7 @@ bool USpellRiseWeaponComponent::EquipWeaponClass_Server(TSubclassOf<AActor> Weap
 	bWeaponDrawn = bDrawImmediately;
 	RefreshEquippedWeaponReference_Server();
 	AttachCurrentWeaponVisual();
-	if (bWeaponDrawn)
+	if (bWeaponDrawn && !bExternalEquipmentAuthorityActive)
 	{
 		ApplyActiveWeaponGrants_Server();
 	}

@@ -1,0 +1,136 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Components/ActorComponent.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentInventoryBridge.h"
+#include "SpellRiseItemTypes.h"
+#include "SpellRiseInventoryComponent.generated.h"
+
+class USpellRiseItemDefinition;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSpellRiseInventoryChanged, ESpellRiseInventoryChangeType, ChangeType, FSpellRiseItemInstance, Item);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSpellRiseInventoryRequestResolved, int32, ClientRequestId, ESpellRiseInventoryRequestResult, Result);
+
+USTRUCT()
+struct FSpellRiseInventoryRateLimitState
+{
+	GENERATED_BODY()
+
+	double WindowStartSeconds = 0.0;
+	int32 RequestsInWindow = 0;
+};
+
+UCLASS(ClassGroup=(SpellRise), BlueprintType, meta=(BlueprintSpawnableComponent))
+class SPELLRISE_API USpellRiseInventoryComponent : public UActorComponent, public ISpellRiseEquipmentInventoryBridge
+{
+	GENERATED_BODY()
+
+public:
+	USpellRiseInventoryComponent();
+
+	virtual void BeginPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory")
+	const TArray<FSpellRiseItemInstance>& GetItems() const { return Inventory.Entries; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory")
+	bool FindItem(const FGuid& ItemInstanceId, FSpellRiseItemInstance& OutItem) const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory")
+	float GetCurrentWeight() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory")
+	int32 GetMaxSlots() const { return MaxSlots; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory")
+	float GetMaxWeight() const { return MaxWeight; }
+	void SetMaxWeight_Server(float NewMaxWeight);
+	bool IsNativeInventoryEnabled() const { return bNativeInventoryEnabled; }
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory")
+	void RequestMoveItem(FGuid ItemInstanceId, int32 DestinationSlot, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory")
+	void RequestDropItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
+
+	bool AddItem_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, FGuid& OutItemInstanceId, FString& OutRejectReason);
+	bool RemoveItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FString& OutRejectReason);
+	bool MoveItem_Server(const FGuid& ItemInstanceId, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
+	bool ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason);
+	bool InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
+	void ResetInventory_Server();
+	const USpellRiseItemDefinition* ResolveDefinition(const FPrimaryAssetId& DefinitionId) const;
+
+	virtual bool Equipment_TakeItem(const FGuid& ItemInstanceId, FSpellRiseEquipmentItemData& OutItem, FString& OutRejectReason) override;
+	virtual bool Equipment_ReturnItem(const FSpellRiseEquipmentItemData& Item, int32 PreferredInventorySlot, FString& OutRejectReason) override;
+	virtual bool Equipment_CanReturnItem(const FSpellRiseEquipmentItemData& Item, int32 PreferredInventorySlot, FString& OutRejectReason) const override;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|Events")
+	FSpellRiseInventoryChanged OnInventoryChanged;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|Events")
+	FSpellRiseInventoryRequestResolved OnRequestResolved;
+
+	void NotifyReplicatedChange(ESpellRiseInventoryChangeType ChangeType, const FSpellRiseItemInstance& Item);
+
+protected:
+	UFUNCTION(Server, Reliable)
+	void ServerRequestMoveItem(FGuid ItemInstanceId, int32 DestinationSlot, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDropItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(Client, Reliable)
+	void ClientResolveRequest(int32 ClientRequestId, ESpellRiseInventoryRequestResult Result);
+
+	UFUNCTION(BlueprintNativeEvent, Category="SpellRise|Inventory")
+	bool CommitDrop_Server(const FSpellRiseItemInstance& DroppedItem);
+	virtual bool CommitDrop_Server_Implementation(const FSpellRiseItemInstance& DroppedItem);
+
+private:
+	bool HasServerAuthority() const;
+	bool IsRuntimeReady(FString& OutRejectReason) const;
+	bool RestoreExtractedItem_Server(const FSpellRiseItemInstance& Item, FString& OutRejectReason);
+	bool ValidateRequestId(int32 ClientRequestId, FString& OutRejectReason);
+	bool CheckRateLimit(FSpellRiseInventoryRateLimitState& State, int32 MaxRequests, FString& OutRejectReason);
+	bool ValidateSlot(int32 SlotIndex) const;
+	int32 FindFreeSlot(int32 PreferredSlot = INDEX_NONE) const;
+	int32 FindEntryIndexById(const FGuid& ItemInstanceId) const;
+	int32 FindEntryIndexBySlot(int32 SlotIndex) const;
+	bool CanAddWeight(const USpellRiseItemDefinition* Definition, int32 Quantity) const;
+	void MarkEntryChanged(FSpellRiseItemInstance& Entry);
+	void ResolveRequest(int32 ClientRequestId, ESpellRiseInventoryRequestResult Result, const TCHAR* RpcName, const FString& Reason);
+	ESpellRiseInventoryRequestResult MapRejectReason(const FString& Reason) const;
+	void ForceOwnerNetUpdate() const;
+
+	UPROPERTY(Replicated)
+	FSpellRiseInventoryList Inventory;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Rollout")
+	bool bNativeInventoryEnabled = false;
+
+	UPROPERTY(Replicated, EditDefaultsOnly, Category="SpellRise|Inventory", meta=(ClampMin="1", ClampMax="500"))
+	int32 MaxSlots = 40;
+
+	UPROPERTY(Replicated, EditDefaultsOnly, Category="SpellRise|Inventory", meta=(ClampMin="0.0"))
+	float MaxWeight = 100.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="0.05"))
+	float RateLimitWindowSeconds = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="20"))
+	int32 MoveRequestsPerWindow = 6;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="10"))
+	int32 DropRequestsPerWindow = 2;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="1000"))
+	int32 MaxQuantityPerRequest = 1000;
+
+	FSpellRiseInventoryRateLimitState MoveRateLimit;
+	FSpellRiseInventoryRateLimitState DropRateLimit;
+	TSet<int32> RecentRequestIds;
+	TArray<int32> RecentRequestOrder;
+	int32 NextRevision = 1;
+};

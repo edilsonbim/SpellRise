@@ -14,6 +14,15 @@ void USpellRiseDamageEdgeWidget::PlayDamageFlash(float InPeakAlpha, float InFade
 	bFlashActive = PeakAlpha > KINDA_SMALL_NUMBER;
 }
 
+void USpellRiseDamageEdgeWidget::SetPersistentDamage(float InAlpha, bool bEnabled)
+{
+	bPersistentDamage = bEnabled;
+	PeakAlpha = FMath::Clamp(InAlpha, 0.f, 1.f);
+	CurrentAlpha = bEnabled ? PeakAlpha : 0.f;
+	bFlashActive = false;
+	Invalidate(EInvalidateWidget::Paint);
+}
+
 void USpellRiseDamageEdgeWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
@@ -27,7 +36,7 @@ void USpellRiseDamageEdgeWidget::NativeTick(const FGeometry& MyGeometry, float I
 
 	if (!bFlashActive)
 	{
-		CurrentAlpha = 0.f;
+		CurrentAlpha = bPersistentDamage ? PeakAlpha : 0.f;
 		return;
 	}
 
