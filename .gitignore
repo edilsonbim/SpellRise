@@ -68,5 +68,6 @@ java_error*.hprof
 
 # Local tool folders
 .codex/
+.codex-tmp/
 .cursor/
 Plugins/Developer/RiderLink/
