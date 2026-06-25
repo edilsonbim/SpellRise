@@ -1,12 +1,15 @@
 # SpellRise - Repositório de Desenvolvimento
 
-SpellRise é um MMORPG PvP hardcore (UE 5.7) com combate skill-based e arquitetura server-authoritative para Dedicated Server.
+SpellRise é um MMORPG PvP hardcore em Unreal Engine Source com combate skill-based e arquitetura server-authoritative para Dedicated Server.
 
-## Estado atual (2026-06-05)
-- Base multiplayer live-service em Unreal Engine 5.7 com Dedicated Server obrigatório.
+## Estado atual (2026-06-25)
+- Branch de migração concluído e pronto para virar `develop`.
+- `main` deve permanecer como linha estável; `develop` passa a receber a migração concluída.
+- Base multiplayer live-service em Unreal Engine Source com Dedicated Server obrigatório.
 - Persistência server-side ativa com snapshots revisionados de personagem, inventário, mundo e eventos de morte.
-- Snapshot de personagem schema 7 persiste criação de personagem e configuração visual por `SteamId64`.
-- Bootstrap/auth Steam em Dedicated Server falha cedo quando o OnlineSubsystem degrada para `NULL`.
+- Contratos de inventário/equipamento próprios existem em paralelo ao Narrative; ativação completa ainda depende de validação DS+2 e migração final de assets/fluxos.
+- Problema de áudio pós-migração foi isolado no Ultra Dynamic Sky e resolvido pelo operador ao remover/adicionar o plugin/asset novamente.
+- Bugs remanescentes são herdados da versão anterior, não blockers novos da migração.
 
 ## Stack e regras principais
 - Unreal Engine Source Build em `C:\UnrealSource\UnrealEngine`
@@ -14,6 +17,7 @@ SpellRise é um MMORPG PvP hardcore (UE 5.7) com combate skill-based e arquitetu
 - GAS owner no `PlayerState` (ASC/AttributeSets no `PlayerState`)
 - Cliente não decide dano/loot/morte/resultado final
 - Persistência de produção é server-side e indexada por identidade Steam real
+- `main` = linha estável; `develop` = linha ativa de integração.
 
 ## Estrutura
 - `Source/` C++ de runtime e sistemas de rede/gameplay

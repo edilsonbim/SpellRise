@@ -12,11 +12,13 @@
 - Pendente hardening: validar no servidor se a `AbilityDefinition` enviada para hotbar pertence ao catálogo/desbloqueios do jogador antes de aceitar o slot.
 
 ## Foco atual
-1. Fechar persistência de produção.
-2. Corrigir overflow de replicação no `PlayerController`.
-3. Fechar gating de auth/session para fluxos sensíveis de DS.
-4. Consolidar building mode com budget e validação de RPC.
-5. Avançar automação multiplayer em gate contínuo/CI.
+1. Promover a migração concluída para `develop` e manter `main` como linha estável.
+2. Revalidar/corrigir bugs herdados pós-migração: abilities após sair de downed/revive e bug de câmera.
+3. Fechar persistência de produção.
+4. Corrigir overflow de replicação no `PlayerController`.
+5. Fechar gating de auth/session para fluxos sensíveis de DS.
+6. Consolidar building mode com budget e validação de RPC.
+7. Avançar automação multiplayer em gate contínuo/CI.
 
 ## Blockers de alta prioridade
 ### 0. DS 100 load gate / login bootstrap
@@ -62,6 +64,9 @@
 - Alvo: budget de rede, matriz RPC e validação server-side de contexto/alcance/LOS.
 
 ## Gameplay — P0 bloqueante
+- Migração concluída operacionalmente em 2026-06-25; bugs restantes devem ser tratados como herdados da versão anterior, não regressão bloqueante da migração.
+- Revalidar abilities após renascer/sair de downed: confirmar se activation/commit/cost/cooldown falham por tag, source stale, ActorInfo, possession ou estado residual.
+- Revalidar bug de câmera em cliente visual real, separado de fluxo headless/DS.
 - Corrigido, pendente de validacao formal: persistir ability hotbar, armas e itens equipados no snapshot server-side; validar restore em DS+2 e reconexao sem criar item ausente no inventario restaurado.
 - Rework AAA centralizado em `USpellRiseLifeStateComponent`; Blueprint explícito do DeathScreen, eventos de apresentação, trace/logs, GA de crawl, recursos por WIS, recovery/cooldown e full loot implementados. Build `SpellRiseEditor Win64 Development` aprovada em 2026-06-22; smoke multiplayer pendente.
 - Colocar clamp autoritativo nos atributos (em progresso), preservando caps canonicos, GAS e reconciliacao da UI.
