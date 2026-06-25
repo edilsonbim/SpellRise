@@ -172,7 +172,7 @@ void UEquippableItem_Clothing::HandleUnequip_Implementation()
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Narrative Equipment tried unequipping item but the Equipment Component doesn't have a skeletal mesh component added. Have you called initialize?"), *GetNameSafe(this));
+			UE_LOG(LogTemp, Warning, TEXT("Narrative Equipment tried unequipping item '%s' but the Equipment Component doesn't have a skeletal mesh component added. Have you called initialize?"), *GetNameSafe(this));
 		}
 
 	}

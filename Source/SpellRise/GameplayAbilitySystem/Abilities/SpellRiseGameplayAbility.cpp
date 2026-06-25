@@ -284,15 +284,37 @@ bool USpellRiseGameplayAbility::CanActivateAbility(
 		&& DownedStateTag.IsValid()
 		&& ActorInfo->AbilitySystemComponent->HasMatchingGameplayTag(DownedStateTag))
 	{
+		UE_LOG(LogSpellRiseGameplayAbilityRuntime, Warning,
+			TEXT("[GAS][CanActivateRejected] Reason=state_downed Ability=%s Owner=%s Avatar=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(ActorInfo->OwnerActor.Get()),
+			*GetNameSafe(ActorInfo->AvatarActor.Get()));
 		return false;
 	}
 
 	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
 	{
+		UE_LOG(LogSpellRiseGameplayAbilityRuntime, Warning,
+			TEXT("[GAS][CanActivateRejected] Reason=super_failed Ability=%s Owner=%s Avatar=%s FailureTags=%s"),
+			*GetNameSafe(this),
+			ActorInfo ? *GetNameSafe(ActorInfo->OwnerActor.Get()) : TEXT("None"),
+			ActorInfo ? *GetNameSafe(ActorInfo->AvatarActor.Get()) : TEXT("None"),
+			OptionalRelevantTags ? *OptionalRelevantTags->ToStringSimple() : TEXT("none"));
 		return false;
 	}
 
-	return AreWeaponRequirementsMetForActorInfo(ActorInfo);
+	const bool bWeaponRequirementsMet = AreWeaponRequirementsMetForActorInfo(ActorInfo);
+	if (!bWeaponRequirementsMet)
+	{
+		UE_LOG(LogSpellRiseGameplayAbilityRuntime, Warning,
+			TEXT("[GAS][CanActivateRejected] Reason=weapon_requirement_failed Ability=%s RequiredProgressionTag=%s Owner=%s Avatar=%s"),
+			*GetNameSafe(this),
+			*WeaponProgressionTag.ToString(),
+			ActorInfo ? *GetNameSafe(ActorInfo->OwnerActor.Get()) : TEXT("None"),
+			ActorInfo ? *GetNameSafe(ActorInfo->AvatarActor.Get()) : TEXT("None"));
+	}
+
+	return bWeaponRequirementsMet;
 }
 
 void USpellRiseGameplayAbility::ActivateAbility(

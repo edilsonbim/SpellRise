@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 20000,
-	"VersionName": "2.0.0-UE5.7",
+	"VersionName": "2.0.0-UE5.8",
 	"FriendlyName": "Auto Settings",
 	"Description": "Settings and Input Binding Framework",
 	"Category": "Settings",
@@ -10,7 +10,7 @@
 	"DocsURL": "https://autosettings.sbtools.dev/2.x/",
 	"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/fcc480bac77b4373bc6c68f0ae4f9847",
 	"SupportURL": "https://autosettings.sbtools.dev/2.x/support",
-	"EngineVersion": "5.7.0",
+	"EngineVersion": "5.8.0",
 	"CanContainContent": true,
 	"Installed": true,
 	"Modules": [

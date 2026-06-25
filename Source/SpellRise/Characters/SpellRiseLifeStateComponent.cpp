@@ -150,10 +150,7 @@ void USpellRiseLifeStateComponent::ClearDowned_Server()
 	}
 	if (Character->DownedStateTag.IsValid())
 	{
-	if (ASC->HasMatchingGameplayTag(Character->DownedStateTag))
-	{
-		ASC->RemoveLooseGameplayTag(Character->DownedStateTag);
-	}
+		ASC->SetLooseGameplayTagCount(Character->DownedStateTag, 0);
 	}
 	Character->bIsDowned = false;
 	CancelDownedAbility_Server();
@@ -332,9 +329,9 @@ void USpellRiseLifeStateComponent::ClearDownedCooldown_Server()
 	USpellRiseAbilitySystemComponent* ASC = Character ? Character->GetSpellRiseASC() : nullptr;
 	if (!Character || !ASC) { return; }
 	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(DownedCooldownTimerHandle); }
-	if (ASC->HasMatchingGameplayTag(Character->DownedCooldownTag))
+	if (Character->DownedCooldownTag.IsValid())
 	{
-		ASC->RemoveLooseGameplayTag(Character->DownedCooldownTag);
+		ASC->SetLooseGameplayTagCount(Character->DownedCooldownTag, 0);
 	}
 }
 
@@ -344,9 +341,9 @@ void USpellRiseLifeStateComponent::ClearReviveRecovery_Server()
 	USpellRiseAbilitySystemComponent* ASC = Character ? Character->GetSpellRiseASC() : nullptr;
 	if (!Character || !ASC) { return; }
 	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(ReviveRecoveryTimerHandle); }
-	if (ASC->HasMatchingGameplayTag(Character->ReviveRecoveryTag))
+	if (Character->ReviveRecoveryTag.IsValid())
 	{
-		ASC->RemoveLooseGameplayTag(Character->ReviveRecoveryTag);
+		ASC->SetLooseGameplayTagCount(Character->ReviveRecoveryTag, 0);
 	}
 	if (!IsDead())
 	{
@@ -386,6 +383,8 @@ void USpellRiseLifeStateComponent::ResetForSpawn_Server()
 	ClearReviveRecovery_Server();
 	ClearDownedCooldown_Server();
 	SetLifeState_Server(ESpellRiseLifeState::Alive);
+	Character->bIsDead = false;
+	Character->bIsDowned = false;
 }
 
 void USpellRiseLifeStateComponent::ShowDownedActions_Local(ASpellRiseCharacterBase* TargetCharacter)
