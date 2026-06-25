@@ -32,6 +32,49 @@
 - Evidência de log (paths):
 
 ## Open Issues
+### BUG-2026-06-25-058
+- Date: 2026-06-25
+- Severity: High
+- Status: Open
+- Area: Migration / Audio / Ultra Dynamic Sky
+- Issue: ruído/barulho observado após a migração parecia problema global de áudio, mas foi isolado no Ultra Dynamic Sky.
+- Reproduction: abrir o editor/projeto pós-migração com Ultra Dynamic Sky no estado anterior e observar ruído persistente.
+- Expected: áudio do editor/runtime sem ruído e sem workaround global de AudioMixer.
+- Actual: ruído persistia até o Ultra Dynamic Sky ser removido/adicionado novamente.
+- Root Cause: bug/estado corrompido de asset/plugin do Ultra Dynamic Sky após migração.
+- Fix: operador removeu e adicionou novamente o Ultra Dynamic Sky; ruído cessou.
+- Tested On: validação operacional no editor pelo operador; sem build/smoke executado por agente neste registro.
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Art/Audio/World
+
+### BUG-2026-06-25-059
+- Date: 2026-06-25
+- Severity: High
+- Status: Open
+- Area: Death / Downed / Respawn / GAS / Camera
+- Issue: após a migração concluída, permanecem bugs herdados da versão anterior: abilities após renascer/sair de downed e bug de câmera.
+- Reproduction: entrar em downed, sair por revive/respawn/recovery e tentar usar abilities; validar também transição/posicionamento da câmera em cliente visual real.
+- Expected: ao voltar para `Alive`, ActorInfo/ASC/possession/input estão reconciliados e abilities ativam normalmente quando custo/cooldown/tags permitem; câmera não quebra o fluxo visual.
+- Actual: pendente de revalidação no build migrado; operador classifica como bug herdado.
+- Root Cause: pendente; investigar tags residuais (`State.Downed`, `State.ReviveRecovery`, `State.Dead`), ActorInfo/source stale, possession, input router e asset/runtime de câmera.
+- Fix: pendente.
+- Net Scope: GAS | morte/loot | controller
+- Authority Boundary: servidor continua decidindo life state, activation/commit/cost/cooldown; câmera é apresentação client-side e não pode afetar DS.
+- Prediction Path (Client): input e câmera locais apenas para UX.
+- Server Validation: revalidar `CanActivateAbility`, owner, ActorInfo e tags no ASC do `PlayerState`.
+- RPCs afetados: nenhum novo neste registro.
+- OnRep afetados: `LifeState`, tags GAS e possession/ActorInfo.
+- Replication Condition envolvida: nenhuma nova.
+- Overflow (`FBitReader::SetOverflowed`): não observado neste registro.
+- Cenário com lag/loss: pendente.
+- Tested On: pendente
+- Standalone: pendente
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Gameplay/GAS/Camera
+
 ### BUG-2026-06-24-057
 - Date: 2026-06-24
 - Severity: High
