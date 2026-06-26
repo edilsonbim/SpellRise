@@ -8,7 +8,10 @@ namespace SpellRiseInventoryViewModel
 	const FName MoveRequest(TEXT("move"));
 	const FName EquipRequest(TEXT("equip"));
 	const FName UnequipRequest(TEXT("unequip"));
+	const FName SwapEquipmentRequest(TEXT("swap_equipment"));
 	const FName DropRequest(TEXT("drop"));
+	const FName UseRequest(TEXT("use"));
+	const FName DestroyRequest(TEXT("destroy"));
 	const FName InvalidGuid(TEXT("invalid_guid"));
 	const FName InvalidSlot(TEXT("invalid_slot"));
 	const FName InvalidQuantity(TEXT("invalid_quantity"));
@@ -141,6 +144,27 @@ bool USpellRiseInventoryViewModelComponent::RequestUnequipItem(
 	return true;
 }
 
+bool USpellRiseInventoryViewModelComponent::RequestSwapEquipmentSlots(
+	const ESpellRiseUIEquipmentSlot FromSlot,
+	const ESpellRiseUIEquipmentSlot ToSlot)
+{
+	using namespace SpellRiseInventoryViewModel;
+	if (FromSlot == ToSlot)
+	{
+		return true;
+	}
+
+	if (USpellRiseEquipmentComponent* Equipment = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseEquipmentComponent>() : nullptr)
+	{
+		Equipment->RequestSwapEquipmentSlots(
+			static_cast<ESpellRiseEquipmentSlot>(FromSlot),
+			static_cast<ESpellRiseEquipmentSlot>(ToSlot),
+			AllocateRequestId());
+		return true;
+	}
+	return RejectRequest(SwapEquipmentRequest, InvalidSlot);
+}
+
 bool USpellRiseInventoryViewModelComponent::RequestDropItem(
 	const FGuid ItemInstanceId,
 	const int32 Quantity)
@@ -159,6 +183,56 @@ bool USpellRiseInventoryViewModelComponent::RequestDropItem(
 	if (USpellRiseInventoryComponent* Inventory = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseInventoryComponent>() : nullptr)
 	{
 		Inventory->RequestDropItem(ItemInstanceId, Quantity, AllocateRequestId());
+	}
+	return true;
+}
+
+bool USpellRiseInventoryViewModelComponent::RequestUseItem(const FGuid ItemInstanceId)
+{
+	using namespace SpellRiseInventoryViewModel;
+	if (!ItemInstanceId.IsValid())
+	{
+		return RejectRequest(UseRequest, InvalidGuid);
+	}
+
+	OnUseItemRequested.Broadcast(ItemInstanceId);
+	for (const FSpellRiseEquipmentSlotView& EquipmentSlot : EquipmentSnapshot.Slots)
+	{
+		if (EquipmentSlot.bOccupied && EquipmentSlot.ItemInstanceId == ItemInstanceId)
+		{
+			if (USpellRiseEquipmentComponent* Equipment = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseEquipmentComponent>() : nullptr)
+			{
+				Equipment->RequestUnequipItem(static_cast<ESpellRiseEquipmentSlot>(EquipmentSlot.Slot), INDEX_NONE, AllocateRequestId());
+			}
+			return true;
+		}
+	}
+
+	if (USpellRiseInventoryComponent* Inventory = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseInventoryComponent>() : nullptr)
+	{
+		Inventory->RequestUseItem(ItemInstanceId, AllocateRequestId());
+	}
+	return true;
+}
+
+bool USpellRiseInventoryViewModelComponent::RequestDestroyItem(
+	const FGuid ItemInstanceId,
+	const int32 Quantity)
+{
+	using namespace SpellRiseInventoryViewModel;
+	if (!ItemInstanceId.IsValid())
+	{
+		return RejectRequest(DestroyRequest, InvalidGuid);
+	}
+	if (Quantity <= 0)
+	{
+		return RejectRequest(DestroyRequest, InvalidQuantity);
+	}
+
+	OnDestroyItemRequested.Broadcast(ItemInstanceId, Quantity);
+	if (USpellRiseInventoryComponent* Inventory = GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseInventoryComponent>() : nullptr)
+	{
+		Inventory->RequestDestroyItem(ItemInstanceId, Quantity, AllocateRequestId());
 	}
 	return true;
 }
@@ -191,6 +265,8 @@ void USpellRiseInventoryViewModelComponent::RefreshFromAuthoritativeComponents()
 			View.SlotIndex = Item.SlotIndex;
 			View.Quantity = Item.Quantity;
 			View.Durability = Item.Durability;
+			View.Flags = Item.Flags;
+			View.bDropLocked = (Item.Flags & static_cast<uint8>(ESpellRiseItemInstanceFlags::NoDrop)) != 0;
 			Snapshot.Revision = FMath::Max(Snapshot.Revision, Item.Revision);
 		}
 		ApplyAuthoritativeInventorySnapshot(Snapshot);

@@ -11,6 +11,24 @@ class USpellRiseItemDefinition;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSpellRiseInventoryChanged, ESpellRiseInventoryChangeType, ChangeType, FSpellRiseItemInstance, Item);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSpellRiseInventoryRequestResolved, int32, ClientRequestId, ESpellRiseInventoryRequestResult, Result);
 
+USTRUCT(BlueprintType)
+struct FSpellRiseStarterInventoryItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Inventory")
+	TSoftObjectPtr<USpellRiseItemDefinition> ItemDefinition;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(ClampMin="1", ClampMax="1000"))
+	int32 Quantity = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Inventory", meta=(ClampMin="-1"))
+	int32 PreferredSlot = INDEX_NONE;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Inventory")
+	bool bNoDrop = true;
+};
+
 USTRUCT()
 struct FSpellRiseInventoryRateLimitState
 {
@@ -54,11 +72,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory")
 	void RequestDropItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory")
+	void RequestUseItem(FGuid ItemInstanceId, int32 ClientRequestId);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory")
+	void RequestDestroyItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
+
 	bool AddItem_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, FGuid& OutItemInstanceId, FString& OutRejectReason);
 	bool RemoveItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FString& OutRejectReason);
 	bool MoveItem_Server(const FGuid& ItemInstanceId, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
+	bool UseItem_Server(const FGuid& ItemInstanceId, FString& OutRejectReason);
+	bool DestroyItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FString& OutRejectReason);
 	bool ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason);
 	bool InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
+	bool EnsureStarterItems_Server(const TCHAR* ContextTag);
 	void ResetInventory_Server();
 	const USpellRiseItemDefinition* ResolveDefinition(const FPrimaryAssetId& DefinitionId) const;
 
@@ -81,6 +108,12 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestDropItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
 
+	UFUNCTION(Server, Reliable)
+	void ServerRequestUseItem(FGuid ItemInstanceId, int32 ClientRequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDestroyItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
+
 	UFUNCTION(Client, Reliable)
 	void ClientResolveRequest(int32 ClientRequestId, ESpellRiseInventoryRequestResult Result);
 
@@ -99,6 +132,8 @@ private:
 	int32 FindEntryIndexById(const FGuid& ItemInstanceId) const;
 	int32 FindEntryIndexBySlot(int32 SlotIndex) const;
 	bool CanAddWeight(const USpellRiseItemDefinition* Definition, int32 Quantity) const;
+	bool AddItemInternal_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, uint8 Flags, FGuid& OutItemInstanceId, FString& OutRejectReason);
+	bool AddResolvedItemInternal_Server(const USpellRiseItemDefinition* Definition, const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, uint8 Flags, FGuid& OutItemInstanceId, FString& OutRejectReason);
 	void MarkEntryChanged(FSpellRiseItemInstance& Entry);
 	void ResolveRequest(int32 ClientRequestId, ESpellRiseInventoryRequestResult Result, const TCHAR* RpcName, const FString& Reason);
 	ESpellRiseInventoryRequestResult MapRejectReason(const FString& Reason) const;
@@ -125,11 +160,22 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="10"))
 	int32 DropRequestsPerWindow = 2;
 
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="20"))
+	int32 UseRequestsPerWindow = 6;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="10"))
+	int32 DestroyRequestsPerWindow = 2;
+
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="1000"))
 	int32 MaxQuantityPerRequest = 1000;
 
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Starter")
+	TArray<FSpellRiseStarterInventoryItem> StarterItems;
+
 	FSpellRiseInventoryRateLimitState MoveRateLimit;
 	FSpellRiseInventoryRateLimitState DropRateLimit;
+	FSpellRiseInventoryRateLimitState UseRateLimit;
+	FSpellRiseInventoryRateLimitState DestroyRateLimit;
 	TSet<int32> RecentRequestIds;
 	TArray<int32> RecentRequestOrder;
 	int32 NextRevision = 1;

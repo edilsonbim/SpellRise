@@ -7,6 +7,14 @@
 
 class USpellRiseInventoryComponent;
 
+UENUM(BlueprintType, meta=(Bitflags, UseEnumValuesAsMaskValuesInEditor="true"))
+enum class ESpellRiseItemInstanceFlags : uint8
+{
+	None = 0 UMETA(Hidden),
+	NoDrop = 1 << 0
+};
+ENUM_CLASS_FLAGS(ESpellRiseItemInstanceFlags);
+
 UENUM(BlueprintType)
 enum class ESpellRiseItemKind : uint8
 {

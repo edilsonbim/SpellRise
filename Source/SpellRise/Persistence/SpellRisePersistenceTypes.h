@@ -110,6 +110,9 @@ struct FSpellRiseSavedItemInstanceV3
 	int32 Durability = 0;
 
 	UPROPERTY()
+	uint8 Flags = 0;
+
+	UPROPERTY()
 	TMap<FName, FString> ControlledProperties;
 };
 

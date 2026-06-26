@@ -50,6 +50,9 @@ struct SPELLRISE_API FSpellRiseEquippedItemEntry : public FFastArraySerializerIt
 	int32 Durability = 0;
 
 	UPROPERTY(BlueprintReadOnly)
+	uint8 Flags = 0;
+
+	UPROPERTY(BlueprintReadOnly)
 	int32 Revision = 0;
 
 	UPROPERTY(NotReplicated)
@@ -160,12 +163,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	void RequestUnequipItem(ESpellRiseEquipmentSlot Slot, int32 PreferredInventorySlot, int32 ClientRequestId);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
+	void RequestSwapEquipmentSlots(ESpellRiseEquipmentSlot FromSlot, ESpellRiseEquipmentSlot ToSlot, int32 ClientRequestId);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	bool GetEquippedItem(ESpellRiseEquipmentSlot Slot, FSpellRiseEquippedItemEntry& OutEntry) const;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	float GetEquippedWeight() const;
 	bool RestoreEquippedItem_Server(const FSpellRiseEquipmentItemData& Item, ESpellRiseEquipmentSlot Slot, FString& OutRejectReason);
+	bool EquipItemToBestSlot_Server(const FGuid& ItemInstanceId, FString& OutRejectReason);
+	bool UnequipItemById_Server(const FGuid& ItemInstanceId, int32 PreferredInventorySlot, FString& OutRejectReason);
+	bool IsItemEquipped(const FGuid& ItemInstanceId, ESpellRiseEquipmentSlot& OutSlot) const;
 	void ResetEquipment_Server();
 
 	const FSpellRiseEquipmentPrivateList& GetPrivateEquipment() const { return PrivateEquipment; }
@@ -186,6 +195,9 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestUnequipItem(ESpellRiseEquipmentSlot Slot, int32 PreferredInventorySlot, int32 ClientRequestId);
 
+	UFUNCTION(Server, Reliable)
+	void ServerRequestSwapEquipmentSlots(ESpellRiseEquipmentSlot FromSlot, ESpellRiseEquipmentSlot ToSlot, int32 ClientRequestId);
+
 	UPROPERTY(Replicated)
 	FSpellRiseEquipmentPrivateList PrivateEquipment;
 
@@ -201,9 +213,11 @@ private:
 
 	bool EquipItem_Server(const FGuid& ItemInstanceId, ESpellRiseEquipmentSlot RequestedSlot, ESpellRiseEquipmentRejectReason& OutReason);
 	bool UnequipItem_Server(ESpellRiseEquipmentSlot Slot, int32 PreferredInventorySlot, ESpellRiseEquipmentRejectReason& OutReason);
+	bool SwapEquipmentSlots_Server(ESpellRiseEquipmentSlot FromSlot, ESpellRiseEquipmentSlot ToSlot, ESpellRiseEquipmentRejectReason& OutReason);
 	bool ValidateEquipmentContext(ESpellRiseEquipmentRejectReason& OutReason) const;
-	bool ValidateSlotConflict(const FSpellRiseEquipmentItemData& Item, ESpellRiseEquipmentSlot Slot, ESpellRiseEquipmentRejectReason& OutReason) const;
+	bool ValidateSlotConflict(const FSpellRiseEquipmentItemData& Item, ESpellRiseEquipmentSlot Slot, ESpellRiseEquipmentRejectReason& OutReason, bool bAllowOccupiedTarget = false) const;
 	bool ConsumeRateLimit(bool bEquipFlow);
+	ESpellRiseEquipmentSlot ChooseBestSlotForItem(const FSpellRiseEquipmentItemData& Item, bool& bOutFound) const;
 	bool IsDuplicateRequest(int32 ClientRequestId);
 	void RecordAcceptedRequest(int32 ClientRequestId);
 	bool ApplyGrants(const FSpellRiseEquipmentItemData& Item);

@@ -38,6 +38,7 @@
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Core/SpellRiseGameState.h"
+#include "SpellRise/Core/SpellRiseGameModeBase.h"
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
@@ -980,7 +981,7 @@ bool ASpellRisePlayerController::TryHandleAdminChatCommand(const FString& RawMes
 			SendAdminSystemMessage(TEXT("Admin progressao: /set level <1-999> Player | /set resetpoints Player"));
 			SendAdminSystemMessage(TEXT("Admin movimento: /goto Player | /bringto Player | /unstuck Player | /set fly | /set walk"));
 			SendAdminSystemMessage(TEXT("Admin moderacao: /give ip Player | /kick Player Motivo | /ban Player <30m|12h|7d|permanent> Motivo"));
-			SendAdminSystemMessage(TEXT("Admin personagem: /revive Player | /heal Player | /set invisible | /set visible"));
+			SendAdminSystemMessage(TEXT("Admin personagem: /revive Player | /heal Player | /save | /set invisible | /set visible"));
 		}
 		return true;
 	}
@@ -996,6 +997,7 @@ bool ASpellRisePlayerController::TryHandleAdminChatCommand(const FString& RawMes
 		|| Command.StartsWith(TEXT("/revive"), ESearchCase::IgnoreCase)
 		|| Command.StartsWith(TEXT("/heal"), ESearchCase::IgnoreCase)
 		|| Command.StartsWith(TEXT("/unstuck"), ESearchCase::IgnoreCase)
+		|| Command.Equals(TEXT("/save"), ESearchCase::IgnoreCase)
 		|| Command.Equals(TEXT("/set invisible"), ESearchCase::IgnoreCase)
 		|| Command.Equals(TEXT("/set visible"), ESearchCase::IgnoreCase)
 		|| Command.Equals(TEXT("/set fly"), ESearchCase::IgnoreCase)
@@ -1044,6 +1046,30 @@ bool ASpellRisePlayerController::TryHandleAdminChatCommand(const FString& RawMes
 	if (!bAdminAuthenticated)
 	{
 		SendAdminSystemMessage(TEXT("Comando rejeitado: autentique com /admin <senha>."));
+		return true;
+	}
+
+	if (Command.Equals(TEXT("/save"), ESearchCase::IgnoreCase))
+	{
+		ASpellRiseGameModeBase* SpellRiseGameMode = GetWorld()
+			? GetWorld()->GetAuthGameMode<ASpellRiseGameModeBase>()
+			: nullptr;
+		if (!SpellRiseGameMode)
+		{
+			SendAdminSystemMessage(TEXT("Save rejeitado: GameMode autoritativo indisponivel."));
+			UE_LOG(LogSpellRisePlayerControllerRuntime, Warning,
+				TEXT("[Admin][SaveAllRejected] Reason=missing_authority_gamemode Controller=%s PlayerState=%s"),
+				*GetNameSafe(this),
+				*GetNameSafe(PlayerState));
+			return true;
+		}
+
+		SpellRiseGameMode->RequestAdminPersistenceSaveAll();
+		SendAdminSystemMessage(TEXT("Save solicitado: personagens dirty e mundo foram enviados para persistencia."));
+		UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
+			TEXT("[Admin][SaveAllRequested] Controller=%s PlayerState=%s"),
+			*GetNameSafe(this),
+			*GetNameSafe(PlayerState));
 		return true;
 	}
 

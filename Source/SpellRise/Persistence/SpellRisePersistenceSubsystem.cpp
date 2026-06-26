@@ -1067,10 +1067,30 @@ namespace
 		{
 			return false;
 		}
+		if (PersistentId.Len() > 128)
+		{
+			return false;
+		}
 
 		FString TrimmedPersistentId = PersistentId;
 		TrimmedPersistentId.TrimStartAndEndInline();
-		return !TrimmedPersistentId.IsEmpty() && TrimmedPersistentId == PersistentId;
+		if (TrimmedPersistentId.IsEmpty() || TrimmedPersistentId != PersistentId)
+		{
+			return false;
+		}
+		for (const TCHAR Character : PersistentId)
+		{
+			if (!FChar::IsAlnum(Character)
+				&& Character != TEXT('_')
+				&& Character != TEXT('-')
+				&& Character != TEXT('.')
+				&& Character != TEXT(':')
+				&& Character != TEXT('@'))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	bool IsValidSteamId64(const FString& PersistentId)
@@ -1201,15 +1221,15 @@ namespace
 			return false;
 		}
 
-		if (!IsValidSteamId64(Data.SteamId64))
+		if (!IsValidPersistentId(Data.SteamId64))
 		{
-			OutReason = TEXT("invalid_or_non_steam_persistent_id");
+			OutReason = TEXT("invalid_persistent_id");
 			return false;
 		}
 
 		if (Data.SteamId64 != ExpectedSteamId64)
 		{
-			OutReason = TEXT("steam_id_mismatch");
+			OutReason = TEXT("persistent_id_mismatch");
 			return false;
 		}
 
@@ -1383,15 +1403,15 @@ namespace
 			return false;
 		}
 
-		if (!IsValidSteamId64(Data.SteamId64))
+		if (!IsValidPersistentId(Data.SteamId64))
 		{
-			OutReason = TEXT("invalid_or_non_steam_persistent_id");
+			OutReason = TEXT("invalid_persistent_id");
 			return false;
 		}
 
 		if (Data.SteamId64 != ExpectedSteamId64)
 		{
-			OutReason = TEXT("steam_id_mismatch");
+			OutReason = TEXT("persistent_id_mismatch");
 			return false;
 		}
 
@@ -1765,14 +1785,13 @@ void USpellRisePersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collec
 
 	if (bNoSteamMode)
 	{
-		PersistenceOperationalMode = TEXT("nosteam_disabled");
-		PersistenceBlockReason = TEXT("nosteam_mode");
+		PersistenceOperationalMode = TEXT("nosteam_test");
 		UE_LOG(LogSpellRisePersistence, Warning,
-			TEXT("[Persistence][ProviderDisabled] Mode=%s Reason=%s"),
-			*PersistenceOperationalMode,
-			*PersistenceBlockReason);
+			TEXT("[Persistence][ProviderEnabled] Mode=%s Reason=nosteam_test_persistence_allowed"),
+			*PersistenceOperationalMode);
 	}
-	else if (RequestedProvider.Equals(TEXT("postgres"), ESearchCase::IgnoreCase))
+
+	if (RequestedProvider.Equals(TEXT("postgres"), ESearchCase::IgnoreCase))
 	{
 		SelectedProvider = MakeUnique<FSpellRisePostgresPersistenceProvider>();
 		if (!SelectedProvider->IsReady())
@@ -1921,8 +1940,7 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 	const double StartSeconds = FPlatformTime::Seconds();
 	if (IsNoSteamPersistenceModeActive())
 	{
-		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, 0.0, TEXT("nosteam_mode"));
-		return false;
+		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), true, 0.0, TEXT("nosteam_test_allowed"));
 	}
 
 	if (!Provider || !Controller)
@@ -1937,7 +1955,7 @@ bool USpellRisePersistenceSubsystem::PreloadCharacterForController(AController* 
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (!IsValidSteamId64(SteamId64))
+	if (!IsValidPersistentId(SteamId64))
 	{
 		RecordPersistenceTelemetry(TEXT("PreloadCharacter"), false, (FPlatformTime::Seconds() - StartSeconds) * 1000.0, TEXT("invalid_or_non_steam_persistent_id"));
 		return false;
@@ -1999,17 +2017,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	const double StartSeconds = FPlatformTime::Seconds();
 	if (IsNoSteamPersistenceModeActive())
 	{
-		if (Controller)
-		{
-			EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("nosteam_mode"));
-			ApplyDefaultProgressionForMissingPersistence(Controller, TEXT("nosteam_mode"));
-			if (ASpellRisePlayerState* SRPlayerState = Cast<ASpellRisePlayerState>(Controller->PlayerState))
-			{
-				SRPlayerState->SetPersistenceProfileApplied(true);
-			}
-		}
-		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), false, 0.0, TEXT("nosteam_mode"));
-		return false;
+		RecordPersistenceTelemetry(TEXT("ApplyCachedCharacter"), true, 0.0, TEXT("nosteam_test_allowed"));
 	}
 
 	if (!Controller)
@@ -2019,7 +2027,7 @@ bool USpellRisePersistenceSubsystem::ApplyCachedCharacterToController(AControlle
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (!IsValidSteamId64(SteamId64))
+	if (!IsValidPersistentId(SteamId64))
 	{
 		EnsureDefaultItemsForControllerIfNeeded(Controller, TEXT("invalid_or_non_steam_persistent_id"));
 		ResetTalentTreeDataForMissingPersistence(Controller, TEXT("invalid_or_non_steam_persistent_id"));
@@ -2067,8 +2075,7 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 	const double SaveStartSeconds = FPlatformTime::Seconds();
 	if (IsNoSteamPersistenceModeActive())
 	{
-		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, 0.0, TEXT("nosteam_mode"));
-		return false;
+		RecordPersistenceTelemetry(TEXT("SaveCharacter"), true, 0.0, TEXT("nosteam_test_allowed"));
 	}
 
 	if (!Provider || !Controller)
@@ -2078,7 +2085,7 @@ bool USpellRisePersistenceSubsystem::SaveCharacterForController(AController* Con
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (!IsValidSteamId64(SteamId64))
+	if (!IsValidPersistentId(SteamId64))
 	{
 		RecordPersistenceTelemetry(TEXT("SaveCharacter"), false, (FPlatformTime::Seconds() - SaveStartSeconds) * 1000.0, TEXT("invalid_or_non_steam_persistent_id"));
 		return false;
@@ -2214,7 +2221,7 @@ bool USpellRisePersistenceSubsystem::TryGetCachedCharacterCreationState(AControl
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (!IsValidSteamId64(SteamId64))
+	if (!IsValidPersistentId(SteamId64))
 	{
 		return false;
 	}
@@ -2235,8 +2242,7 @@ bool USpellRisePersistenceSubsystem::SaveWorld(UWorld* World)
 	const double SaveStartSeconds = FPlatformTime::Seconds();
 	if (IsNoSteamPersistenceModeActive())
 	{
-		RecordPersistenceTelemetry(TEXT("SaveWorld"), false, 0.0, TEXT("nosteam_mode"));
-		return false;
+		RecordPersistenceTelemetry(TEXT("SaveWorld"), true, 0.0, TEXT("nosteam_test_allowed"));
 	}
 
 	if (!Provider || !World)
@@ -2288,8 +2294,7 @@ bool USpellRisePersistenceSubsystem::LoadWorld(UWorld* World)
 	const double LoadStartSeconds = FPlatformTime::Seconds();
 	if (IsNoSteamPersistenceModeActive())
 	{
-		RecordPersistenceTelemetry(TEXT("LoadWorld"), false, 0.0, TEXT("nosteam_mode"));
-		return false;
+		RecordPersistenceTelemetry(TEXT("LoadWorld"), true, 0.0, TEXT("nosteam_test_allowed"));
 	}
 
 	if (!Provider || !World)
@@ -2335,8 +2340,7 @@ bool USpellRisePersistenceSubsystem::SaveDeathEvent(const FSpellRiseDeathEventDa
 	const double SaveStartSeconds = FPlatformTime::Seconds();
 	if (IsNoSteamPersistenceModeActive())
 	{
-		RecordPersistenceTelemetry(TEXT("SaveDeathEvent"), false, 0.0, TEXT("nosteam_mode"));
-		return false;
+		RecordPersistenceTelemetry(TEXT("SaveDeathEvent"), true, 0.0, TEXT("nosteam_test_allowed"));
 	}
 
 	if (!Provider)
@@ -2369,7 +2373,7 @@ bool USpellRisePersistenceSubsystem::BuildRespawnTransformForController(AControl
 	}
 
 	const FString SteamId64 = ResolveSteamIdFromController(Controller);
-	if (!IsValidSteamId64(SteamId64))
+	if (!IsValidPersistentId(SteamId64))
 	{
 		return false;
 	}
@@ -2409,7 +2413,7 @@ void USpellRisePersistenceSubsystem::MarkWorldDirty()
 
 void USpellRisePersistenceSubsystem::MarkPlayerDirtyBySteamId(const FString& SteamId64)
 {
-	if (IsValidSteamId64(SteamId64))
+	if (IsValidPersistentId(SteamId64))
 	{
 		DirtyCharacterIds.Add(SteamId64);
 		return;
@@ -2419,17 +2423,17 @@ void USpellRisePersistenceSubsystem::MarkPlayerDirtyBySteamId(const FString& Ste
 
 void USpellRisePersistenceSubsystem::SetControllerPersistentId(const AController* Controller, const FString& PersistentId)
 {
-	if (!Controller || !IsValidSteamId64(PersistentId))
+	if (!Controller || !IsValidPersistentId(PersistentId))
 	{
 		if (Controller && IsPIEWorld(Controller->GetWorld()))
 		{
-			UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_or_non_steam_persistent_id Controller=%s PersistentId=%s"),
+			UE_LOG(LogSpellRisePersistence, Verbose, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_persistent_id Controller=%s PersistentId=%s"),
 				*GetNameSafe(Controller),
 				*PersistentId);
 			return;
 		}
 
-		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_or_non_steam_persistent_id Controller=%s PersistentId=%s"),
+		UE_LOG(LogSpellRisePersistence, Warning, TEXT("[Persistence][ControllerPersistentIdRejected] Reason=invalid_persistent_id Controller=%s PersistentId=%s"),
 			*GetNameSafe(Controller),
 			*PersistentId);
 		return;
@@ -2476,6 +2480,39 @@ bool USpellRisePersistenceSubsystem::GetSteamIdFromPlayerState(const APlayerStat
 
 	OutSteamId64 = UniqueId->ToString();
 	return IsValidSteamId64(OutSteamId64);
+}
+
+bool USpellRisePersistenceSubsystem::GetPersistentIdFromPlayerState(const APlayerState* PlayerState, FString& OutPersistentId) const
+{
+	OutPersistentId.Reset();
+	if (!PlayerState)
+	{
+		return false;
+	}
+
+	if (const AController* OwnerController = Cast<AController>(PlayerState->GetOwner()))
+	{
+		OutPersistentId = ResolveSteamIdFromController(OwnerController);
+		if (IsValidPersistentId(OutPersistentId))
+		{
+			return true;
+		}
+	}
+
+	const FUniqueNetIdRepl UniqueIdRepl = PlayerState->GetUniqueId();
+	if (!UniqueIdRepl.IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<const FUniqueNetId> UniqueId = UniqueIdRepl.GetUniqueNetId();
+	if (!UniqueId.IsValid())
+	{
+		return false;
+	}
+
+	OutPersistentId = UniqueId->ToString();
+	return IsValidPersistentId(OutPersistentId);
 }
 
 bool USpellRisePersistenceSubsystem::IsPortalAdmin(const APlayerState* PlayerState) const
@@ -2525,7 +2562,7 @@ FString USpellRisePersistenceSubsystem::ResolveSteamIdFromController(const ACont
 
 	if (const FString* RegisteredId = PersistentIdByController.Find(TWeakObjectPtr<const AController>(Controller)))
 	{
-		if (IsValidSteamId64(*RegisteredId))
+		if (IsValidPersistentId(*RegisteredId))
 		{
 			return *RegisteredId;
 		}
@@ -2540,6 +2577,20 @@ FString USpellRisePersistenceSubsystem::ResolveSteamIdFromController(const ACont
 	if (GetSteamIdFromPlayerState(Controller->PlayerState, SteamId64))
 	{
 		return SteamId64;
+	}
+
+	const FUniqueNetIdRepl UniqueIdRepl = Controller->PlayerState->GetUniqueId();
+	if (UniqueIdRepl.IsValid())
+	{
+		const TSharedPtr<const FUniqueNetId> UniqueId = UniqueIdRepl.GetUniqueNetId();
+		if (UniqueId.IsValid())
+		{
+			const FString PersistentId = UniqueId->ToString();
+			if (IsValidPersistentId(PersistentId))
+			{
+				return PersistentId;
+			}
+		}
 	}
 
 	return FString();
@@ -3012,6 +3063,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 			SavedItem.SlotIndex = RuntimeItem.SlotIndex;
 			SavedItem.Quantity = RuntimeItem.Quantity;
 			SavedItem.Durability = RuntimeItem.Durability;
+			SavedItem.Flags = RuntimeItem.Flags;
 		}
 	}
 	if (const USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState->GetEquipmentComponent())
@@ -3031,6 +3083,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 			SavedItem.SlotIndex = static_cast<int32>(RuntimeItem.Slot);
 			SavedItem.Quantity = 1;
 			SavedItem.Durability = RuntimeItem.Durability;
+			SavedItem.Flags = RuntimeItem.Flags;
 
 			FSpellRiseSavedEquipmentEntryV3& SavedEquipment = OutData.NativeInventory.EquippedItems.AddDefaulted_GetRef();
 			SavedEquipment.SlotName = *UEnum::GetValueAsString(RuntimeItem.Slot);
@@ -3147,6 +3200,7 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 				RuntimeItem.SlotIndex = SavedItem.SlotIndex;
 				RuntimeItem.Quantity = SavedItem.Quantity;
 				RuntimeItem.Durability = SavedItem.Durability;
+				RuntimeItem.Flags = SavedItem.Flags;
 				FString NativeRejectReason;
 				const bool bEquipmentContainer =
 					Container.ContainerRole == static_cast<uint8>(ESpellRiseSaveContainerRole::Equipment);
@@ -3175,6 +3229,12 @@ bool USpellRisePersistenceSubsystem::ApplyCharacterDataToController(AController*
 					}
 				}
 			}
+		}
+		const USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState->GetEquipmentComponent();
+		const bool bNativeEquipmentEmpty = !NativeEquipment || NativeEquipment->GetPrivateEquipment().Entries.IsEmpty();
+		if (NativeInventory->GetItems().IsEmpty() && bNativeEquipmentEmpty)
+		{
+			NativeInventory->EnsureStarterItems_Server(TEXT("apply_profile_native_empty"));
 		}
 	}
 
@@ -3352,6 +3412,16 @@ void USpellRisePersistenceSubsystem::EnsureDefaultItemsForControllerIfNeeded(ACo
 			}
 		}
 
+	}
+
+	if (USpellRiseInventoryComponent* NativeInventory = SRPlayerState->GetInventoryComponent();
+		NativeInventory && NativeInventory->IsNativeInventoryEnabled() && NativeInventory->GetItems().IsEmpty())
+	{
+		const USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState->GetEquipmentComponent();
+		if (!NativeEquipment || NativeEquipment->GetPrivateEquipment().Entries.IsEmpty())
+		{
+			NativeInventory->EnsureStarterItems_Server(ContextTag);
+		}
 	}
 }
 

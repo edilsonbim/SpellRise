@@ -101,7 +101,29 @@ namespace
 
 	bool IsValidTestPersistentId(const FString& PersistentId)
 	{
-		return PersistentId.Len() == 17 && PersistentId.IsNumeric();
+		if (PersistentId.IsEmpty() || PersistentId.Len() > MaxPersistentIdLen)
+		{
+			return false;
+		}
+		FString TrimmedPersistentId = PersistentId;
+		TrimmedPersistentId.TrimStartAndEndInline();
+		if (TrimmedPersistentId.IsEmpty() || TrimmedPersistentId != PersistentId)
+		{
+			return false;
+		}
+		for (const TCHAR Character : PersistentId)
+		{
+			if (!FChar::IsAlnum(Character)
+				&& Character != TEXT('_')
+				&& Character != TEXT('-')
+				&& Character != TEXT('.')
+				&& Character != TEXT(':')
+				&& Character != TEXT('@'))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	FString EscapeSqlLiteral(const FString& InValue)
@@ -443,6 +465,16 @@ void ASpellRiseGameModeBase::SaveAllPlayersAndWorld()
 	Persistence->SaveWorld(World);
 }
 
+void ASpellRiseGameModeBase::RequestAdminPersistenceSaveAll()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	SaveAllPlayersAndWorld();
+}
+
 FString ASpellRiseGameModeBase::ResolvePersistentIdFromPreLoginData(
 	const FString& Options,
 	const FString& Address,
@@ -475,7 +507,7 @@ FString ASpellRiseGameModeBase::ResolvePersistentIdFromPreLoginData(
 		else if (!IsValidTestPersistentId(TestPersistentId))
 		{
 			UE_LOG(LogSpellRiseLoginPersistence, Warning,
-				TEXT("[Auth][TestPersistentIdIgnored] Reason=invalid_steam_id64 Length=%d"),
+				TEXT("[Auth][TestPersistentIdIgnored] Reason=invalid_persistent_id Length=%d"),
 				TestPersistentId.Len());
 		}
 		else

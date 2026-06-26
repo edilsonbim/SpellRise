@@ -44,6 +44,12 @@ struct SPELLRISE_API FSpellRiseInventorySlotView
 	int32 MaxDurability = 0;
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	uint8 Flags = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	bool bDropLocked = false;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
 	bool bPendingServerConfirmation = false;
 };
 
@@ -147,6 +153,18 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	int32,
 	Quantity);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FSpellRiseInventoryUseRequestedSignature,
+	FGuid,
+	ItemInstanceId);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FSpellRiseInventoryDestroyRequestedSignature,
+	FGuid,
+	ItemInstanceId,
+	int32,
+	Quantity);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FSpellRiseInventoryRequestRejectedSignature,
 	FName,
@@ -190,7 +208,16 @@ public:
 	bool RequestUnequipItem(ESpellRiseUIEquipmentSlot EquipmentSlot, int32 PreferredInventorySlot);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
+	bool RequestSwapEquipmentSlots(ESpellRiseUIEquipmentSlot FromSlot, ESpellRiseUIEquipmentSlot ToSlot);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
 	bool RequestDropItem(FGuid ItemInstanceId, int32 Quantity);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
+	bool RequestUseItem(FGuid ItemInstanceId);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
+	bool RequestDestroyItem(FGuid ItemInstanceId, int32 Quantity);
 
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Events")
 	FSpellRiseInventoryViewSnapshotChangedSignature OnInventorySnapshotChanged;
@@ -209,6 +236,12 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Requests")
 	FSpellRiseInventoryDropRequestedSignature OnDropItemRequested;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Requests")
+	FSpellRiseInventoryUseRequestedSignature OnUseItemRequested;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Requests")
+	FSpellRiseInventoryDestroyRequestedSignature OnDestroyItemRequested;
 
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Events")
 	FSpellRiseInventoryRequestRejectedSignature OnLocalRequestRejected;

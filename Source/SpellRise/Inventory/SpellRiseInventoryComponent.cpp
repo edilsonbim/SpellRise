@@ -1,9 +1,13 @@
 #include "SpellRiseInventoryComponent.h"
 
-#include "Engine/AssetManager.h"
+#include "AbilitySystemComponent.h"
 #include "GameFramework/Actor.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectTypes.h"
 #include "Net/UnrealNetwork.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
+#include "SpellRise/Inventory/SpellRiseItemDefinitionResolver.h"
 #include "SpellRiseItemDefinition.h"
 #include "SpellRise/Equipment/SpellRiseWeaponDefinition.h"
 
@@ -107,6 +111,26 @@ void USpellRiseInventoryComponent::RequestDropItem(FGuid ItemInstanceId, int32 Q
 	ServerRequestDropItem(ItemInstanceId, Quantity, ClientRequestId);
 }
 
+void USpellRiseInventoryComponent::RequestUseItem(FGuid ItemInstanceId, int32 ClientRequestId)
+{
+	if (HasServerAuthority())
+	{
+		ServerRequestUseItem_Implementation(ItemInstanceId, ClientRequestId);
+		return;
+	}
+	ServerRequestUseItem(ItemInstanceId, ClientRequestId);
+}
+
+void USpellRiseInventoryComponent::RequestDestroyItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId)
+{
+	if (HasServerAuthority())
+	{
+		ServerRequestDestroyItem_Implementation(ItemInstanceId, Quantity, ClientRequestId);
+		return;
+	}
+	ServerRequestDestroyItem(ItemInstanceId, Quantity, ClientRequestId);
+}
+
 void USpellRiseInventoryComponent::ServerRequestMoveItem_Implementation(FGuid ItemInstanceId, int32 DestinationSlot, int32 Quantity, int32 ClientRequestId)
 {
 	FString Reason;
@@ -125,6 +149,20 @@ void USpellRiseInventoryComponent::ServerRequestDropItem_Implementation(FGuid It
 	if (!IsRuntimeReady(Reason) || !ValidateRequestId(ClientRequestId, Reason) || !CheckRateLimit(DropRateLimit, DropRequestsPerWindow, Reason))
 	{
 		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("DropItem"), Reason);
+		return;
+	}
+
+	FSpellRiseItemInstance ExistingItem;
+	if (!FindItem(ItemInstanceId, ExistingItem))
+	{
+		Reason = TEXT("invalid_item");
+		ResolveRequest(ClientRequestId, ESpellRiseInventoryRequestResult::InvalidItem, TEXT("DropItem"), Reason);
+		return;
+	}
+	if ((ExistingItem.Flags & static_cast<uint8>(ESpellRiseItemInstanceFlags::NoDrop)) != 0)
+	{
+		Reason = TEXT("item_locked");
+		ResolveRequest(ClientRequestId, ESpellRiseInventoryRequestResult::ItemLocked, TEXT("DropItem"), Reason);
 		return;
 	}
 
@@ -156,11 +194,62 @@ void USpellRiseInventoryComponent::ServerRequestDropItem_Implementation(FGuid It
 	ResolveRequest(ClientRequestId, ESpellRiseInventoryRequestResult::Success, TEXT("DropItem"), FString());
 }
 
+void USpellRiseInventoryComponent::ServerRequestUseItem_Implementation(FGuid ItemInstanceId, int32 ClientRequestId)
+{
+	FString Reason;
+	if (!IsRuntimeReady(Reason) || !ValidateRequestId(ClientRequestId, Reason) || !CheckRateLimit(UseRateLimit, UseRequestsPerWindow, Reason))
+	{
+		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("UseItem"), Reason);
+		return;
+	}
+
+	const bool bSuccess = UseItem_Server(ItemInstanceId, Reason);
+	ResolveRequest(ClientRequestId, bSuccess ? ESpellRiseInventoryRequestResult::Success : MapRejectReason(Reason), TEXT("UseItem"), Reason);
+}
+
+void USpellRiseInventoryComponent::ServerRequestDestroyItem_Implementation(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId)
+{
+	FString Reason;
+	if (!IsRuntimeReady(Reason) || !ValidateRequestId(ClientRequestId, Reason) || !CheckRateLimit(DestroyRateLimit, DestroyRequestsPerWindow, Reason))
+	{
+		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("DestroyItem"), Reason);
+		return;
+	}
+
+	const bool bSuccess = DestroyItem_Server(ItemInstanceId, Quantity, Reason);
+	ResolveRequest(ClientRequestId, bSuccess ? ESpellRiseInventoryRequestResult::Success : MapRejectReason(Reason), TEXT("DestroyItem"), Reason);
+}
+
 bool USpellRiseInventoryComponent::AddItem_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, FGuid& OutItemInstanceId, FString& OutRejectReason)
+{
+	return AddItemInternal_Server(DefinitionId, Quantity, PreferredSlot, 0, OutItemInstanceId, OutRejectReason);
+}
+
+bool USpellRiseInventoryComponent::AddItemInternal_Server(
+	const FPrimaryAssetId& DefinitionId,
+	const int32 Quantity,
+	const int32 PreferredSlot,
+	const uint8 Flags,
+	FGuid& OutItemInstanceId,
+	FString& OutRejectReason)
 {
 	OutItemInstanceId.Invalidate();
 	if (!HasServerAuthority()) { OutRejectReason = TEXT("invalid_context"); return false; }
 	const USpellRiseItemDefinition* Definition = ResolveDefinition(DefinitionId);
+	return AddResolvedItemInternal_Server(Definition, DefinitionId, Quantity, PreferredSlot, Flags, OutItemInstanceId, OutRejectReason);
+}
+
+bool USpellRiseInventoryComponent::AddResolvedItemInternal_Server(
+	const USpellRiseItemDefinition* Definition,
+	const FPrimaryAssetId& DefinitionId,
+	const int32 Quantity,
+	const int32 PreferredSlot,
+	const uint8 Flags,
+	FGuid& OutItemInstanceId,
+	FString& OutRejectReason)
+{
+	OutItemInstanceId.Invalidate();
+	if (!HasServerAuthority()) { OutRejectReason = TEXT("invalid_context"); return false; }
 	if (!Definition) { OutRejectReason = TEXT("invalid_definition"); return false; }
 	if (Quantity <= 0 || Quantity > MaxQuantityPerRequest || Quantity > Definition->MaxStackSize) { OutRejectReason = TEXT("invalid_quantity"); return false; }
 	if (!CanAddWeight(Definition, Quantity)) { OutRejectReason = TEXT("weight_exceeded"); return false; }
@@ -173,12 +262,60 @@ bool USpellRiseInventoryComponent::AddItem_Server(const FPrimaryAssetId& Definit
 	Entry.SlotIndex = Slot;
 	Entry.Quantity = Quantity;
 	Entry.Durability = Definition->MaxDurability;
+	Entry.Flags = Flags;
 	Entry.Revision = NextRevision++;
 	Inventory.MarkItemDirty(Entry);
 	OutItemInstanceId = Entry.ItemInstanceId;
 	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Entry);
 	ForceOwnerNetUpdate();
 	return true;
+}
+
+bool USpellRiseInventoryComponent::EnsureStarterItems_Server(const TCHAR* ContextTag)
+{
+	if (!HasServerAuthority() || !bNativeInventoryEnabled || !Inventory.Entries.IsEmpty())
+	{
+		return false;
+	}
+
+	bool bAddedAny = false;
+	for (const FSpellRiseStarterInventoryItem& StarterItem : StarterItems)
+	{
+		USpellRiseItemDefinition* Definition = StarterItem.ItemDefinition.LoadSynchronous();
+		if (!Definition)
+		{
+			UE_LOG(LogSpellRiseInventory, Warning,
+				TEXT("[Inventory][StarterItemRejected] Owner=%s Context=%s Reason=invalid_definition"),
+				*GetNameSafe(GetOwner()),
+				ContextTag ? ContextTag : TEXT("unknown"));
+			continue;
+		}
+
+		const uint8 Flags = StarterItem.bNoDrop ? static_cast<uint8>(ESpellRiseItemInstanceFlags::NoDrop) : 0;
+		FGuid ItemInstanceId;
+		FString RejectReason;
+		if (AddResolvedItemInternal_Server(
+				Definition,
+				Definition->GetPrimaryAssetId(),
+				StarterItem.Quantity,
+				StarterItem.PreferredSlot,
+				Flags,
+				ItemInstanceId,
+				RejectReason))
+		{
+			bAddedAny = true;
+			continue;
+		}
+
+		UE_LOG(LogSpellRiseInventory, Warning,
+			TEXT("[Inventory][StarterItemRejected] Owner=%s Context=%s Definition=%s Reason=%s"),
+			*GetNameSafe(GetOwner()),
+			ContextTag ? ContextTag : TEXT("unknown"),
+			*Definition->GetPrimaryAssetId().ToString(),
+			*RejectReason);
+	}
+
+	return bAddedAny;
 }
 
 bool USpellRiseInventoryComponent::RemoveItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FString& OutRejectReason)
@@ -242,7 +379,24 @@ bool USpellRiseInventoryComponent::MoveItem_Server(const FGuid& ItemInstanceId, 
 	else
 	{
 		FSpellRiseItemInstance& Destination = Inventory.Entries[DestinationIndex];
-		if (Destination.DefinitionId != Source.DefinitionId) { OutRejectReason = TEXT("stack_mismatch"); return false; }
+		if (Destination.DefinitionId != Source.DefinitionId)
+		{
+			if (Quantity != Source.Quantity)
+			{
+				OutRejectReason = TEXT("stack_mismatch");
+				return false;
+			}
+
+			const int32 SourceSlot = Source.SlotIndex;
+			Source.SlotIndex = Destination.SlotIndex;
+			Destination.SlotIndex = SourceSlot;
+			MarkEntryChanged(Source);
+			MarkEntryChanged(Destination);
+			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
+			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Destination);
+			ForceOwnerNetUpdate();
+			return true;
+		}
 		const USpellRiseItemDefinition* Definition = ResolveDefinition(Source.DefinitionId);
 		if (!Definition || Destination.Quantity + Quantity > Definition->MaxStackSize) { OutRejectReason = TEXT("capacity_exceeded"); return false; }
 		Destination.Quantity += Quantity;
@@ -265,6 +419,106 @@ bool USpellRiseInventoryComponent::MoveItem_Server(const FGuid& ItemInstanceId, 
 	}
 	ForceOwnerNetUpdate();
 	return true;
+}
+
+bool USpellRiseInventoryComponent::UseItem_Server(const FGuid& ItemInstanceId, FString& OutRejectReason)
+{
+	if (!HasServerAuthority())
+	{
+		OutRejectReason = TEXT("invalid_context");
+		return false;
+	}
+
+	FSpellRiseItemInstance Item;
+	if (!FindItem(ItemInstanceId, Item))
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	const USpellRiseItemDefinition* Definition = ResolveDefinition(Item.DefinitionId);
+	const USpellRiseConsumableItemDefinition* ConsumableDefinition = Cast<USpellRiseConsumableItemDefinition>(Definition);
+	if (!ConsumableDefinition)
+	{
+		if (Definition && (Definition->ItemKind == ESpellRiseItemKind::Weapon || Definition->ItemKind == ESpellRiseItemKind::Armor))
+		{
+			ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(GetOwner());
+			USpellRiseEquipmentComponent* Equipment = PlayerState ? PlayerState->GetEquipmentComponent() : nullptr;
+			if (!Equipment)
+			{
+				OutRejectReason = TEXT("equipment_unavailable");
+				return false;
+			}
+			if (!Equipment->EquipItemToBestSlot_Server(ItemInstanceId, OutRejectReason))
+			{
+				if (OutRejectReason.IsEmpty())
+				{
+					OutRejectReason = TEXT("equip_failed");
+				}
+				return false;
+			}
+			return true;
+		}
+
+		OutRejectReason = TEXT("not_usable");
+		return false;
+	}
+
+	TSubclassOf<UGameplayEffect> ConsumeEffectClass = ConsumableDefinition->ConsumeEffect.LoadSynchronous();
+	if (!ConsumeEffectClass)
+	{
+		OutRejectReason = TEXT("missing_consume_effect");
+		return false;
+	}
+
+	ASpellRisePlayerState* PlayerState = Cast<ASpellRisePlayerState>(GetOwner());
+	UAbilitySystemComponent* AbilitySystem = PlayerState ? PlayerState->GetAbilitySystemComponent() : nullptr;
+	if (!AbilitySystem)
+	{
+		OutRejectReason = TEXT("ability_system_unavailable");
+		return false;
+	}
+
+	FGameplayEffectContextHandle EffectContext = AbilitySystem->MakeEffectContext();
+	EffectContext.AddSourceObject(ConsumableDefinition);
+	const FGameplayEffectSpecHandle SpecHandle = AbilitySystem->MakeOutgoingSpec(ConsumeEffectClass, 1.0f, EffectContext);
+	if (!SpecHandle.IsValid())
+	{
+		OutRejectReason = TEXT("effect_failed");
+		return false;
+	}
+
+	const FActiveGameplayEffectHandle ActiveHandle = AbilitySystem->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	if (!ActiveHandle.WasSuccessfullyApplied())
+	{
+		OutRejectReason = TEXT("effect_failed");
+		return false;
+	}
+
+	return RemoveItem_Server(ItemInstanceId, 1, OutRejectReason);
+}
+
+bool USpellRiseInventoryComponent::DestroyItem_Server(const FGuid& ItemInstanceId, const int32 Quantity, FString& OutRejectReason)
+{
+	if (!HasServerAuthority())
+	{
+		OutRejectReason = TEXT("invalid_context");
+		return false;
+	}
+
+	FSpellRiseItemInstance ExistingItem;
+	if (!FindItem(ItemInstanceId, ExistingItem))
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+	if ((ExistingItem.Flags & static_cast<uint8>(ESpellRiseItemInstanceFlags::NoDrop)) != 0)
+	{
+		OutRejectReason = TEXT("item_locked");
+		return false;
+	}
+
+	return RemoveItem_Server(ItemInstanceId, Quantity, OutRejectReason);
 }
 
 bool USpellRiseInventoryComponent::ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason)
@@ -314,14 +568,7 @@ void USpellRiseInventoryComponent::ResetInventory_Server()
 
 const USpellRiseItemDefinition* USpellRiseInventoryComponent::ResolveDefinition(const FPrimaryAssetId& DefinitionId) const
 {
-	if (!DefinitionId.IsValid()) return nullptr;
-	UAssetManager& Manager = UAssetManager::Get();
-	if (const UObject* Loaded = Manager.GetPrimaryAssetObject(DefinitionId))
-	{
-		return Cast<USpellRiseItemDefinition>(Loaded);
-	}
-	const FSoftObjectPath Path = Manager.GetPrimaryAssetPath(DefinitionId);
-	return Cast<USpellRiseItemDefinition>(Path.TryLoad());
+	return SpellRiseItemDefinitionResolver::ResolveItemDefinition(DefinitionId);
 }
 
 bool USpellRiseInventoryComponent::Equipment_TakeItem(
@@ -347,6 +594,7 @@ bool USpellRiseInventoryComponent::Equipment_TakeItem(
 	OutItem.ItemInstanceId = Instance.ItemInstanceId;
 	OutItem.DefinitionId = Instance.DefinitionId;
 	OutItem.Durability = Instance.Durability;
+	OutItem.Flags = Instance.Flags;
 	OutItem.UnitWeight = Definition->UnitWeight;
 
 	if (const USpellRiseWeaponItemDefinition* WeaponItem = Cast<USpellRiseWeaponItemDefinition>(Definition))
@@ -409,6 +657,7 @@ bool USpellRiseInventoryComponent::Equipment_ReturnItem(
 	Instance.DefinitionId = Item.DefinitionId;
 	Instance.Quantity = 1;
 	Instance.Durability = Item.Durability;
+	Instance.Flags = Item.Flags;
 	return InsertItem_Server(Instance, PreferredInventorySlot, OutRejectReason);
 }
 
@@ -589,6 +838,12 @@ ESpellRiseInventoryRequestResult USpellRiseInventoryComponent::MapRejectReason(c
 	if (Reason == TEXT("rate_limited")) return ESpellRiseInventoryRequestResult::RateLimited;
 	if (Reason == TEXT("duplicate_request") || Reason == TEXT("stale_request")) return ESpellRiseInventoryRequestResult::DuplicateRequest;
 	if (Reason == TEXT("feature_disabled") || Reason == TEXT("persistence_not_ready")) return ESpellRiseInventoryRequestResult::InvalidContext;
+	if (Reason == TEXT("not_usable")) return ESpellRiseInventoryRequestResult::InvalidItem;
+	if (Reason == TEXT("missing_consume_effect")) return ESpellRiseInventoryRequestResult::InvalidDefinition;
+	if (Reason == TEXT("ability_system_unavailable")) return ESpellRiseInventoryRequestResult::InvalidContext;
+	if (Reason == TEXT("equipment_unavailable")) return ESpellRiseInventoryRequestResult::InvalidContext;
+	if (Reason == TEXT("slot_incompatible")) return ESpellRiseInventoryRequestResult::InvalidSlot;
+	if (Reason.StartsWith(TEXT("equip_rejected:"))) return ESpellRiseInventoryRequestResult::TransactionFailed;
 	return ESpellRiseInventoryRequestResult::TransactionFailed;
 }
 

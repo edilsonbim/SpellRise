@@ -804,6 +804,14 @@ void ASpellRisePlayerState::SetPersistenceProfileApplied(bool bApplied)
 
 	if (bPersistenceProfileApplied && HasAuthority())
 	{
+		if (InventoryComponent && InventoryComponent->IsNativeInventoryEnabled() && InventoryComponent->GetItems().IsEmpty())
+		{
+			const bool bEquipmentEmpty = !EquipmentComponent || EquipmentComponent->GetPrivateEquipment().Entries.IsEmpty();
+			if (bEquipmentEmpty)
+			{
+				InventoryComponent->EnsureStarterItems_Server(TEXT("profile_applied_fallback"));
+			}
+		}
 		MaybeSendCombatLogSnapshotToOwner_Server(TEXT("profile_applied"));
 	}
 }
@@ -1261,8 +1269,8 @@ void ASpellRisePlayerState::MarkCharacterProgressionDirty_Server()
 		return;
 	}
 
-	FString SteamId64;
-	if (!Persistence->GetSteamIdFromPlayerState(this, SteamId64) || SteamId64.IsEmpty())
+	FString PersistentId;
+	if (!Persistence->GetPersistentIdFromPlayerState(this, PersistentId) || PersistentId.IsEmpty())
 	{
 		UE_LOG(LogSpellRiseProgression, Error,
 			TEXT("[AttributeSpend][PersistenceDirtyFailed] Reason=missing_persistent_id PlayerState=%s"),
@@ -1270,7 +1278,7 @@ void ASpellRisePlayerState::MarkCharacterProgressionDirty_Server()
 		return;
 	}
 
-	Persistence->MarkPlayerDirtyBySteamId(SteamId64);
+	Persistence->MarkPlayerDirtyBySteamId(PersistentId);
 }
 
 bool ASpellRisePlayerState::ResetProgressionPointsForAdmin_Server()

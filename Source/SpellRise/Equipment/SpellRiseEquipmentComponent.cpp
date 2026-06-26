@@ -82,6 +82,19 @@ void USpellRiseEquipmentComponent::RequestUnequipItem(const ESpellRiseEquipmentS
 	ServerRequestUnequipItem(Slot, PreferredInventorySlot, ClientRequestId);
 }
 
+void USpellRiseEquipmentComponent::RequestSwapEquipmentSlots(
+	const ESpellRiseEquipmentSlot FromSlot,
+	const ESpellRiseEquipmentSlot ToSlot,
+	const int32 ClientRequestId)
+{
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		ServerRequestSwapEquipmentSlots_Implementation(FromSlot, ToSlot, ClientRequestId);
+		return;
+	}
+	ServerRequestSwapEquipmentSlots(FromSlot, ToSlot, ClientRequestId);
+}
+
 void USpellRiseEquipmentComponent::ServerRequestEquipItem_Implementation(
 	const FGuid ItemInstanceId, const ESpellRiseEquipmentSlot RequestedSlot, const int32 ClientRequestId)
 {
@@ -128,6 +141,30 @@ void USpellRiseEquipmentComponent::ServerRequestUnequipItem_Implementation(
 	}
 }
 
+void USpellRiseEquipmentComponent::ServerRequestSwapEquipmentSlots_Implementation(
+	const ESpellRiseEquipmentSlot FromSlot,
+	const ESpellRiseEquipmentSlot ToSlot,
+	const int32 ClientRequestId)
+{
+	if (IsDuplicateRequest(ClientRequestId))
+	{
+		RejectRequest(TEXT("swap_equipment"), ESpellRiseEquipmentRejectReason::DuplicateRequest, ClientRequestId);
+		return;
+	}
+	if (!ConsumeRateLimit(true))
+	{
+		RejectRequest(TEXT("swap_equipment"), ESpellRiseEquipmentRejectReason::RateLimited, ClientRequestId);
+		return;
+	}
+	RecordAcceptedRequest(ClientRequestId);
+
+	ESpellRiseEquipmentRejectReason Reason = ESpellRiseEquipmentRejectReason::None;
+	if (!SwapEquipmentSlots_Server(FromSlot, ToSlot, Reason))
+	{
+		RejectRequest(TEXT("swap_equipment"), Reason, ClientRequestId);
+	}
+}
+
 bool USpellRiseEquipmentComponent::EquipItem_Server(
 	const FGuid& ItemInstanceId,
 	const ESpellRiseEquipmentSlot RequestedSlot,
@@ -154,7 +191,7 @@ bool USpellRiseEquipmentComponent::EquipItem_Server(
 		return false;
 	}
 
-	if (!Item.SupportsSlot(RequestedSlot) || !ValidateSlotConflict(Item, RequestedSlot, OutReason))
+	if (!Item.SupportsSlot(RequestedSlot) || !ValidateSlotConflict(Item, RequestedSlot, OutReason, true))
 	{
 		FString RollbackReason;
 		if (!Inventory->Equipment_ReturnItem(Item, INDEX_NONE, RollbackReason))
@@ -170,6 +207,31 @@ bool USpellRiseEquipmentComponent::EquipItem_Server(
 		return false;
 	}
 
+	const int32 OccupiedIndex = FindPrivateIndexBySlot(RequestedSlot);
+	FSpellRiseEquipmentItemData SwappedOutItem;
+	const bool bSwapOccupiedSlot = PrivateEquipment.Entries.IsValidIndex(OccupiedIndex);
+	if (bSwapOccupiedSlot)
+	{
+		SwappedOutItem = PrivateEquipment.Entries[OccupiedIndex].ServerItemData;
+		if (!Inventory->Equipment_CanReturnItem(SwappedOutItem, INDEX_NONE, InventoryReason))
+		{
+			FString RollbackReason;
+			Inventory->Equipment_ReturnItem(Item, INDEX_NONE, RollbackReason);
+			OutReason = ESpellRiseEquipmentRejectReason::InventoryRejected;
+			return false;
+		}
+
+		RemoveGrants(SwappedOutItem.ItemInstanceId);
+		RemoveReplicatedEntry(OccupiedIndex);
+		if (!Inventory->Equipment_ReturnItem(SwappedOutItem, INDEX_NONE, InventoryReason))
+		{
+			FString RollbackReason;
+			Inventory->Equipment_ReturnItem(Item, INDEX_NONE, RollbackReason);
+			OutReason = ESpellRiseEquipmentRejectReason::TransactionFailed;
+			return false;
+		}
+	}
+
 	AddReplicatedEntry(Item, RequestedSlot);
 	if (!ApplyGrants(Item))
 	{
@@ -179,6 +241,43 @@ bool USpellRiseEquipmentComponent::EquipItem_Server(
 		OutReason = ESpellRiseEquipmentRejectReason::TransactionFailed;
 		return false;
 	}
+	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
+	return true;
+}
+
+bool USpellRiseEquipmentComponent::SwapEquipmentSlots_Server(
+	const ESpellRiseEquipmentSlot FromSlot,
+	const ESpellRiseEquipmentSlot ToSlot,
+	ESpellRiseEquipmentRejectReason& OutReason)
+{
+	if (!ValidateEquipmentContext(OutReason)) return false;
+	if (FromSlot == ToSlot) return true;
+
+	const int32 FromIndex = FindPrivateIndexBySlot(FromSlot);
+	const int32 ToIndex = FindPrivateIndexBySlot(ToSlot);
+	if (!PrivateEquipment.Entries.IsValidIndex(FromIndex) || !PrivateEquipment.Entries.IsValidIndex(ToIndex))
+	{
+		OutReason = ESpellRiseEquipmentRejectReason::InvalidSlot;
+		return false;
+	}
+
+	FSpellRiseEquippedItemEntry& FromEntry = PrivateEquipment.Entries[FromIndex];
+	FSpellRiseEquippedItemEntry& ToEntry = PrivateEquipment.Entries[ToIndex];
+	if (!FromEntry.ServerItemData.SupportsSlot(ToSlot) || !ToEntry.ServerItemData.SupportsSlot(FromSlot))
+	{
+		OutReason = ESpellRiseEquipmentRejectReason::SlotIncompatible;
+		return false;
+	}
+
+	FromEntry.Slot = ToSlot;
+	ToEntry.Slot = FromSlot;
+	FromEntry.Revision = ++EquipmentRevision;
+	ToEntry.Revision = ++EquipmentRevision;
+	PrivateEquipment.MarkItemDirty(FromEntry);
+	PrivateEquipment.MarkItemDirty(ToEntry);
+	RebuildVisualEntry(FromEntry);
+	RebuildVisualEntry(ToEntry);
+	OnEquipmentChanged.Broadcast();
 	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
 	return true;
 }
@@ -250,9 +349,10 @@ bool USpellRiseEquipmentComponent::ValidateEquipmentContext(ESpellRiseEquipmentR
 bool USpellRiseEquipmentComponent::ValidateSlotConflict(
 	const FSpellRiseEquipmentItemData& Item,
 	const ESpellRiseEquipmentSlot Slot,
-	ESpellRiseEquipmentRejectReason& OutReason) const
+	ESpellRiseEquipmentRejectReason& OutReason,
+	const bool bAllowOccupiedTarget) const
 {
-	if (FindPrivateIndexBySlot(Slot) != INDEX_NONE)
+	if (!bAllowOccupiedTarget && FindPrivateIndexBySlot(Slot) != INDEX_NONE)
 	{
 		OutReason = ESpellRiseEquipmentRejectReason::SlotOccupied;
 		return false;
@@ -274,6 +374,32 @@ bool USpellRiseEquipmentComponent::ValidateSlotConflict(
 		return false;
 	}
 	return true;
+}
+
+ESpellRiseEquipmentSlot USpellRiseEquipmentComponent::ChooseBestSlotForItem(
+	const FSpellRiseEquipmentItemData& Item,
+	bool& bOutFound) const
+{
+	bOutFound = false;
+	for (const ESpellRiseEquipmentSlot Slot : Item.AllowedSlots)
+	{
+		ESpellRiseEquipmentRejectReason Reason = ESpellRiseEquipmentRejectReason::None;
+		if (FindPrivateIndexBySlot(Slot) == INDEX_NONE && ValidateSlotConflict(Item, Slot, Reason, false))
+		{
+			bOutFound = true;
+			return Slot;
+		}
+	}
+	for (const ESpellRiseEquipmentSlot Slot : Item.AllowedSlots)
+	{
+		ESpellRiseEquipmentRejectReason Reason = ESpellRiseEquipmentRejectReason::None;
+		if (ValidateSlotConflict(Item, Slot, Reason, true))
+		{
+			bOutFound = true;
+			return Slot;
+		}
+	}
+	return ESpellRiseEquipmentSlot::MainHand;
 }
 
 bool USpellRiseEquipmentComponent::ConsumeRateLimit(const bool)
@@ -395,6 +521,7 @@ void USpellRiseEquipmentComponent::AddReplicatedEntry(
 	Entry.DefinitionId = Item.DefinitionId;
 	Entry.Slot = Slot;
 	Entry.Durability = Item.Durability;
+	Entry.Flags = Item.Flags;
 	Entry.Revision = ++EquipmentRevision;
 	Entry.ServerItemData = Item;
 	PrivateEquipment.MarkItemDirty(Entry);
@@ -497,6 +624,98 @@ float USpellRiseEquipmentComponent::GetEquippedWeight() const
 		Weight += FMath::Max(0.0f, Entry.ServerItemData.UnitWeight);
 	}
 	return Weight;
+}
+
+bool USpellRiseEquipmentComponent::EquipItemToBestSlot_Server(
+	const FGuid& ItemInstanceId,
+	FString& OutRejectReason)
+{
+	ESpellRiseEquipmentRejectReason RejectReason = ESpellRiseEquipmentRejectReason::None;
+	if (!ValidateEquipmentContext(RejectReason))
+	{
+		OutRejectReason = FString::Printf(TEXT("equip_rejected:%d"), static_cast<int32>(RejectReason));
+		return false;
+	}
+
+	ISpellRiseEquipmentInventoryBridge* Inventory = ResolveInventoryBridge();
+	if (!Inventory)
+	{
+		OutRejectReason = TEXT("inventory_unavailable");
+		return false;
+	}
+
+	FSpellRiseEquipmentItemData Item;
+	FString InventoryReason;
+	if (!Inventory->Equipment_TakeItem(ItemInstanceId, Item, InventoryReason))
+	{
+		OutRejectReason = InventoryReason.IsEmpty() ? TEXT("invalid_item") : InventoryReason;
+		return false;
+	}
+
+	bool bFoundSlot = false;
+	const ESpellRiseEquipmentSlot Slot = ChooseBestSlotForItem(Item, bFoundSlot);
+	if (!bFoundSlot)
+	{
+		FString RollbackReason;
+		Inventory->Equipment_ReturnItem(Item, INDEX_NONE, RollbackReason);
+		OutRejectReason = TEXT("slot_incompatible");
+		return false;
+	}
+
+	FString RollbackReason;
+	if (!Inventory->Equipment_ReturnItem(Item, INDEX_NONE, RollbackReason))
+	{
+		Inventory->Equipment_ReturnItem(Item, INDEX_NONE, RollbackReason);
+		OutRejectReason = TEXT("transaction_failed");
+		return false;
+	}
+
+	if (!EquipItem_Server(ItemInstanceId, Slot, RejectReason))
+	{
+		OutRejectReason = FString::Printf(TEXT("equip_rejected:%d"), static_cast<int32>(RejectReason));
+		return false;
+	}
+
+	return true;
+}
+
+bool USpellRiseEquipmentComponent::UnequipItemById_Server(
+	const FGuid& ItemInstanceId,
+	const int32 PreferredInventorySlot,
+	FString& OutRejectReason)
+{
+	ESpellRiseEquipmentSlot Slot = ESpellRiseEquipmentSlot::Head;
+	if (!IsItemEquipped(ItemInstanceId, Slot))
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	ESpellRiseEquipmentRejectReason RejectReason = ESpellRiseEquipmentRejectReason::None;
+	if (!UnequipItem_Server(Slot, PreferredInventorySlot, RejectReason))
+	{
+		OutRejectReason = FString::Printf(TEXT("unequip_rejected:%d"), static_cast<int32>(RejectReason));
+		return false;
+	}
+	return true;
+}
+
+bool USpellRiseEquipmentComponent::IsItemEquipped(
+	const FGuid& ItemInstanceId,
+	ESpellRiseEquipmentSlot& OutSlot) const
+{
+	const int32 Index = PrivateEquipment.Entries.IndexOfByPredicate(
+		[&ItemInstanceId](const FSpellRiseEquippedItemEntry& Entry)
+		{
+			return Entry.ItemInstanceId == ItemInstanceId;
+		});
+	if (!PrivateEquipment.Entries.IsValidIndex(Index))
+	{
+		return false;
+	}
+
+	OutSlot = PrivateEquipment.Entries[Index].Slot;
+	return true;
 }
 
 bool USpellRiseEquipmentComponent::RestoreEquippedItem_Server(

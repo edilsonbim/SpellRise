@@ -286,10 +286,10 @@ namespace
 	{
 		UGameInstance* GameInstance = PlayerState ? PlayerState->GetGameInstance() : nullptr;
 		USpellRisePersistenceSubsystem* Persistence = GameInstance ? GameInstance->GetSubsystem<USpellRisePersistenceSubsystem>() : nullptr;
-		FString SteamId64;
-		if (Persistence && Persistence->GetSteamIdFromPlayerState(PlayerState, SteamId64))
+		FString PersistentId;
+		if (Persistence && Persistence->GetPersistentIdFromPlayerState(PlayerState, PersistentId))
 		{
-			Persistence->MarkPlayerDirtyBySteamId(SteamId64);
+			Persistence->MarkPlayerDirtyBySteamId(PersistentId);
 		}
 	}
 }

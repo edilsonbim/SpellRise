@@ -37,6 +37,9 @@ struct SPELLRISE_API FSpellRiseEquipmentItemData
 	int32 Durability = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	uint8 Flags = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<ESpellRiseEquipmentSlot> AllowedSlots;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

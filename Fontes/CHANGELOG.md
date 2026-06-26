@@ -1,8 +1,11 @@
 # Changelog
 
+- Inventário nativo ganhou base C++ autoritativa para `UseItem`, `DestroyItem`, swap entre slots ocupados e ações de equipamento; `UseItem` agora consome consumíveis, equipa itens equipáveis pelo melhor slot e o ViewModel desequipa quando o GUID já está equipado. Removido dispatcher extra de request resolved do ViewModel; refresh visual volta a depender apenas dos snapshots.
+- Adicionado `USpellRiseStorageComponent` Blueprintable para actors de storage/baú/banco, com FastArray replicada, operações server-side de add/remove/move/split/merge/swap e transferências transacionais entre inventário e storage.
 - Documentado o fechamento operacional da migração em 2026-06-25: branch de migração pronto para virar `develop`, `main` permanece como linha estável e bugs restantes são tratados como herdados da versão anterior.
 - Registrado que o ruído de áudio pós-migração foi causado pelo Ultra Dynamic Sky e resolvido pelo operador ao remover/adicionar novamente o plugin/asset; workarounds globais de AudioMixer não devem permanecer por esse incidente.
 - Registrado que o bug de travar o personagem no downed foi resolvido; abilities após renascer/sair de downed e bug de câmera permanecem como pendências herdadas até validação/correção específica.
+- Inventário nativo passa a suportar itens iniciais configuráveis no `USpellRiseInventoryComponent`, com flag `NoDrop` persistida e bloqueio server-side de drop; a UI recebe `bDropLocked` pelo ViewModel apenas para apresentação.
 
 - Corrigido hardening pós-downed: revive/reset agora cancela timers pendentes de morte/respawn e `ExecuteRespawn_Server` ignora execução se o Character não estiver em `Dead`, evitando `UnPossess/Destroy/RestartPlayer` após voltar para `Alive`.
 - Removido o bloqueio genérico `ActivationBlockedTags=GameplayAbility` do construtor base de `USpellRiseGameplayAbility`; o bloqueio por morte permanece via `State.Dead` e downed continua controlado por `bAllowWhileDowned`/`State.Downed`.
