@@ -38,6 +38,14 @@
 - Prioridade P3: refazer visual da talent tree com animacoes interativas por escolas; incluir durabilidade de itens; criar spell de retorno de dano.
 - Validacao formal nao foi executada neste registro documental; nao tratar os itens como `Verified` ate passar pelos gates aplicaveis.
 
+## Inventário nativo — status de implementação (2026-06-28)
+- `USpellRiseInventoryComponent`, `USpellRiseEquipmentComponent`, `USpellRiseStorageComponent` e `USpellRiseInventoryViewModelComponent` estão implementados em C++ e compilados.
+- `USpellRiseItemDefinition` e subclasses (`Weapon`, `Armor`, `Consumable`, `Container`) estão implementadas.
+- `FSpellRiseInventoryPersistenceMigration::ConvertLegacyToV3` está implementada para conversão Narrative → schema 3 sem efeitos colaterais.
+- Testes de contrato em `Tests/SpellRiseInventoryContractsTests.cpp` cobrem determinismo da migração; rodam no editor via Automation (EditorContext/EngineFilter).
+- `USpellRiseNarrativeBuildBridge` (em Components/) é o ponto de integração Building Mode ↔ Narrative; não existe classe C++ `USpellRiseConstructionModeComponent`.
+- `FSpellRiseAuditTrail` está implementado para log de segurança server-side com rotação de arquivo.
+
 ## Regras de validacao
 - Build de editor deve usar apenas `C:\UnrealSource\UnrealEngine`.
 - Build padrao de agente: `SpellRiseEditor Win64 Development`.

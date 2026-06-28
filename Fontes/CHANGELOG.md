@@ -1,5 +1,10 @@
 # Changelog
 
+- Rating competitivo passou a ser autoritativo no `USpellRiseProgressionComponent` do `PlayerState`, com `MatchRating` replicado `OwnerOnly`, persistido no snapshot e ajustado no servidor em morte final: derrota perde rating, finalizador ganha rating. Defaults começam em `1000` com delta padrão de `25`.
+- `USpellRiseInventoryViewModelComponent` agora expõe contrato unificado para UI de inventário e storage: snapshots de container compatíveis, `WatchStorage`, refresh por evento e intenções BP de deposit/withdraw/move roteadas por RPC owner-bound validado no servidor para `USpellRiseStorageComponent`, sem mover autoridade para widget, baú ou PlayerController.
+- `USpellRiseInventoryViewModelComponent` ganhou `RequestMoveItemFromInventory`, permitindo que `WB_ItemSlot` use o ViewModel de origem carregado pelo drag operation e o ViewModel de destino do slot para rotear automaticamente player->player, player->storage e storage->player sem especializar `WB_SlotsContainer`.
+- `USpellRiseInventoryViewModelComponent` passou a aceitar `SetTransferAuthorityInventoryViewModel`, permitindo que o ViewModel do storage use o ViewModel owner-bound do player para mover itens entre slots do mesmo storage sem criar RPC no baú nem retrabalhar `WB_SlotsContainer`.
+- `USpellRiseInventoryViewModelComponent` ganhou `CanPreviewMoveItemFromInventory` para hover/drag local em UMG, retornando motivo quando destino é inválido, mesmo slot, slot ocupado incompatível, stack cheia, definition inválida ou peso máximo excedido, sem decidir autoridade nem enviar RPC.
 - Inventário nativo ganhou base C++ autoritativa para `UseItem`, `DestroyItem`, swap entre slots ocupados e ações de equipamento; `UseItem` agora consome consumíveis, equipa itens equipáveis pelo melhor slot e o ViewModel desequipa quando o GUID já está equipado. Removido dispatcher extra de request resolved do ViewModel; refresh visual volta a depender apenas dos snapshots.
 - Adicionado `USpellRiseStorageComponent` Blueprintable para actors de storage/baú/banco, com FastArray replicada, operações server-side de add/remove/move/split/merge/swap e transferências transacionais entre inventário e storage.
 - Documentado o fechamento operacional da migração em 2026-06-25: branch de migração pronto para virar `develop`, `main` permanece como linha estável e bugs restantes são tratados como herdados da versão anterior.
@@ -202,3 +207,7 @@
 - O router foi consolidado em cinco contextos (`Global`, `Movement`, `Combat`, `Building`, `UI`), com prioridades internas fixas e descoberta das actions diretamente nos IMCs por nomes canônicos.
 - Removidas todas as propriedades editáveis de `Input Action` e prioridades do componente; `IA_ToggleUIInteraction` e `IA_DebugGrantExperience` também são resolvidas pelo `IMC_Global`.
 - Build `SpellRiseEditor Win64 Development` aprovada com UHT usando `C:\UnrealSource\UnrealEngine`.
+
+# 2026-06-26
+
+- Adicionados helpers Blueprint para resolver `SpellRiseInventoryComponent` e `SpellRiseInventoryViewModelComponent` a partir de Actor/Pawn/Controller/PlayerState/Owner, simplificando o fluxo de storage/interacao em BP.

@@ -112,7 +112,8 @@
 
 ## Engenharia contínua
 - automação multiplayer em CI;
-- revisão da base GAS para fronteiras explícitas de activation / commit / prediction / replication.
+- revisão da base GAS para fronteiras explícitas de activation / commit / prediction / replication;
+- gate de CI para inventário nativo: `Tests/SpellRiseInventoryContractsTests.cpp` deve passar antes de ativar contratos schema `15/3`; testes cobrem criação, migração `14/2 → 15/3`, equip/unequip, split/merge, drop e reconexão sem perda ou duplicação de GUID.
 
 ## Média prioridade
 - painel de stats e fórmulas derivadas;

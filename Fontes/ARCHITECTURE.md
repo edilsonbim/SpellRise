@@ -29,6 +29,10 @@
 ### Inventario e loot
 - O `ASpellRisePlayerState` cria em paralelo `USpellRiseInventoryComponent`, `USpellRiseEquipmentComponent`, `USpellRiseInventoryViewModelComponent` e o legado `UNarrativeInventoryComponent`.
 - O inventário próprio usa `USpellRiseItemDefinition : UPrimaryDataAsset`, identidade por `FGuid ItemInstanceId` + `FPrimaryAssetId DefinitionId`, capacidade por slots/peso e `FFastArraySerializer` privado `OwnerOnly`.
+- `USpellRiseItemDefinition` possui quatro subclasses concretas: `USpellRiseWeaponItemDefinition` (referência a `USpellRiseWeaponDefinition`), `USpellRiseArmorItemDefinition` (slots permitidos e efeitos GAS), `USpellRiseConsumableItemDefinition` (efeito de consumo GAS) e `USpellRiseContainerItemDefinition` (slots/peso concedidos ao ser equipado como mochila).
+- Resolução de definição de item usa `SpellRiseItemDefinitionResolver::ResolveItemDefinition` (namespace livre, não UObject) e `USpellRiseInventoryBlueprintLibrary::ResolveItemDefinition` (wrapper BlueprintCallable).
+- `FSpellRiseInventoryPersistenceMigration::ConvertLegacyToV3` converte snapshot Narrative schema 2 para o schema de instâncias v3 sem carregar assets ou alterar estado externo; resultado inclui avisos/erros para o chamador decidir se persiste.
+- Testes automatizados de contratos de inventário vivem em `Source/SpellRise/Tests/SpellRiseInventoryContractsTests.cpp` (EditorContext/EngineFilter, guarded por `WITH_DEV_AUTOMATION_TESTS`).
 - O equipamento próprio mantém nove slots e FastArray privado `OwnerOnly`. O descriptor público no Character permanece pendente; não há fan-out visual pelo PlayerState.
 - Equipar/desequipar é uma transferência server-side pelo bridge de inventário. Grants e efeitos GAS são registrados por `ItemInstanceId` com source estável no `PlayerState`; `OnRep` nunca aplica grants.
 - A persistência corrente permanece em `14/2`. Os contratos `15/3` com GUID e `PrimaryAssetId` estão implementados, mas só poderão ser ativados após dual-read e full loot nativo.
@@ -37,11 +41,11 @@
 - UI nova deve consumir `USpellRiseInventoryViewModelComponent`, ser event-driven e enviar apenas intenções; widgets/assets UMG ainda precisam ser ligados e migrados manualmente.
 
 ### Attribute Sets
-- `UBasicAttributeSet`
-- `UCombatAttributeSet`
-- `UResourceAttributeSet`
-- `UCatalystAttributeSet`
-- `UDerivedStatsAttributeSet`
+- `UBasicAttributeSet`: atributos primários Strength, Agility, Intelligence, Wisdom; todos replicados.
+- `UCombatAttributeSet`: MoveSpeed, MoveSpeedMultiplier, LifestealPercent, EquippedWeaponBaseDamage e resistências físicas/mágicas (Slashing, Bashing, Piercing, Fire, Cold, Acid, Shock, Divine, Curse, Almighty, Generic, Bleed, Poison, Impact). Expõe proxies estáticos `GetStrengthAttribute()` etc. que delegam ao `BasicAttributeSet` para uso em `ExecCalc`.
+- `UResourceAttributeSet`: Health/MaxHealth, Mana/MaxMana, Stamina/MaxStamina, Regen (Health/Mana/Stamina), CarryWeight e atributos meta não replicados Damage, DamageWasCritical e Healing.
+- `UCatalystAttributeSet`: CatalystCharge, CatalystXP, CatalystLevel (replicados) e meta CatalystChargeDelta (não replicado).
+- `UDerivedStatsAttributeSet`: CritChance, CritDamage, ArmorPenetration; todos replicados e calculados via MMC.
 
 ### Progressao de combate
 - `USpellRiseProgressionComponent` vive no `ASpellRisePlayerState`.
@@ -110,6 +114,13 @@
 - `DownedRedEdgeAlpha`: intensidade persistente da borda vermelha enquanto downed; o client local também aplica saturação zero na câmera.
 - Percentuais de Health/Mana/Stamina e duração de recovery são configuráveis separadamente para WIS 100 e WIS 140, com interpolação linear.
 
+## Cálculos GAS (MMC e ExecCalc)
+- `UMMC_MaxHealth`, `UMMC_MaxMana`, `UMMC_MaxStamina`: legado, derivam de primários (Strength/Wisdom, Intelligence/Wisdom e Agility/Strength respectivamente).
+- `UMMC_CarryWeight`: deriva de Strength.
+- `UMMC_DerivedStats.h` define a classe base `UMMC_PrimaryBase` e subclasses `UMMC_CritChance`, `UMMC_CritDamage`, `UMMC_ArmorPenetration`, `UMMC_MaxHealthFromPrimaries`, `UMMC_MaxManaFromPrimaries`, `UMMC_MaxStaminaFromPrimaries` e `UMMC_CarryWeightFromPrimaries` — estas substituem os MMCs legados com normalização proporcional ao baseline.
+- `UExecCalc_Damage`: captura CritChance, CritDamage, ArmorPenetration, EquippedWeaponBaseDamage, primários e todas as resistências do target.
+- `UExecCalc_Healing`: cálculo autoritativo de cura com scaling declarativo.
+
 ## Fluxo de combate
 1. Ability prepara spec/SetByCaller.
 2. `ExecCalc_Damage` resolve canal, scaling, resistência, crit e drains; multiplicadores derivados por canal de arma nao fazem parte do runtime.
@@ -137,12 +148,18 @@
 - `ASpellRisePlayerController`: input de gameplay e glue local de UX.
 - `USpellRiseAbilityHotbarComponent`: loadout owner-only de hotbar, validado no servidor e consumido pelo input local.
 - `USpellRisePlayerHUDViewModelComponent`: componente local/event-driven no `PlayerState` que agrega nome, progressao, primarios e recursos ja replicados para Widgets, sem Tick, RPC ou estado autoritativo duplicado.
-- `USpellRiseInventoryViewModelComponent`: projeção local/event-driven de inventário/equipamento para UMG; não replica, não persiste e não decide operações.
-- `USpellRiseConstructionModeComponent`: isola o building mode no controller.
+- `USpellRiseInventoryViewModelComponent`: projeção local/event-driven de inventário/equipamento para UMG; não replica, não persiste e não decide operações. Suporta watch de múltiplos `USpellRiseStorageComponent` simultaneamente via `WatchStorage`/`UnwatchStorage`.
+- `USpellRiseStorageComponent`: container replicado server-authoritative para armazenamento de itens estático (baús, vendors); mesma identidade por GUID/PrimaryAssetId que o inventário; usado em depositar/retirar via `USpellRiseInventoryComponent`.
+- `USpellRiseNarrativeBuildBridge`: componente no controller que faz ponte entre o building mode e o `UNarrativeInteractionComponent`; expõe `TryBuildInteract`, `TryOpenMalletMenu` e `TryCloseMalletMenu`. Não existe classe C++ `USpellRiseConstructionModeComponent` no projeto.
 - Chat/combat feed: transporte nativo em C++ com autoridade no servidor.
 - Chat runtime: `ASpellRisePlayerController::SubmitChatMessageForConversation` recebe da UI texto/canal/conversation ID e roteia para RPCs owner-bound; `USpellRiseChatComponent` no `GameState` sanitiza, aplica rate-limit e roteia Global/System. Whisper usa identidade estável, entrega client-only e block list server-side. Histórico/unread são exclusivamente locais e o mapa Blueprint detalhado vive em `CHAT_BLUEPRINT_MAP.md`.
 - Interação de nome no chat: duplo clique é UX local, resolve o `PlayerState` replicado por nome e abre a conversa whisper sem RPC; o primeiro RPC ocorre apenas ao enviar texto.
 - Party básica: `PartyId` e `PartyLeaderId` autoritativos vivem no `ASpellRisePlayerState`; convite pendente é aceito/recusado por `Y/N` no servidor; `/party`, `/invite`, `/remove`, `/leader` e `/leave` são validados pelo `USpellRiseChatComponent`. Logout remove o membro e transfere liderança quando necessário. O canal PARTY é entregue apenas a PlayerStates com o mesmo ID e o `NavigationMarker` usa o nome do PlayerState, reconcilia todos os markers locais após mudança de Party e é filtrado para owner ou membros da mesma party.
+
+## Segurança e auditoria
+- `FSpellRiseAuditTrail` (classe C++ pura, não-UObject) registra eventos de segurança em arquivo local com rotação automática; métodos: `AppendEvent`, `QueryRecent` e `GetAuditFilePath`.
+- `USpellRisePersistenceSubsystem` expõe `IsPortalAdmin` e `BanPlayer`; o provider Postgres implementa ban/portal admin; o provider File retorna sempre `false` para ambos.
+- `USpellRiseAuditTrail` deve ser chamado diretamente de código C++ autoritativo no servidor; não expor para Blueprint.
 
 ## Regras estruturais
 - dedicated server deve funcionar sem HUD/widget/câmera;
