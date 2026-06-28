@@ -66,6 +66,22 @@ replay_pid*.log
 hs_err_pid*.log
 java_error*.hprof
 
+# Plugin artifacts (gerados pelo UBT, não vão ao repo)
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+*.upluginmanifest
+
+# OS noise
+.DS_Store
+Thumbs.db
+*.aps
+
+# Packaging results (pode escapar do Saved/)
+PackagingResults/
+
+# Backups de SourceArt (manter fora do LFS/repo)
+SourceArt/World/Heightmaps_Backup_*/
+
 # Local tool folders
 .codex/
 .codex-tmp/
