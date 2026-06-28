@@ -227,14 +227,20 @@ bool USpellRiseInventoryViewModelComponent::RequestMoveItemFromInventory(
 	if (SourceInventory && TargetStorage)
 	{
 		const bool bRequested = SourceInventoryVM->RequestDepositToStorage(TargetStorage, ItemInstanceId, DestinationSlot, Quantity);
-		SourceInventoryVM->RefreshPresentationFromAuthoritativeState();
+		if (bRequested)
+		{
+			SourceInventoryVM->OptimisticallyRemoveFromInventorySnapshot(ItemInstanceId, Quantity);
+		}
 		RefreshPresentationFromAuthoritativeState();
 		return bRequested;
 	}
 	if (SourceStorage && TargetInventory)
 	{
 		const bool bRequested = RequestWithdrawFromStorage(SourceStorage, ItemInstanceId, DestinationSlot, Quantity);
-		SourceInventoryVM->RefreshPresentationFromAuthoritativeState();
+		if (bRequested)
+		{
+			SourceInventoryVM->OptimisticallyRemoveFromInventorySnapshot(ItemInstanceId, Quantity);
+		}
 		RefreshPresentationFromAuthoritativeState();
 		return bRequested;
 	}
@@ -305,8 +311,12 @@ bool USpellRiseInventoryViewModelComponent::CanPreviewMoveItemFromInventory(
 		}
 		if (DestinationItem->DefinitionId != SourceSlotView.DefinitionId)
 		{
-			OutReason = SlotOccupied;
-			return false;
+			if (Quantity != SourceSlotView.Quantity)
+			{
+				OutReason = SlotOccupied;
+				return false;
+			}
+			return true;
 		}
 
 		const USpellRiseItemDefinition* Definition = SpellRiseItemDefinitionResolver::ResolveItemDefinition(SourceSlotView.DefinitionId);
@@ -718,6 +728,38 @@ USpellRiseInventoryComponent* USpellRiseInventoryViewModelComponent::GetOwnerInv
 USpellRiseStorageComponent* USpellRiseInventoryViewModelComponent::GetOwnerStorageComponent() const
 {
 	return GetOwner() ? GetOwner()->FindComponentByClass<USpellRiseStorageComponent>() : nullptr;
+}
+
+void USpellRiseInventoryViewModelComponent::OptimisticallyRemoveFromInventorySnapshot(
+	const FGuid& ItemInstanceId,
+	const int32 Quantity)
+{
+	FSpellRiseInventorySlotView* Slot = InventorySnapshot.Slots.FindByPredicate(
+		[&ItemInstanceId](const FSpellRiseInventorySlotView& Candidate)
+		{
+			return Candidate.ItemInstanceId == ItemInstanceId;
+		});
+	if (!Slot || Quantity <= 0)
+	{
+		return;
+	}
+
+	if (Quantity >= Slot->Quantity)
+	{
+		const int32 RemovedSlotIndex = Slot->SlotIndex;
+		InventorySnapshot.Slots.RemoveAll(
+			[&ItemInstanceId](const FSpellRiseInventorySlotView& Candidate)
+			{
+				return Candidate.ItemInstanceId == ItemInstanceId;
+			});
+		OnInventorySlotRemoved.Broadcast(RemovedSlotIndex, ItemInstanceId);
+	}
+	else
+	{
+		Slot->Quantity -= Quantity;
+	}
+
+	OnInventorySnapshotChanged.Broadcast(InventorySnapshot);
 }
 
 void USpellRiseInventoryViewModelComponent::HandleInventoryChanged(

@@ -357,6 +357,7 @@ private:
 	const FSpellRiseInventorySlotView* FindSnapshotSlotByIndex(int32 SlotIndex) const;
 	USpellRiseInventoryComponent* GetOwnerInventoryComponent() const;
 	USpellRiseStorageComponent* GetOwnerStorageComponent() const;
+	void OptimisticallyRemoveFromInventorySnapshot(const FGuid& ItemInstanceId, int32 Quantity);
 
 	UFUNCTION()
 	void HandleInventoryChanged(ESpellRiseInventoryChangeType ChangeType, FSpellRiseItemInstance Item);

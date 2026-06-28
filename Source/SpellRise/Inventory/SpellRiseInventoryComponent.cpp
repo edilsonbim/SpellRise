@@ -518,6 +518,24 @@ bool USpellRiseInventoryComponent::MoveItem_Server(const FGuid& ItemInstanceId, 
 	}
 	else
 	{
+		FSpellRiseItemInstance& Destination = Inventory.Entries[DestinationIndex];
+		if (Destination.DefinitionId != Source.DefinitionId)
+		{
+			if (Quantity != Source.Quantity)
+			{
+				OutRejectReason = TEXT("partial_swap_not_allowed");
+				return false;
+			}
+			const int32 SourceSlot = Source.SlotIndex;
+			Source.SlotIndex = DestinationSlot;
+			Destination.SlotIndex = SourceSlot;
+			MarkEntryChanged(Source);
+			MarkEntryChanged(Destination);
+			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
+			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Destination);
+			ForceOwnerNetUpdate();
+			return true;
+		}
 		return MoveItemOntoStack_Server(SourceIndex, DestinationSlot, Quantity, OutRejectReason);
 	}
 	ForceOwnerNetUpdate();
