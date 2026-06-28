@@ -6,6 +6,15 @@
 #include "SpellRise/Inventory/SpellRiseItemTypes.h"
 #include "SpellRiseInventoryViewModelComponent.generated.h"
 
+class USpellRiseStorageComponent;
+
+UENUM(BlueprintType)
+enum class ESpellRiseInventoryContainerSource : uint8
+{
+	PlayerInventory,
+	Storage
+};
+
 UENUM(BlueprintType)
 enum class ESpellRiseUIEquipmentSlot : uint8
 {
@@ -113,6 +122,33 @@ struct SPELLRISE_API FSpellRiseEquipmentViewSnapshot
 	int32 Revision = 0;
 };
 
+USTRUCT(BlueprintType)
+struct SPELLRISE_API FSpellRiseInventoryContainerViewSnapshot
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	ESpellRiseInventoryContainerSource Source = ESpellRiseInventoryContainerSource::PlayerInventory;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	TObjectPtr<USpellRiseStorageComponent> Storage = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	TArray<FSpellRiseInventorySlotView> Slots;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	int32 MaxSlots = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	float CurrentWeight = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	float MaxWeight = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Inventory")
+	int32 Revision = 0;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FSpellRiseInventoryViewSnapshotChangedSignature,
 	const FSpellRiseInventoryViewSnapshot&,
@@ -166,11 +202,34 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	Quantity);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FSpellRiseStorageViewSnapshotChangedSignature,
+	USpellRiseStorageComponent*,
+	Storage,
+	const FSpellRiseInventoryContainerViewSnapshot&,
+	Snapshot);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FSpellRiseInventoryRequestRejectedSignature,
 	FName,
 	RequestType,
 	FName,
 	Reason);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FSpellRiseInventorySlotRemovedSignature,
+	int32,
+	SlotIndex,
+	FGuid,
+	ItemInstanceId);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+	FSpellRiseStorageSlotRemovedSignature,
+	USpellRiseStorageComponent*,
+	Storage,
+	int32,
+	SlotIndex,
+	FGuid,
+	ItemInstanceId);
 
 /**
  * Presentation-only bridge for inventory and equipment widgets.
@@ -192,14 +251,32 @@ public:
 	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory|ViewModel")
 	const FSpellRiseEquipmentViewSnapshot& GetEquipmentSnapshot() const { return EquipmentSnapshot; }
 
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory|ViewModel")
+	FSpellRiseInventoryContainerViewSnapshot GetPlayerInventoryContainerSnapshot() const;
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory|ViewModel|Storage")
+	FSpellRiseInventoryContainerViewSnapshot GetStorageSnapshot(USpellRiseStorageComponent* Storage) const;
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Presentation")
 	void ApplyAuthoritativeInventorySnapshot(const FSpellRiseInventoryViewSnapshot& Snapshot);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Presentation")
 	void ApplyAuthoritativeEquipmentSnapshot(const FSpellRiseEquipmentViewSnapshot& Snapshot);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Presentation")
+	void RefreshPresentationFromAuthoritativeState();
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
 	bool RequestMoveItem(FGuid ItemInstanceId, int32 DestinationSlot, int32 Quantity);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
+	bool RequestMoveItemFromInventory(USpellRiseInventoryViewModelComponent* SourceInventoryVM, FGuid ItemInstanceId, int32 DestinationSlot, int32 Quantity);
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory|ViewModel|Requests")
+	bool CanPreviewMoveItemFromInventory(USpellRiseInventoryViewModelComponent* SourceInventoryVM, const FSpellRiseInventorySlotView& SourceSlotView, int32 DestinationSlot, int32 Quantity, FName& OutReason) const;
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
+	void SetTransferAuthorityInventoryViewModel(USpellRiseInventoryViewModelComponent* InventoryVM);
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
 	bool RequestEquipItem(FGuid ItemInstanceId, ESpellRiseUIEquipmentSlot EquipmentSlot);
@@ -218,6 +295,21 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
 	bool RequestDestroyItem(FGuid ItemInstanceId, int32 Quantity);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
+	bool RequestDepositToStorage(USpellRiseStorageComponent* Storage, FGuid InventoryItemInstanceId, int32 PreferredStorageSlot, int32 Quantity);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
+	bool RequestWithdrawFromStorage(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 PreferredInventorySlot, int32 Quantity);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
+	bool RequestMoveStorageItem(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 DestinationSlot, int32 Quantity);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
+	void WatchStorage(USpellRiseStorageComponent* Storage);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
+	void UnwatchStorage(USpellRiseStorageComponent* Storage);
 
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Events")
 	FSpellRiseInventoryViewSnapshotChangedSignature OnInventorySnapshotChanged;
@@ -243,13 +335,28 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Requests")
 	FSpellRiseInventoryDestroyRequestedSignature OnDestroyItemRequested;
 
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Storage")
+	FSpellRiseStorageViewSnapshotChangedSignature OnStorageSnapshotChanged;
+
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Events")
 	FSpellRiseInventoryRequestRejectedSignature OnLocalRequestRejected;
 
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Events")
+	FSpellRiseInventorySlotRemovedSignature OnInventorySlotRemoved;
+
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Storage")
+	FSpellRiseStorageSlotRemovedSignature OnStorageSlotRemoved;
+
 private:
 	bool RejectRequest(FName RequestType, FName Reason);
+	int32 CountFreeSlotsInSnapshot() const;
 	void RefreshFromAuthoritativeComponents();
+	void BroadcastStorageSnapshot(USpellRiseStorageComponent* Storage);
 	int32 AllocateRequestId();
+	bool ValidateStorageRequest_Local(FName RequestType, USpellRiseStorageComponent* Storage, const FGuid& ItemInstanceId, int32 Slot, int32 Quantity, bool bAllowAutoSlot);
+	const FSpellRiseInventorySlotView* FindSnapshotSlotByIndex(int32 SlotIndex) const;
+	USpellRiseInventoryComponent* GetOwnerInventoryComponent() const;
+	USpellRiseStorageComponent* GetOwnerStorageComponent() const;
 
 	UFUNCTION()
 	void HandleInventoryChanged(ESpellRiseInventoryChangeType ChangeType, FSpellRiseItemInstance Item);
@@ -257,11 +364,20 @@ private:
 	UFUNCTION()
 	void HandleEquipmentChanged();
 
+	UFUNCTION()
+	void HandleStorageChanged(ESpellRiseInventoryChangeType ChangeType, FSpellRiseItemInstance Item);
+
 	UPROPERTY(Transient)
 	FSpellRiseInventoryViewSnapshot InventorySnapshot;
 
 	UPROPERTY(Transient)
 	FSpellRiseEquipmentViewSnapshot EquipmentSnapshot;
+
+	UPROPERTY(Transient)
+	TSet<TObjectPtr<USpellRiseStorageComponent>> WatchedStorageComponents;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USpellRiseInventoryViewModelComponent> TransferAuthorityInventoryVM;
 
 	int32 NextClientRequestId = 1;
 };

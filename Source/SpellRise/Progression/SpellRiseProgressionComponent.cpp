@@ -27,6 +27,7 @@ void USpellRiseProgressionComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, TalentPoints, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, CraftPoints, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, AttributePoints, COND_OwnerOnly, REPNOTIFY_OnChanged);
+	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, MatchRating, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, MeleeBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, BowBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
 	DOREPLIFETIME_CONDITION_NOTIFY(USpellRiseProgressionComponent, SpellBoosterCount, COND_OwnerOnly, REPNOTIFY_OnChanged);
@@ -122,6 +123,7 @@ FSpellRiseCharacterProgressionSnapshot USpellRiseProgressionComponent::GetCharac
 	Snapshot.TalentPoints = TalentPoints;
 	Snapshot.CraftPoints = CraftPoints;
 	Snapshot.AttributePoints = AttributePoints;
+	Snapshot.MatchRating = MatchRating;
 	return Snapshot;
 }
 
@@ -150,6 +152,7 @@ bool USpellRiseProgressionComponent::InitializeCharacterProgressionDefaults_Serv
 	TalentPoints = DefaultTalentPoints;
 	CraftPoints = DefaultCraftPoints;
 	AttributePoints = DefaultAttributePoints;
+	MatchRating = DefaultMatchRating;
 	HighestRewardedCharacterLevel = DefaultCharacterLevel;
 	MeleeBoosterCount = 0;
 	BowBoosterCount = 0;
@@ -163,13 +166,14 @@ bool USpellRiseProgressionComponent::InitializeCharacterProgressionDefaults_Serv
 	BroadcastCharacterProgressionChanged();
 
 	UE_LOG(LogSpellRiseProgressionComponent, Log,
-		TEXT("[Progression][DefaultsInitialized] Owner=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d"),
+		TEXT("[Progression][DefaultsInitialized] Owner=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d MatchRating=%d"),
 		*GetNameSafe(GetOwner()),
 		CharacterLevel,
 		Experience,
 		TalentPoints,
 		CraftPoints,
-		AttributePoints);
+		AttributePoints,
+		MatchRating);
 	return true;
 }
 
@@ -183,13 +187,14 @@ bool USpellRiseProgressionComponent::SetCharacterProgression_Server(
 	if (!HasAuthorityOwner())
 	{
 		UE_LOG(LogSpellRiseProgressionComponent, Warning,
-			TEXT("[Progression][CharacterProgressionSetRejected] Reason=not_authority Owner=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d"),
+		TEXT("[Progression][CharacterProgressionSetRejected] Reason=not_authority Owner=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d MatchRating=%d"),
 			*GetNameSafe(GetOwner()),
 			NewLevel,
 			NewExperience,
 			NewTalentPoints,
 			NewCraftPoints,
-			NewAttributePoints);
+			NewAttributePoints,
+			MatchRating);
 		return false;
 	}
 
@@ -198,17 +203,20 @@ bool USpellRiseProgressionComponent::SetCharacterProgression_Server(
 	const int32 ClampedTalentPoints = ClampProgressionCurrency(NewTalentPoints);
 	const int32 ClampedCraftPoints = ClampProgressionCurrency(NewCraftPoints);
 	const int32 ClampedAttributePoints = ClampProgressionCurrency(NewAttributePoints);
+	const int32 ClampedMatchRating = ClampMatchRating(MatchRating);
 	const bool bChanged = CharacterLevel != ClampedLevel
 		|| Experience != ClampedExperience
 		|| TalentPoints != ClampedTalentPoints
 		|| CraftPoints != ClampedCraftPoints
-		|| AttributePoints != ClampedAttributePoints;
+		|| AttributePoints != ClampedAttributePoints
+		|| MatchRating != ClampedMatchRating;
 
 	CharacterLevel = ClampedLevel;
 	Experience = ClampedExperience;
 	TalentPoints = ClampedTalentPoints;
 	CraftPoints = ClampedCraftPoints;
 	AttributePoints = ClampedAttributePoints;
+	MatchRating = ClampedMatchRating;
 	if (bChanged)
 	{
 		ForceOwnerNetUpdate();
@@ -229,6 +237,54 @@ bool USpellRiseProgressionComponent::SetHighestRewardedCharacterLevel_Server(int
 		HighestRewardedCharacterLevel,
 		ClampCharacterLevel(NewLevel));
 	return true;
+}
+
+bool USpellRiseProgressionComponent::SetMatchRating_Server(int32 NewRating)
+{
+	if (!HasAuthorityOwner())
+	{
+		UE_LOG(LogSpellRiseProgressionComponent, Warning,
+			TEXT("[Progression][MatchRatingSetRejected] Reason=not_authority Owner=%s Rating=%d"),
+			*GetNameSafe(GetOwner()),
+			NewRating);
+		return false;
+	}
+
+	const int32 ClampedRating = ClampMatchRating(NewRating);
+	if (MatchRating == ClampedRating)
+	{
+		return false;
+	}
+
+	MatchRating = ClampedRating;
+	ForceOwnerNetUpdate();
+	BroadcastCharacterProgressionChanged();
+	UE_LOG(LogSpellRiseProgressionComponent, Log,
+		TEXT("[Progression][MatchRatingSet] Owner=%s Rating=%d"),
+		*GetNameSafe(GetOwner()),
+		MatchRating);
+	return true;
+}
+
+bool USpellRiseProgressionComponent::AddMatchRating_Server(int32 DeltaRating)
+{
+	if (!HasAuthorityOwner() || DeltaRating == 0)
+	{
+		return false;
+	}
+
+	return SetMatchRating_Server(MatchRating + DeltaRating);
+}
+
+bool USpellRiseProgressionComponent::ApplyMatchResult_Server(bool bWon, int32 RatingDelta)
+{
+	if (!HasAuthorityOwner())
+	{
+		return false;
+	}
+
+	const int32 ClampedDelta = FMath::Clamp(FMath::Abs(RatingDelta), 1, MaxMatchRatingDelta);
+	return AddMatchRating_Server(bWon ? ClampedDelta : -ClampedDelta);
 }
 
 void USpellRiseProgressionComponent::GetCumulativeLevelRewards(

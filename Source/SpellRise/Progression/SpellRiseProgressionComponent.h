@@ -53,6 +53,9 @@ struct SPELLRISE_API FSpellRiseCharacterProgressionSnapshot
 
 	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Progression")
 	int32 AttributePoints = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category="SpellRise|Progression")
+	int32 MatchRating = 1000;
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSpellRiseCharacterProgressionChangedSignature, const FSpellRiseCharacterProgressionSnapshot&, Snapshot);
@@ -88,6 +91,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
 	int32 GetAttributePoints() const { return AttributePoints; }
+
+	UFUNCTION(BlueprintPure, Category="SpellRise|Progression")
+	int32 GetMatchRating() const { return MatchRating; }
+
 	int32 GetHighestRewardedCharacterLevel() const { return HighestRewardedCharacterLevel; }
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Progression|Boosters")
@@ -147,6 +154,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression")
 	bool AddAttributePoints_Server(int32 Amount);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression|Match")
+	bool SetMatchRating_Server(int32 NewRating);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression|Match")
+	bool AddMatchRating_Server(int32 DeltaRating);
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression|Match")
+	bool ApplyMatchResult_Server(bool bWon, int32 RatingDelta = 25);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Progression|Boosters")
 	bool PurchaseCombatBooster_Server(ESpellRiseCombatBooster Booster);
@@ -220,6 +236,9 @@ protected:
 	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")
 	int32 AttributePoints = 0;
 
+	UPROPERTY(ReplicatedUsing=OnRep_CharacterProgression, VisibleAnywhere, BlueprintReadOnly, Category="SpellRise|Progression")
+	int32 MatchRating = 1000;
+
 	UPROPERTY()
 	int32 HighestRewardedCharacterLevel = 1;
 
@@ -271,11 +290,15 @@ private:
 	static constexpr int32 DefaultTalentPoints = 100;
 	static constexpr int32 DefaultCraftPoints = 100;
 	static constexpr int32 DefaultAttributePoints = 0;
+	static constexpr int32 DefaultMatchRating = 1000;
 	static constexpr int32 TalentPointsPerLevel = 100;
 	static constexpr int32 CraftPointsPerLevel = 100;
 	static constexpr int32 AttributePointsPerLevel = 5;
 	static constexpr int32 MaxAttributePointGrantLevel = 65;
 	static constexpr int32 MaxProgressionCurrency = 1000000;
+	static constexpr int32 MinMatchRating = 0;
+	static constexpr int32 MaxMatchRating = 5000;
+	static constexpr int32 MaxMatchRatingDelta = 100;
 	static constexpr int32 MaxCombatBoosters = 4;
 	static constexpr float DamageBonusPerBooster = 0.05f;
 	static constexpr float DivineHealingBonusPerBooster = 0.10f;
@@ -284,6 +307,7 @@ private:
 	static int32 ClampProgressionLevel(int32 Level);
 	int32 ClampCharacterLevel(int32 Level) const;
 	static int32 ClampProgressionCurrency(int32 Value);
+	static int32 ClampMatchRating(int32 Value) { return FMath::Clamp(Value, MinMatchRating, MaxMatchRating); }
 	int32 CalculateCumulativeExperienceForLevel(int32 TargetLevel) const;
 	void GetLevelRewards(int32 TargetLevel, int32& OutTalentPoints, int32& OutCraftPoints, int32& OutAttributePoints) const;
 	bool HasAuthorityOwner() const;

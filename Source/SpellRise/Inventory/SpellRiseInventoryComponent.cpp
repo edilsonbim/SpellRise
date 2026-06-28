@@ -2,12 +2,15 @@
 
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
 #include "GameplayEffect.h"
 #include "GameplayEffectTypes.h"
 #include "Net/UnrealNetwork.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
 #include "SpellRise/Inventory/SpellRiseItemDefinitionResolver.h"
+#include "SpellRise/Inventory/SpellRiseStorageComponent.h"
 #include "SpellRiseItemDefinition.h"
 #include "SpellRise/Equipment/SpellRiseWeaponDefinition.h"
 
@@ -33,11 +36,37 @@ void FSpellRiseInventoryList::PostReplicatedChange(const TArrayView<int32> Chang
 
 void FSpellRiseInventoryList::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32)
 {
-	if (!Owner) return;
+	PendingRemovedNotifyItems.Reset();
+	if (!Owner)
+	{
+		return;
+	}
 	for (const int32 Index : RemovedIndices)
 	{
-		if (Entries.IsValidIndex(Index)) Owner->NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Entries[Index]);
+		if (Entries.IsValidIndex(Index))
+		{
+			PendingRemovedNotifyItems.Add(Entries[Index]);
+		}
 	}
+}
+
+void FSpellRiseInventoryList::PostReplicatedRemove(const TArrayView<int32> RemovedIndices, int32)
+{
+	if (!Owner)
+	{
+		PendingRemovedNotifyItems.Reset();
+		return;
+	}
+
+	for (const FSpellRiseItemInstance& Item : PendingRemovedNotifyItems)
+	{
+		Owner->NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Item);
+	}
+	if (PendingRemovedNotifyItems.IsEmpty() && RemovedIndices.Num() > 0)
+	{
+		Owner->NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, FSpellRiseItemInstance());
+	}
+	PendingRemovedNotifyItems.Reset();
 }
 
 USpellRiseInventoryComponent::USpellRiseInventoryComponent()
@@ -131,6 +160,51 @@ void USpellRiseInventoryComponent::RequestDestroyItem(FGuid ItemInstanceId, int3
 	ServerRequestDestroyItem(ItemInstanceId, Quantity, ClientRequestId);
 }
 
+void USpellRiseInventoryComponent::RequestDepositToStorage(
+	USpellRiseStorageComponent* Storage,
+	FGuid ItemInstanceId,
+	int32 PreferredStorageSlot,
+	int32 Quantity,
+	int32 ClientRequestId)
+{
+	if (HasServerAuthority())
+	{
+		ServerRequestDepositToStorage_Implementation(Storage, ItemInstanceId, PreferredStorageSlot, Quantity, ClientRequestId);
+		return;
+	}
+	ServerRequestDepositToStorage(Storage, ItemInstanceId, PreferredStorageSlot, Quantity, ClientRequestId);
+}
+
+void USpellRiseInventoryComponent::RequestWithdrawFromStorage(
+	USpellRiseStorageComponent* Storage,
+	FGuid StorageItemInstanceId,
+	int32 PreferredInventorySlot,
+	int32 Quantity,
+	int32 ClientRequestId)
+{
+	if (HasServerAuthority())
+	{
+		ServerRequestWithdrawFromStorage_Implementation(Storage, StorageItemInstanceId, PreferredInventorySlot, Quantity, ClientRequestId);
+		return;
+	}
+	ServerRequestWithdrawFromStorage(Storage, StorageItemInstanceId, PreferredInventorySlot, Quantity, ClientRequestId);
+}
+
+void USpellRiseInventoryComponent::RequestMoveStorageItem(
+	USpellRiseStorageComponent* Storage,
+	FGuid StorageItemInstanceId,
+	int32 DestinationSlot,
+	int32 Quantity,
+	int32 ClientRequestId)
+{
+	if (HasServerAuthority())
+	{
+		ServerRequestMoveStorageItem_Implementation(Storage, StorageItemInstanceId, DestinationSlot, Quantity, ClientRequestId);
+		return;
+	}
+	ServerRequestMoveStorageItem(Storage, StorageItemInstanceId, DestinationSlot, Quantity, ClientRequestId);
+}
+
 void USpellRiseInventoryComponent::ServerRequestMoveItem_Implementation(FGuid ItemInstanceId, int32 DestinationSlot, int32 Quantity, int32 ClientRequestId)
 {
 	FString Reason;
@@ -218,6 +292,72 @@ void USpellRiseInventoryComponent::ServerRequestDestroyItem_Implementation(FGuid
 
 	const bool bSuccess = DestroyItem_Server(ItemInstanceId, Quantity, Reason);
 	ResolveRequest(ClientRequestId, bSuccess ? ESpellRiseInventoryRequestResult::Success : MapRejectReason(Reason), TEXT("DestroyItem"), Reason);
+}
+
+void USpellRiseInventoryComponent::ServerRequestDepositToStorage_Implementation(
+	USpellRiseStorageComponent* Storage,
+	FGuid ItemInstanceId,
+	int32 PreferredStorageSlot,
+	int32 Quantity,
+	int32 ClientRequestId)
+{
+	FString Reason;
+	if (!IsRuntimeReady(Reason)
+		|| !ValidateRequestId(ClientRequestId, Reason)
+		|| !CheckRateLimit(StorageRateLimit, StorageRequestsPerWindow, Reason)
+		|| !ValidateStorageRequest(Storage, ItemInstanceId, PreferredStorageSlot, Quantity, true, Reason))
+	{
+		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("DepositToStorage"), Reason);
+		return;
+	}
+	const bool bSuccess = Storage->DepositFromInventory_Server(this, ItemInstanceId, PreferredStorageSlot, Quantity, Reason);
+	ResolveRequest(ClientRequestId, bSuccess ? ESpellRiseInventoryRequestResult::Success : MapRejectReason(Reason), TEXT("DepositToStorage"), Reason);
+}
+
+void USpellRiseInventoryComponent::ServerRequestWithdrawFromStorage_Implementation(
+	USpellRiseStorageComponent* Storage,
+	FGuid StorageItemInstanceId,
+	int32 PreferredInventorySlot,
+	int32 Quantity,
+	int32 ClientRequestId)
+{
+	FString Reason;
+	if (!IsRuntimeReady(Reason)
+		|| !ValidateRequestId(ClientRequestId, Reason)
+		|| !CheckRateLimit(StorageRateLimit, StorageRequestsPerWindow, Reason)
+		|| !ValidateStorageRequest(Storage, StorageItemInstanceId, INDEX_NONE, Quantity, true, Reason))
+	{
+		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("WithdrawFromStorage"), Reason);
+		return;
+	}
+	if (PreferredInventorySlot < INDEX_NONE || (PreferredInventorySlot != INDEX_NONE && !ValidateSlot(PreferredInventorySlot)))
+	{
+		Reason = TEXT("invalid_slot");
+		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("WithdrawFromStorage"), Reason);
+		return;
+	}
+	const bool bSuccess = Storage->WithdrawToInventory_Server(this, StorageItemInstanceId, PreferredInventorySlot, Quantity, Reason);
+	ResolveRequest(ClientRequestId, bSuccess ? ESpellRiseInventoryRequestResult::Success : MapRejectReason(Reason), TEXT("WithdrawFromStorage"), Reason);
+}
+
+void USpellRiseInventoryComponent::ServerRequestMoveStorageItem_Implementation(
+	USpellRiseStorageComponent* Storage,
+	FGuid StorageItemInstanceId,
+	int32 DestinationSlot,
+	int32 Quantity,
+	int32 ClientRequestId)
+{
+	FString Reason;
+	if (!IsRuntimeReady(Reason)
+		|| !ValidateRequestId(ClientRequestId, Reason)
+		|| !CheckRateLimit(StorageRateLimit, StorageRequestsPerWindow, Reason)
+		|| !ValidateStorageRequest(Storage, StorageItemInstanceId, DestinationSlot, Quantity, false, Reason))
+	{
+		ResolveRequest(ClientRequestId, MapRejectReason(Reason), TEXT("MoveStorageItem"), Reason);
+		return;
+	}
+	const bool bSuccess = Storage->MoveItem_Server(StorageItemInstanceId, DestinationSlot, Quantity, Reason);
+	ResolveRequest(ClientRequestId, bSuccess ? ESpellRiseInventoryRequestResult::Success : MapRejectReason(Reason), TEXT("MoveStorageItem"), Reason);
 }
 
 bool USpellRiseInventoryComponent::AddItem_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, FGuid& OutItemInstanceId, FString& OutRejectReason)
@@ -378,45 +518,214 @@ bool USpellRiseInventoryComponent::MoveItem_Server(const FGuid& ItemInstanceId, 
 	}
 	else
 	{
-		FSpellRiseItemInstance& Destination = Inventory.Entries[DestinationIndex];
-		if (Destination.DefinitionId != Source.DefinitionId)
+		return MoveItemOntoStack_Server(SourceIndex, DestinationSlot, Quantity, OutRejectReason);
+	}
+	ForceOwnerNetUpdate();
+	return true;
+}
+
+int32 USpellRiseInventoryComponent::CountFreeSlots() const
+{
+	return FMath::Max(0, MaxSlots - Inventory.Entries.Num());
+}
+
+bool USpellRiseInventoryComponent::MergeStackIntoSlot_Server(
+	const int32 SlotIndex,
+	const USpellRiseItemDefinition* Definition,
+	int32& InOutRemaining)
+{
+	if (!Definition || InOutRemaining <= 0 || !ValidateSlot(SlotIndex))
+	{
+		return false;
+	}
+
+	const int32 DestinationIndex = FindEntryIndexBySlot(SlotIndex);
+	if (!Inventory.Entries.IsValidIndex(DestinationIndex))
+	{
+		return false;
+	}
+
+	FSpellRiseItemInstance& Destination = Inventory.Entries[DestinationIndex];
+	if (Destination.DefinitionId != Definition->GetPrimaryAssetId())
+	{
+		return false;
+	}
+
+	const int32 MergeRoom = Definition->MaxStackSize - Destination.Quantity;
+	const int32 MergeAmount = FMath::Min(InOutRemaining, MergeRoom);
+	if (MergeAmount <= 0)
+	{
+		return false;
+	}
+
+	Destination.Quantity += MergeAmount;
+	MarkEntryChanged(Destination);
+	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Destination);
+	InOutRemaining -= MergeAmount;
+	return true;
+}
+
+bool USpellRiseInventoryComponent::PlaceInEmptySlot_Server(
+	const FSpellRiseItemInstance& Template,
+	const int32 PreferredSlot,
+	const int32 MaxStackSize,
+	int32& InOutRemaining)
+{
+	if (InOutRemaining <= 0)
+	{
+		return true;
+	}
+
+	const int32 Slot = FindFreeSlot(PreferredSlot);
+	if (Slot == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 PlaceAmount = FMath::Min(InOutRemaining, MaxStackSize);
+	FSpellRiseItemInstance NewEntry = Template;
+	NewEntry.ItemInstanceId = FGuid::NewGuid();
+	NewEntry.SlotIndex = Slot;
+	NewEntry.Quantity = PlaceAmount;
+	NewEntry.Revision = NextRevision++;
+	FSpellRiseItemInstance& Added = Inventory.Entries.Add_GetRef(NewEntry);
+	Inventory.MarkItemDirty(Added);
+	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Added);
+	InOutRemaining -= PlaceAmount;
+	return true;
+}
+
+bool USpellRiseInventoryComponent::MoveItemOntoStack_Server(
+	const int32 SourceIndex,
+	const int32 DestinationSlot,
+	const int32 Quantity,
+	FString& OutRejectReason)
+{
+	if (!Inventory.Entries.IsValidIndex(SourceIndex) || !ValidateSlot(DestinationSlot))
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	FSpellRiseItemInstance& Source = Inventory.Entries[SourceIndex];
+	const int32 DestinationIndex = FindEntryIndexBySlot(DestinationSlot);
+	if (!Inventory.Entries.IsValidIndex(DestinationIndex))
+	{
+		OutRejectReason = TEXT("invalid_slot");
+		return false;
+	}
+
+	const FSpellRiseItemInstance& Destination = Inventory.Entries[DestinationIndex];
+	if (Destination.DefinitionId != Source.DefinitionId)
+	{
+		OutRejectReason = TEXT("stack_mismatch");
+		return false;
+	}
+
+	const USpellRiseItemDefinition* Definition = ResolveDefinition(Source.DefinitionId);
+	if (!Definition)
+	{
+		OutRejectReason = TEXT("invalid_definition");
+		return false;
+	}
+
+	int32 RemainingToMove = Quantity;
+	MergeStackIntoSlot_Server(DestinationSlot, Definition, RemainingToMove);
+
+	while (RemainingToMove > 0)
+	{
+		if (!PlaceInEmptySlot_Server(Source, INDEX_NONE, Definition->MaxStackSize, RemainingToMove))
 		{
-			if (Quantity != Source.Quantity)
+			break;
+		}
+	}
+
+	const int32 MovedQuantity = Quantity - RemainingToMove;
+	if (MovedQuantity <= 0)
+	{
+		OutRejectReason = TEXT("capacity_exceeded");
+		return false;
+	}
+
+	if (MovedQuantity >= Source.Quantity)
+	{
+		const FSpellRiseItemInstance Removed = Source;
+		Inventory.Entries.RemoveAt(SourceIndex);
+		Inventory.MarkArrayDirty();
+		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Removed);
+	}
+	else
+	{
+		Source.Quantity -= MovedQuantity;
+		MarkEntryChanged(Source);
+		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
+	}
+
+	ForceOwnerNetUpdate();
+	return true;
+}
+
+bool USpellRiseInventoryComponent::PlaceItemWithStacking_Server(
+	const FSpellRiseItemInstance& Item,
+	const int32 PreferredSlot,
+	FString& OutRejectReason)
+{
+	if (!HasServerAuthority())
+	{
+		OutRejectReason = TEXT("invalid_context");
+		return false;
+	}
+	if (!Item.ItemInstanceId.IsValid() || FindEntryIndexById(Item.ItemInstanceId) != INDEX_NONE)
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	const USpellRiseItemDefinition* Definition = ResolveDefinition(Item.DefinitionId);
+	if (!Definition)
+	{
+		OutRejectReason = TEXT("invalid_definition");
+		return false;
+	}
+	if (Item.Quantity <= 0 || Item.Quantity > MaxQuantityPerRequest)
+	{
+		OutRejectReason = TEXT("invalid_quantity");
+		return false;
+	}
+	if (!CanAddWeight(Definition, Item.Quantity))
+	{
+		OutRejectReason = TEXT("weight_exceeded");
+		return false;
+	}
+
+	int32 Remaining = Item.Quantity;
+	if (ValidateSlot(PreferredSlot))
+	{
+		const int32 DestinationIndex = FindEntryIndexBySlot(PreferredSlot);
+		if (DestinationIndex != INDEX_NONE)
+		{
+			if (Inventory.Entries[DestinationIndex].DefinitionId != Item.DefinitionId)
 			{
 				OutRejectReason = TEXT("stack_mismatch");
 				return false;
 			}
-
-			const int32 SourceSlot = Source.SlotIndex;
-			Source.SlotIndex = Destination.SlotIndex;
-			Destination.SlotIndex = SourceSlot;
-			MarkEntryChanged(Source);
-			MarkEntryChanged(Destination);
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Destination);
-			ForceOwnerNetUpdate();
-			return true;
-		}
-		const USpellRiseItemDefinition* Definition = ResolveDefinition(Source.DefinitionId);
-		if (!Definition || Destination.Quantity + Quantity > Definition->MaxStackSize) { OutRejectReason = TEXT("capacity_exceeded"); return false; }
-		Destination.Quantity += Quantity;
-		MarkEntryChanged(Destination);
-		const FSpellRiseItemInstance DestinationSnapshot = Destination;
-		if (Quantity == Source.Quantity)
-		{
-			const FSpellRiseItemInstance Removed = Source;
-			Inventory.Entries.RemoveAt(SourceIndex);
-			Inventory.MarkArrayDirty();
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Removed);
+			MergeStackIntoSlot_Server(PreferredSlot, Definition, Remaining);
 		}
 		else
 		{
-			Source.Quantity -= Quantity;
-			MarkEntryChanged(Source);
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
+			PlaceInEmptySlot_Server(Item, PreferredSlot, Definition->MaxStackSize, Remaining);
 		}
-		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, DestinationSnapshot);
 	}
+
+	while (Remaining > 0)
+	{
+		if (!PlaceInEmptySlot_Server(Item, INDEX_NONE, Definition->MaxStackSize, Remaining))
+		{
+			OutRejectReason = TEXT("capacity_exceeded");
+			return false;
+		}
+	}
+
 	ForceOwnerNetUpdate();
 	return true;
 }
@@ -536,22 +845,7 @@ bool USpellRiseInventoryComponent::ExtractItem_Server(const FGuid& ItemInstanceI
 
 bool USpellRiseInventoryComponent::InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason)
 {
-	if (!HasServerAuthority()) { OutRejectReason = TEXT("invalid_context"); return false; }
-	if (!Item.ItemInstanceId.IsValid() || FindEntryIndexById(Item.ItemInstanceId) != INDEX_NONE) { OutRejectReason = TEXT("invalid_item"); return false; }
-	const USpellRiseItemDefinition* Definition = ResolveDefinition(Item.DefinitionId);
-	if (!Definition) { OutRejectReason = TEXT("invalid_definition"); return false; }
-	if (Item.Quantity <= 0 || Item.Quantity > Definition->MaxStackSize) { OutRejectReason = TEXT("invalid_quantity"); return false; }
-	if (!CanAddWeight(Definition, Item.Quantity)) { OutRejectReason = TEXT("weight_exceeded"); return false; }
-	const int32 Slot = FindFreeSlot(PreferredSlot);
-	if (Slot == INDEX_NONE) { OutRejectReason = TEXT("capacity_exceeded"); return false; }
-	FSpellRiseItemInstance Copy = Item;
-	Copy.SlotIndex = Slot;
-	Copy.Revision = NextRevision++;
-	FSpellRiseItemInstance& Added = Inventory.Entries.Add_GetRef(Copy);
-	Inventory.MarkItemDirty(Added);
-	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Added);
-	ForceOwnerNetUpdate();
-	return true;
+	return PlaceItemWithStacking_Server(Item, PreferredSlot, OutRejectReason);
 }
 
 void USpellRiseInventoryComponent::ResetInventory_Server()
@@ -725,6 +1019,57 @@ bool USpellRiseInventoryComponent::CheckRateLimit(FSpellRiseInventoryRateLimitSt
 		State.RequestsInWindow = 0;
 	}
 	if (++State.RequestsInWindow > MaxRequests) { OutRejectReason = TEXT("rate_limited"); return false; }
+	return true;
+}
+
+bool USpellRiseInventoryComponent::ValidateStorageRequest(
+	USpellRiseStorageComponent* Storage,
+	const FGuid& ItemInstanceId,
+	const int32 Slot,
+	const int32 Quantity,
+	const bool bAllowAutoSlot,
+	FString& OutRejectReason) const
+{
+	if (!Storage || !Storage->GetOwner())
+	{
+		OutRejectReason = TEXT("invalid_storage");
+		return false;
+	}
+	if (!ItemInstanceId.IsValid())
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+	if (Quantity <= 0 || Quantity > MaxQuantityPerRequest)
+	{
+		OutRejectReason = TEXT("invalid_quantity");
+		return false;
+	}
+	if ((!bAllowAutoSlot && Slot < 0) || Slot < INDEX_NONE)
+	{
+		OutRejectReason = TEXT("invalid_slot");
+		return false;
+	}
+	if (Slot != INDEX_NONE && Slot >= Storage->GetMaxSlots())
+	{
+		OutRejectReason = TEXT("invalid_slot");
+		return false;
+	}
+
+	const APlayerState* PlayerState = Cast<APlayerState>(GetOwner());
+	const APawn* Pawn = PlayerState ? PlayerState->GetPawn() : nullptr;
+	const AActor* StorageActor = Storage->GetOwner();
+	if (!Pawn || !StorageActor)
+	{
+		OutRejectReason = TEXT("invalid_owner");
+		return false;
+	}
+	const float MaxDistanceSq = FMath::Square(MaxStorageInteractionDistance);
+	if (FVector::DistSquared(Pawn->GetActorLocation(), StorageActor->GetActorLocation()) > MaxDistanceSq)
+	{
+		OutRejectReason = TEXT("out_of_range");
+		return false;
+	}
 	return true;
 }
 

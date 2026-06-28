@@ -96,11 +96,15 @@ struct SPELLRISE_API FSpellRiseInventoryList : public FFastArraySerializer
 	void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize);
 	void PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize);
 	void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
+	void PostReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
 	void SetOwner(USpellRiseInventoryComponent* InOwner) { Owner = InOwner; }
 
 private:
 	UPROPERTY(NotReplicated)
 	TObjectPtr<USpellRiseInventoryComponent> Owner = nullptr;
+
+	UPROPERTY(NotReplicated)
+	TArray<FSpellRiseItemInstance> PendingRemovedNotifyItems;
 };
 
 template<>

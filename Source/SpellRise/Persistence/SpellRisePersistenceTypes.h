@@ -329,6 +329,9 @@ struct FSpellRiseCharacterSaveData
 	int32 AttributePoints = 0;
 
 	UPROPERTY()
+	int32 MatchRating = 1000;
+
+	UPROPERTY()
 	int32 HighestRewardedCharacterLevel = 1;
 
 	UPROPERTY()

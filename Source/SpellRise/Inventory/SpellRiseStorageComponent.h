@@ -28,11 +28,15 @@ struct SPELLRISE_API FSpellRiseStorageList : public FFastArraySerializer
 	void PostReplicatedAdd(const TArrayView<int32> AddedIndices, int32 FinalSize);
 	void PostReplicatedChange(const TArrayView<int32> ChangedIndices, int32 FinalSize);
 	void PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
+	void PostReplicatedRemove(const TArrayView<int32> RemovedIndices, int32 FinalSize);
 	void SetOwner(USpellRiseStorageComponent* InOwner) { Owner = InOwner; }
 
 private:
 	UPROPERTY(NotReplicated)
 	TObjectPtr<USpellRiseStorageComponent> Owner = nullptr;
+
+	UPROPERTY(NotReplicated)
+	TArray<FSpellRiseItemInstance> PendingRemovedNotifyItems;
 };
 
 template<>
@@ -96,10 +100,15 @@ public:
 private:
 	bool HasServerAuthority() const;
 	bool ValidateSlot(int32 SlotIndex) const;
+	int32 CountFreeSlots() const;
 	int32 FindFreeSlot(int32 PreferredSlot = INDEX_NONE) const;
 	int32 FindEntryIndexById(const FGuid& ItemInstanceId) const;
 	int32 FindEntryIndexBySlot(int32 SlotIndex) const;
 	bool CanAddWeight(const USpellRiseItemDefinition* Definition, int32 Quantity) const;
+	bool MergeStackIntoSlot_Server(int32 SlotIndex, const USpellRiseItemDefinition* Definition, int32& InOutRemaining);
+	bool PlaceInEmptySlot_Server(const FSpellRiseItemInstance& Template, int32 PreferredSlot, int32 MaxStackSize, int32& InOutRemaining);
+	bool MoveItemOntoStack_Server(int32 SourceIndex, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
+	bool PlaceItemWithStacking_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
 	bool ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason);
 	bool InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
 	bool RestoreExtractedItem_Server(const FSpellRiseItemInstance& Item, FString& OutRejectReason);

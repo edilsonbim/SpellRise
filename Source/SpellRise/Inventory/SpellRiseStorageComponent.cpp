@@ -28,11 +28,37 @@ void FSpellRiseStorageList::PostReplicatedChange(const TArrayView<int32> Changed
 
 void FSpellRiseStorageList::PreReplicatedRemove(const TArrayView<int32> RemovedIndices, int32)
 {
-	if (!Owner) return;
+	PendingRemovedNotifyItems.Reset();
+	if (!Owner)
+	{
+		return;
+	}
 	for (const int32 Index : RemovedIndices)
 	{
-		if (Entries.IsValidIndex(Index)) Owner->NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Entries[Index]);
+		if (Entries.IsValidIndex(Index))
+		{
+			PendingRemovedNotifyItems.Add(Entries[Index]);
+		}
 	}
+}
+
+void FSpellRiseStorageList::PostReplicatedRemove(const TArrayView<int32> RemovedIndices, int32)
+{
+	if (!Owner)
+	{
+		PendingRemovedNotifyItems.Reset();
+		return;
+	}
+
+	for (const FSpellRiseItemInstance& Item : PendingRemovedNotifyItems)
+	{
+		Owner->NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Item);
+	}
+	if (PendingRemovedNotifyItems.IsEmpty() && RemovedIndices.Num() > 0)
+	{
+		Owner->NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, FSpellRiseItemInstance());
+	}
+	PendingRemovedNotifyItems.Reset();
 }
 
 USpellRiseStorageComponent::USpellRiseStorageComponent()
@@ -169,40 +195,214 @@ bool USpellRiseStorageComponent::MoveItem_Server(
 	}
 	else
 	{
-		FSpellRiseItemInstance& Destination = Storage.Entries[DestinationIndex];
-		if (Destination.DefinitionId != Source.DefinitionId)
+		return MoveItemOntoStack_Server(SourceIndex, DestinationSlot, Quantity, OutRejectReason);
+	}
+	ForceNetUpdate();
+	return true;
+}
+
+int32 USpellRiseStorageComponent::CountFreeSlots() const
+{
+	return FMath::Max(0, MaxSlots - Storage.Entries.Num());
+}
+
+bool USpellRiseStorageComponent::MergeStackIntoSlot_Server(
+	const int32 SlotIndex,
+	const USpellRiseItemDefinition* Definition,
+	int32& InOutRemaining)
+{
+	if (!Definition || InOutRemaining <= 0 || !ValidateSlot(SlotIndex))
+	{
+		return false;
+	}
+
+	const int32 DestinationIndex = FindEntryIndexBySlot(SlotIndex);
+	if (!Storage.Entries.IsValidIndex(DestinationIndex))
+	{
+		return false;
+	}
+
+	FSpellRiseItemInstance& Destination = Storage.Entries[DestinationIndex];
+	if (Destination.DefinitionId != Definition->GetPrimaryAssetId())
+	{
+		return false;
+	}
+
+	const int32 MergeRoom = Definition->MaxStackSize - Destination.Quantity;
+	const int32 MergeAmount = FMath::Min(InOutRemaining, MergeRoom);
+	if (MergeAmount <= 0)
+	{
+		return false;
+	}
+
+	Destination.Quantity += MergeAmount;
+	MarkEntryChanged(Destination);
+	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Destination);
+	InOutRemaining -= MergeAmount;
+	return true;
+}
+
+bool USpellRiseStorageComponent::PlaceInEmptySlot_Server(
+	const FSpellRiseItemInstance& Template,
+	const int32 PreferredSlot,
+	const int32 MaxStackSize,
+	int32& InOutRemaining)
+{
+	if (InOutRemaining <= 0)
+	{
+		return true;
+	}
+
+	const int32 Slot = FindFreeSlot(PreferredSlot);
+	if (Slot == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 PlaceAmount = FMath::Min(InOutRemaining, MaxStackSize);
+	FSpellRiseItemInstance NewEntry = Template;
+	NewEntry.ItemInstanceId = FGuid::NewGuid();
+	NewEntry.SlotIndex = Slot;
+	NewEntry.Quantity = PlaceAmount;
+	NewEntry.Revision = NextRevision++;
+	FSpellRiseItemInstance& Added = Storage.Entries.Add_GetRef(NewEntry);
+	Storage.MarkItemDirty(Added);
+	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Added);
+	InOutRemaining -= PlaceAmount;
+	return true;
+}
+
+bool USpellRiseStorageComponent::MoveItemOntoStack_Server(
+	const int32 SourceIndex,
+	const int32 DestinationSlot,
+	const int32 Quantity,
+	FString& OutRejectReason)
+{
+	if (!Storage.Entries.IsValidIndex(SourceIndex) || !ValidateSlot(DestinationSlot))
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	FSpellRiseItemInstance& Source = Storage.Entries[SourceIndex];
+	const int32 DestinationIndex = FindEntryIndexBySlot(DestinationSlot);
+	if (!Storage.Entries.IsValidIndex(DestinationIndex))
+	{
+		OutRejectReason = TEXT("invalid_slot");
+		return false;
+	}
+
+	const FSpellRiseItemInstance& Destination = Storage.Entries[DestinationIndex];
+	if (Destination.DefinitionId != Source.DefinitionId)
+	{
+		OutRejectReason = TEXT("stack_mismatch");
+		return false;
+	}
+
+	const USpellRiseItemDefinition* Definition = ResolveDefinition(Source.DefinitionId);
+	if (!Definition)
+	{
+		OutRejectReason = TEXT("invalid_definition");
+		return false;
+	}
+
+	int32 RemainingToMove = Quantity;
+	MergeStackIntoSlot_Server(DestinationSlot, Definition, RemainingToMove);
+
+	while (RemainingToMove > 0)
+	{
+		if (!PlaceInEmptySlot_Server(Source, INDEX_NONE, Definition->MaxStackSize, RemainingToMove))
 		{
-			if (Quantity != Source.Quantity) { OutRejectReason = TEXT("stack_mismatch"); return false; }
-			const int32 SourceSlot = Source.SlotIndex;
-			Source.SlotIndex = Destination.SlotIndex;
-			Destination.SlotIndex = SourceSlot;
-			MarkEntryChanged(Source);
-			MarkEntryChanged(Destination);
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Destination);
-			ForceNetUpdate();
-			return true;
+			break;
 		}
-		const USpellRiseItemDefinition* Definition = ResolveDefinition(Source.DefinitionId);
-		if (!Definition || Destination.Quantity + Quantity > Definition->MaxStackSize) { OutRejectReason = TEXT("capacity_exceeded"); return false; }
-		Destination.Quantity += Quantity;
-		MarkEntryChanged(Destination);
-		const FSpellRiseItemInstance DestinationSnapshot = Destination;
-		if (Quantity == Source.Quantity)
+	}
+
+	const int32 MovedQuantity = Quantity - RemainingToMove;
+	if (MovedQuantity <= 0)
+	{
+		OutRejectReason = TEXT("capacity_exceeded");
+		return false;
+	}
+
+	if (MovedQuantity >= Source.Quantity)
+	{
+		const FSpellRiseItemInstance Removed = Source;
+		Storage.Entries.RemoveAt(SourceIndex);
+		Storage.MarkArrayDirty();
+		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Removed);
+	}
+	else
+	{
+		Source.Quantity -= MovedQuantity;
+		MarkEntryChanged(Source);
+		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
+	}
+
+	ForceNetUpdate();
+	return true;
+}
+
+bool USpellRiseStorageComponent::PlaceItemWithStacking_Server(
+	const FSpellRiseItemInstance& Item,
+	const int32 PreferredSlot,
+	FString& OutRejectReason)
+{
+	if (!HasServerAuthority())
+	{
+		OutRejectReason = TEXT("invalid_context");
+		return false;
+	}
+	if (!Item.ItemInstanceId.IsValid() || FindEntryIndexById(Item.ItemInstanceId) != INDEX_NONE)
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	const USpellRiseItemDefinition* Definition = ResolveDefinition(Item.DefinitionId);
+	if (!Definition)
+	{
+		OutRejectReason = TEXT("invalid_definition");
+		return false;
+	}
+	if (Item.Quantity <= 0 || Item.Quantity > MaxQuantityPerOperation)
+	{
+		OutRejectReason = TEXT("invalid_quantity");
+		return false;
+	}
+	if (!CanAddWeight(Definition, Item.Quantity))
+	{
+		OutRejectReason = TEXT("weight_exceeded");
+		return false;
+	}
+
+	int32 Remaining = Item.Quantity;
+	if (ValidateSlot(PreferredSlot))
+	{
+		const int32 DestinationIndex = FindEntryIndexBySlot(PreferredSlot);
+		if (DestinationIndex != INDEX_NONE)
 		{
-			const FSpellRiseItemInstance Removed = Source;
-			Storage.Entries.RemoveAt(SourceIndex);
-			Storage.MarkArrayDirty();
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Removed);
+			if (Storage.Entries[DestinationIndex].DefinitionId != Item.DefinitionId)
+			{
+				OutRejectReason = TEXT("stack_mismatch");
+				return false;
+			}
+			MergeStackIntoSlot_Server(PreferredSlot, Definition, Remaining);
 		}
 		else
 		{
-			Source.Quantity -= Quantity;
-			MarkEntryChanged(Source);
-			NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
+			PlaceInEmptySlot_Server(Item, PreferredSlot, Definition->MaxStackSize, Remaining);
 		}
-		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, DestinationSnapshot);
 	}
+
+	while (Remaining > 0)
+	{
+		if (!PlaceInEmptySlot_Server(Item, INDEX_NONE, Definition->MaxStackSize, Remaining))
+		{
+			OutRejectReason = TEXT("capacity_exceeded");
+			return false;
+		}
+	}
+
 	ForceNetUpdate();
 	return true;
 }
@@ -328,22 +528,7 @@ bool USpellRiseStorageComponent::InsertItem_Server(
 	const int32 PreferredSlot,
 	FString& OutRejectReason)
 {
-	if (!HasServerAuthority()) { OutRejectReason = TEXT("invalid_context"); return false; }
-	if (!Item.ItemInstanceId.IsValid() || FindEntryIndexById(Item.ItemInstanceId) != INDEX_NONE) { OutRejectReason = TEXT("invalid_item"); return false; }
-	const USpellRiseItemDefinition* Definition = ResolveDefinition(Item.DefinitionId);
-	if (!Definition) { OutRejectReason = TEXT("invalid_definition"); return false; }
-	if (Item.Quantity <= 0 || Item.Quantity > Definition->MaxStackSize || Item.Quantity > MaxQuantityPerOperation) { OutRejectReason = TEXT("invalid_quantity"); return false; }
-	if (!CanAddWeight(Definition, Item.Quantity)) { OutRejectReason = TEXT("weight_exceeded"); return false; }
-	const int32 Slot = FindFreeSlot(PreferredSlot);
-	if (Slot == INDEX_NONE) { OutRejectReason = TEXT("capacity_exceeded"); return false; }
-	FSpellRiseItemInstance Copy = Item;
-	Copy.SlotIndex = Slot;
-	Copy.Revision = NextRevision++;
-	FSpellRiseItemInstance& Added = Storage.Entries.Add_GetRef(Copy);
-	Storage.MarkItemDirty(Added);
-	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Added);
-	ForceNetUpdate();
-	return true;
+	return PlaceItemWithStacking_Server(Item, PreferredSlot, OutRejectReason);
 }
 
 bool USpellRiseStorageComponent::RestoreExtractedItem_Server(

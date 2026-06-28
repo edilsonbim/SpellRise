@@ -555,6 +555,7 @@ namespace
 		int32& OutTalentPoints,
 		int32& OutCraftPoints,
 		int32& OutAttributePoints,
+		int32& OutMatchRating,
 		int32& OutMeleeBoosterCount,
 		int32& OutBowBoosterCount,
 		int32& OutSpellBoosterCount,
@@ -571,6 +572,7 @@ namespace
 		OutTalentPoints = 100;
 		OutCraftPoints = 100;
 		OutAttributePoints = 0;
+		OutMatchRating = 1000;
 		OutMeleeBoosterCount = 0;
 		OutBowBoosterCount = 0;
 		OutSpellBoosterCount = 0;
@@ -597,6 +599,7 @@ namespace
 		OutTalentPoints = FMath::Clamp(ProgressionComponent->GetTalentPoints(), 0, PersistentProgressionCurrencyMax);
 		OutCraftPoints = FMath::Clamp(ProgressionComponent->GetCraftPoints(), 0, PersistentProgressionCurrencyMax);
 		OutAttributePoints = FMath::Clamp(ProgressionComponent->GetAttributePoints(), 0, PersistentProgressionCurrencyMax);
+		OutMatchRating = FMath::Clamp(ProgressionComponent->GetMatchRating(), 0, 5000);
 		OutMeleeBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Melee);
 		OutBowBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Bow);
 		OutSpellBoosterCount = ProgressionComponent->GetCombatBoosterCount(ESpellRiseCombatBooster::Spell);
@@ -1004,7 +1007,11 @@ namespace
 		const int32 SavedAttributePoints = Data.SchemaVersion >= 9
 			? FMath::Clamp(Data.AttributePoints, 0, PersistentProgressionCurrencyMax)
 			: 0;
+		const int32 SavedMatchRating = Data.SchemaVersion >= 15
+			? FMath::Clamp(Data.MatchRating, 0, 5000)
+			: 1000;
 		ProgressionComponent->SetCharacterProgression_Server(SavedCharacterLevel, SavedExperience, SavedTalentPoints, SavedCraftPoints, SavedAttributePoints);
+		ProgressionComponent->SetMatchRating_Server(SavedMatchRating);
 		ProgressionComponent->SetHighestRewardedCharacterLevel_Server(
 			Data.SchemaVersion >= 14
 				? FMath::Clamp(Data.HighestRewardedCharacterLevel, SavedCharacterLevel, PersistentCharacterLevelMax)
@@ -1050,13 +1057,14 @@ namespace
 		}
 
 		UE_LOG(LogSpellRisePersistence, Log,
-			TEXT("[Persistence][ProgressionApplied] PlayerState=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d WeaponLevels=%d SchoolLevels=%d"),
+			TEXT("[Persistence][ProgressionApplied] PlayerState=%s Level=%d Experience=%d TalentPoints=%d CraftPoints=%d AttributePoints=%d MatchRating=%d WeaponLevels=%d SchoolLevels=%d"),
 			*GetNameSafe(PlayerState),
 			SavedCharacterLevel,
 			SavedExperience,
 			SavedTalentPoints,
 			SavedCraftPoints,
 			SavedAttributePoints,
+			SavedMatchRating,
 			AppliedWeaponLevels,
 			AppliedSchoolLevels);
 	}
@@ -2962,6 +2970,7 @@ bool USpellRisePersistenceSubsystem::CollectCharacterData(AController* Controlle
 		OutData.TalentPoints,
 		OutData.CraftPoints,
 		OutData.AttributePoints,
+		OutData.MatchRating,
 		OutData.MeleeBoosterCount,
 		OutData.BowBoosterCount,
 		OutData.SpellBoosterCount,

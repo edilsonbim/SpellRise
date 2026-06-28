@@ -7,6 +7,7 @@
 #include "SpellRiseInventoryComponent.generated.h"
 
 class USpellRiseItemDefinition;
+class USpellRiseStorageComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSpellRiseInventoryChanged, ESpellRiseInventoryChangeType, ChangeType, FSpellRiseItemInstance, Item);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSpellRiseInventoryRequestResolved, int32, ClientRequestId, ESpellRiseInventoryRequestResult, Result);
@@ -78,6 +79,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory")
 	void RequestDestroyItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|Storage")
+	void RequestDepositToStorage(USpellRiseStorageComponent* Storage, FGuid ItemInstanceId, int32 PreferredStorageSlot, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|Storage")
+	void RequestWithdrawFromStorage(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 PreferredInventorySlot, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|Storage")
+	void RequestMoveStorageItem(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 DestinationSlot, int32 Quantity, int32 ClientRequestId);
+
 	bool AddItem_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, FGuid& OutItemInstanceId, FString& OutRejectReason);
 	bool RemoveItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FString& OutRejectReason);
 	bool MoveItem_Server(const FGuid& ItemInstanceId, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
@@ -114,6 +124,15 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestDestroyItem(FGuid ItemInstanceId, int32 Quantity, int32 ClientRequestId);
 
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDepositToStorage(USpellRiseStorageComponent* Storage, FGuid ItemInstanceId, int32 PreferredStorageSlot, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestWithdrawFromStorage(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 PreferredInventorySlot, int32 Quantity, int32 ClientRequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestMoveStorageItem(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 DestinationSlot, int32 Quantity, int32 ClientRequestId);
+
 	UFUNCTION(Client, Reliable)
 	void ClientResolveRequest(int32 ClientRequestId, ESpellRiseInventoryRequestResult Result);
 
@@ -127,11 +146,17 @@ private:
 	bool RestoreExtractedItem_Server(const FSpellRiseItemInstance& Item, FString& OutRejectReason);
 	bool ValidateRequestId(int32 ClientRequestId, FString& OutRejectReason);
 	bool CheckRateLimit(FSpellRiseInventoryRateLimitState& State, int32 MaxRequests, FString& OutRejectReason);
+	bool ValidateStorageRequest(USpellRiseStorageComponent* Storage, const FGuid& ItemInstanceId, int32 Slot, int32 Quantity, bool bAllowAutoSlot, FString& OutRejectReason) const;
 	bool ValidateSlot(int32 SlotIndex) const;
+	int32 CountFreeSlots() const;
 	int32 FindFreeSlot(int32 PreferredSlot = INDEX_NONE) const;
 	int32 FindEntryIndexById(const FGuid& ItemInstanceId) const;
 	int32 FindEntryIndexBySlot(int32 SlotIndex) const;
 	bool CanAddWeight(const USpellRiseItemDefinition* Definition, int32 Quantity) const;
+	bool MergeStackIntoSlot_Server(int32 SlotIndex, const USpellRiseItemDefinition* Definition, int32& InOutRemaining);
+	bool PlaceInEmptySlot_Server(const FSpellRiseItemInstance& Template, int32 PreferredSlot, int32 MaxStackSize, int32& InOutRemaining);
+	bool MoveItemOntoStack_Server(int32 SourceIndex, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
+	bool PlaceItemWithStacking_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
 	bool AddItemInternal_Server(const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, uint8 Flags, FGuid& OutItemInstanceId, FString& OutRejectReason);
 	bool AddResolvedItemInternal_Server(const USpellRiseItemDefinition* Definition, const FPrimaryAssetId& DefinitionId, int32 Quantity, int32 PreferredSlot, uint8 Flags, FGuid& OutItemInstanceId, FString& OutRejectReason);
 	void MarkEntryChanged(FSpellRiseItemInstance& Entry);
@@ -166,6 +191,12 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="10"))
 	int32 DestroyRequestsPerWindow = 2;
 
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="20"))
+	int32 StorageRequestsPerWindow = 6;
+
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="100.0"))
+	float MaxStorageInteractionDistance = 500.0f;
+
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="1000"))
 	int32 MaxQuantityPerRequest = 1000;
 
@@ -176,6 +207,7 @@ private:
 	FSpellRiseInventoryRateLimitState DropRateLimit;
 	FSpellRiseInventoryRateLimitState UseRateLimit;
 	FSpellRiseInventoryRateLimitState DestroyRateLimit;
+	FSpellRiseInventoryRateLimitState StorageRateLimit;
 	TSet<int32> RecentRequestIds;
 	TArray<int32> RecentRequestOrder;
 	int32 NextRevision = 1;

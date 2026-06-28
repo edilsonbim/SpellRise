@@ -3066,6 +3066,23 @@ void ASpellRiseCharacterBase::FinalizeDeath_Server(FName Reason, ASpellRiseChara
 	StopResourceRegen_Server();
 	SyncDeadStateFromASC(TEXT("FinalizeDeath_Server"));
 	RefreshRuntimeTickPolicy();
+	if (ASpellRisePlayerState* VictimPlayerState = GetPlayerState<ASpellRisePlayerState>())
+	{
+		if (USpellRiseProgressionComponent* VictimProgression = VictimPlayerState->GetProgressionComponent())
+		{
+			VictimProgression->ApplyMatchResult_Server(false);
+		}
+	}
+	if (Finalizer)
+	{
+		if (ASpellRisePlayerState* FinalizerPlayerState = Finalizer->GetPlayerState<ASpellRisePlayerState>())
+		{
+			if (USpellRiseProgressionComponent* FinalizerProgression = FinalizerPlayerState->GetProgressionComponent())
+			{
+				FinalizerProgression->ApplyMatchResult_Server(true);
+			}
+		}
+	}
 	ClientUpdateDeathWidget(true);
 	ProcessFullLootDrop_Server(GetActorLocation());
 	ScheduleCorpseDespawn_Server();
