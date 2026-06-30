@@ -100,15 +100,7 @@ bool USpellRiseInventoryComponent::FindItem(const FGuid& ItemInstanceId, FSpellR
 
 float USpellRiseInventoryComponent::GetCurrentWeight() const
 {
-	float Total = 0.0f;
-	for (const FSpellRiseItemInstance& Entry : Inventory.Entries)
-	{
-		if (const USpellRiseItemDefinition* Definition = ResolveDefinition(Entry.DefinitionId))
-		{
-			Total += Definition->UnitWeight * Entry.Quantity;
-		}
-	}
-	return Total;
+	return CachedWeight;
 }
 
 void USpellRiseInventoryComponent::SetMaxWeight_Server(const float NewMaxWeight)
@@ -406,6 +398,7 @@ bool USpellRiseInventoryComponent::AddResolvedItemInternal_Server(
 	Entry.Revision = NextRevision++;
 	Inventory.MarkItemDirty(Entry);
 	OutItemInstanceId = Entry.ItemInstanceId;
+	CachedWeight += Definition->UnitWeight * Quantity;
 	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Entry);
 	ForceOwnerNetUpdate();
 	return true;
@@ -465,17 +458,26 @@ bool USpellRiseInventoryComponent::RemoveItem_Server(const FGuid& ItemInstanceId
 	if (!Inventory.Entries.IsValidIndex(Index)) { OutRejectReason = TEXT("invalid_item"); return false; }
 	FSpellRiseItemInstance& Entry = Inventory.Entries[Index];
 	if (Quantity <= 0 || Quantity > Entry.Quantity || Quantity > MaxQuantityPerRequest) { OutRejectReason = TEXT("invalid_quantity"); return false; }
+
+	const float UnitWeight = [&]() -> float
+	{
+		const USpellRiseItemDefinition* Def = ResolveDefinition(Entry.DefinitionId);
+		return Def ? Def->UnitWeight : 0.0f;
+	}();
+
 	if (Quantity == Entry.Quantity)
 	{
 		const FSpellRiseItemInstance Removed = Entry;
 		Inventory.Entries.RemoveAt(Index);
 		Inventory.MarkArrayDirty();
+		CachedWeight = FMath::Max(0.0f, CachedWeight - UnitWeight * Quantity);
 		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Removed, Removed);
 	}
 	else
 	{
 		Entry.Quantity -= Quantity;
 		MarkEntryChanged(Entry);
+		CachedWeight = FMath::Max(0.0f, CachedWeight - UnitWeight * Quantity);
 		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Entry);
 	}
 	ForceOwnerNetUpdate();
@@ -602,7 +604,13 @@ bool USpellRiseInventoryComponent::PlaceInEmptySlot_Server(
 
 	const int32 PlaceAmount = FMath::Min(InOutRemaining, MaxStackSize);
 	FSpellRiseItemInstance NewEntry = Template;
-	NewEntry.ItemInstanceId = FGuid::NewGuid();
+	// Preserve the persistent identity when the original instance fits in this
+	// entry. Only additional entries created by a real stack split need a new
+	// identity.
+	if (InOutRemaining != Template.Quantity)
+	{
+		NewEntry.ItemInstanceId = FGuid::NewGuid();
+	}
 	NewEntry.SlotIndex = Slot;
 	NewEntry.Quantity = PlaceAmount;
 	NewEntry.Revision = NextRevision++;
@@ -647,6 +655,10 @@ bool USpellRiseInventoryComponent::MoveItemOntoStack_Server(
 		return false;
 	}
 
+	// Batch all notifications so listeners never see an intermediate state where
+	// both the source and the newly-placed overflow entries coexist in Entries.
+	BeginNotificationBatch();
+
 	int32 RemainingToMove = Quantity;
 	MergeStackIntoSlot_Server(DestinationSlot, Definition, RemainingToMove);
 
@@ -661,6 +673,7 @@ bool USpellRiseInventoryComponent::MoveItemOntoStack_Server(
 	const int32 MovedQuantity = Quantity - RemainingToMove;
 	if (MovedQuantity <= 0)
 	{
+		FlushNotificationBatch();
 		OutRejectReason = TEXT("capacity_exceeded");
 		return false;
 	}
@@ -679,6 +692,7 @@ bool USpellRiseInventoryComponent::MoveItemOntoStack_Server(
 		NotifyReplicatedChange(ESpellRiseInventoryChangeType::Changed, Source);
 	}
 
+	FlushNotificationBatch();
 	ForceOwnerNetUpdate();
 	return true;
 }
@@ -744,6 +758,7 @@ bool USpellRiseInventoryComponent::PlaceItemWithStacking_Server(
 		}
 	}
 
+	CachedWeight += Definition->UnitWeight * Item.Quantity;
 	ForceOwnerNetUpdate();
 	return true;
 }
@@ -848,6 +863,44 @@ bool USpellRiseInventoryComponent::DestroyItem_Server(const FGuid& ItemInstanceI
 	return RemoveItem_Server(ItemInstanceId, Quantity, OutRejectReason);
 }
 
+bool USpellRiseInventoryComponent::RepairItem_Server(const FGuid& ItemInstanceId, FString& OutRejectReason)
+{
+	if (!HasServerAuthority())
+	{
+		OutRejectReason = TEXT("invalid_context");
+		return false;
+	}
+
+	const int32 Index = FindEntryIndexById(ItemInstanceId);
+	if (Index == INDEX_NONE)
+	{
+		OutRejectReason = TEXT("invalid_item");
+		return false;
+	}
+
+	FSpellRiseItemInstance& Entry = Inventory.Entries[Index];
+	const USpellRiseItemDefinition* Def = ResolveDefinition(Entry.DefinitionId);
+	if (!Def || Def->MaxDurability <= 0)
+	{
+		OutRejectReason = TEXT("not_repairable");
+		return false;
+	}
+
+	if (Entry.Durability >= Def->MaxDurability)
+	{
+		OutRejectReason = TEXT("already_full");
+		return false;
+	}
+
+	UE_LOG(LogSpellRiseInventory, Log,
+		TEXT("[Repair][Inventory] Owner=%s Item=%s Durability=%d->%d"),
+		*GetNameSafe(GetOwner()), *ItemInstanceId.ToString(), Entry.Durability, Def->MaxDurability);
+
+	Entry.Durability = Def->MaxDurability;
+	MarkEntryChanged(Entry);
+	return true;
+}
+
 bool USpellRiseInventoryComponent::ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason)
 {
 	const int32 Index = FindEntryIndexById(ItemInstanceId);
@@ -874,6 +927,7 @@ void USpellRiseInventoryComponent::ResetInventory_Server()
 	}
 	Inventory.Entries.Reset();
 	Inventory.MarkArrayDirty();
+	CachedWeight = 0.0f;
 	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Reset, FSpellRiseItemInstance());
 	ForceOwnerNetUpdate();
 }
@@ -1004,7 +1058,27 @@ bool USpellRiseInventoryComponent::CommitDrop_Server_Implementation(const FSpell
 
 void USpellRiseInventoryComponent::NotifyReplicatedChange(ESpellRiseInventoryChangeType ChangeType, const FSpellRiseItemInstance& Item)
 {
+	if (bBatchingNotifications)
+	{
+		BatchedNotifications.Emplace(ChangeType, Item);
+		return;
+	}
 	OnInventoryChanged.Broadcast(ChangeType, Item);
+}
+
+void USpellRiseInventoryComponent::BeginNotificationBatch()
+{
+	bBatchingNotifications = true;
+}
+
+void USpellRiseInventoryComponent::FlushNotificationBatch()
+{
+	bBatchingNotifications = false;
+	for (const TTuple<ESpellRiseInventoryChangeType, FSpellRiseItemInstance>& Pending : BatchedNotifications)
+	{
+		OnInventoryChanged.Broadcast(Pending.Get<0>(), Pending.Get<1>());
+	}
+	BatchedNotifications.Reset();
 }
 
 bool USpellRiseInventoryComponent::HasServerAuthority() const
@@ -1182,6 +1256,10 @@ bool USpellRiseInventoryComponent::RestoreExtractedItem_Server(
 	Copy.Revision = NextRevision++;
 	FSpellRiseItemInstance& Added = Inventory.Entries.Add_GetRef(Copy);
 	Inventory.MarkItemDirty(Added);
+	if (const USpellRiseItemDefinition* Def = ResolveDefinition(Copy.DefinitionId))
+	{
+		CachedWeight += Def->UnitWeight * Copy.Quantity;
+	}
 	NotifyReplicatedChange(ESpellRiseInventoryChangeType::Added, Added);
 	ForceOwnerNetUpdate();
 	return true;

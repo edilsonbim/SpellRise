@@ -32,8 +32,7 @@ struct SPELLRISE_API FSpellRiseStorageList : public FFastArraySerializer
 	void SetOwner(USpellRiseStorageComponent* InOwner) { Owner = InOwner; }
 
 private:
-	UPROPERTY(NotReplicated)
-	TObjectPtr<USpellRiseStorageComponent> Owner = nullptr;
+	USpellRiseStorageComponent* Owner = nullptr;
 
 	UPROPERTY(NotReplicated)
 	TArray<FSpellRiseItemInstance> PendingRemovedNotifyItems;
@@ -92,6 +91,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="SpellRise|Storage")
 	void ResetStorage_Server();
 
+	bool InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
+
+	void SetMaxSlots_Authority(int32 NewMaxSlots);
+
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Storage|Events")
 	FSpellRiseStorageChanged OnStorageChanged;
 
@@ -110,7 +113,6 @@ private:
 	bool MoveItemOntoStack_Server(int32 SourceIndex, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
 	bool PlaceItemWithStacking_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
 	bool ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason);
-	bool InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
 	bool RestoreExtractedItem_Server(const FSpellRiseItemInstance& Item, FString& OutRejectReason);
 	const USpellRiseItemDefinition* ResolveDefinition(const FPrimaryAssetId& DefinitionId) const;
 	void MarkEntryChanged(FSpellRiseItemInstance& Entry);
@@ -125,8 +127,8 @@ private:
 	UPROPERTY(EditAnywhere, Category="SpellRise|Storage", meta=(ClampMin="0.0"))
 	float MaxWeight = 0.0f;
 
-	UPROPERTY(EditAnywhere, Category="SpellRise|Storage|Security", meta=(ClampMin="1", ClampMax="1000"))
-	int32 MaxQuantityPerOperation = 1000;
+	UPROPERTY(EditAnywhere, Category="SpellRise|Storage|Security", meta=(ClampMin="1", ClampMax="1000000"))
+	int32 MaxQuantityPerOperation = 1000000;
 
 	int32 NextRevision = 1;
 };

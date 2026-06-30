@@ -158,6 +158,9 @@ public:
 		return bFireOnAbilityInput;
 	}
 
+	// Força EndAbility ignorando bCanBeCanceled — usar apenas em transições de servidor (ex: revive de Downed)
+	void ForceEndAbilityForLifeStateTransition();
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Ability|Networking")
 	bool HasServerAuthority() const;
 

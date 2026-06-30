@@ -1,5 +1,9 @@
 #include "SpellRise/UI/SpellRiseInventoryViewModelComponent.h"
 
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
+#include "Kismet/GameplayStatics.h"
+#include "NarrativeCommonUISubsystem.h"
 #include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
 #include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
 #include "SpellRise/Inventory/SpellRiseItemDefinition.h"
@@ -29,11 +33,14 @@ namespace SpellRiseInventoryViewModel
 	const FName StackFull(TEXT("stack_full"));
 	const FName WeightExceeded(TEXT("weight_exceeded"));
 	const FName InvalidDefinition(TEXT("invalid_definition"));
+	const FName SameContainer(TEXT("same_container"));
+	const FName UnsupportedTransferRoute(TEXT("unsupported_transfer_route"));
 }
 
 USpellRiseInventoryViewModelComponent::USpellRiseInventoryViewModelComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.TickInterval = 0.2f;
 	SetIsReplicatedByDefault(false);
 }
 
@@ -86,6 +93,53 @@ void USpellRiseInventoryViewModelComponent::EndPlay(const EEndPlayReason::Type E
 	Super::EndPlay(EndPlayReason);
 }
 
+void USpellRiseInventoryViewModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (WatchedStorageComponents.IsEmpty())
+	{
+		return;
+	}
+
+	AActor* StorageActor = GetOwner();
+	if (!StorageActor)
+	{
+		return;
+	}
+
+	const APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(this, 0);
+	if (!PlayerPawn || PlayerPawn->GetDistanceTo(StorageActor) <= StorageCloseDistance)
+	{
+		return;
+	}
+
+	// Desregistra todos os storages imediatamente para evitar re-entrada
+	TArray<USpellRiseStorageComponent*> ToClose(WatchedStorageComponents.Array());
+	for (USpellRiseStorageComponent* Storage : ToClose)
+	{
+		UnwatchStorage(Storage);
+		PendingForceCloseStorages.Add(TWeakObjectPtr<USpellRiseStorageComponent>(Storage));
+	}
+
+	// Difere o broadcast para o próximo tick — evita destruir widgets
+	// enquanto um delegate ainda está iterando sua invocation list
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimerForNextTick(this, &ThisClass::BroadcastPendingForceClose);
+	}
+}
+
+void USpellRiseInventoryViewModelComponent::BroadcastPendingForceClose()
+{
+	TArray<TWeakObjectPtr<USpellRiseStorageComponent>> Pending = MoveTemp(PendingForceCloseStorages);
+	for (const TWeakObjectPtr<USpellRiseStorageComponent>& WeakStorage : Pending)
+	{
+		// Broadcast mesmo com ponteiro inválido (actor destruído): BP usa nullptr para fechar o widget
+		OnStorageForceClosed.Broadcast(WeakStorage.Get());
+	}
+}
+
 FSpellRiseInventoryContainerViewSnapshot USpellRiseInventoryViewModelComponent::GetPlayerInventoryContainerSnapshot() const
 {
 	FSpellRiseInventoryContainerViewSnapshot Snapshot;
@@ -130,6 +184,21 @@ FSpellRiseInventoryContainerViewSnapshot USpellRiseInventoryViewModelComponent::
 void USpellRiseInventoryViewModelComponent::ApplyAuthoritativeInventorySnapshot(
 	const FSpellRiseInventoryViewSnapshot& Snapshot)
 {
+	// Emit OnInventorySlotRemoved for every slot that was occupied but is absent in the
+	// new authoritative state. This covers items destroyed, moved, or merged into another
+	// stack — including the case where the same ItemInstanceId is relocated to a new slot.
+	for (const FSpellRiseInventorySlotView& OldSlot : InventorySnapshot.Slots)
+	{
+		const bool bSlotStillPresent = Snapshot.Slots.ContainsByPredicate(
+			[SlotIndex = OldSlot.SlotIndex](const FSpellRiseInventorySlotView& New)
+			{
+				return New.SlotIndex == SlotIndex;
+			});
+		if (!bSlotStillPresent)
+		{
+			OnInventorySlotRemoved.Broadcast(OldSlot.SlotIndex, OldSlot.ItemInstanceId);
+		}
+	}
 	InventorySnapshot = Snapshot;
 	OnInventorySnapshotChanged.Broadcast(InventorySnapshot);
 }
@@ -562,6 +631,63 @@ bool USpellRiseInventoryViewModelComponent::RequestMoveStorageItem(
 	return RejectRequest(MoveStorageRequest, InvalidSource);
 }
 
+bool USpellRiseInventoryViewModelComponent::RequestQuickTransfer(
+	const FSpellRiseInventoryContainerHandle& SourceContainer,
+	const FSpellRiseInventoryContainerHandle& DestinationContainer,
+	const FGuid ItemInstanceId,
+	const int32 Quantity)
+{
+	using namespace SpellRiseInventoryViewModel;
+
+	if (!ItemInstanceId.IsValid())
+	{
+		return RejectRequest(TransferRequest, InvalidGuid);
+	}
+	if (Quantity <= 0)
+	{
+		return RejectRequest(TransferRequest, InvalidQuantity);
+	}
+
+	const bool bSourceIsPlayer =
+		SourceContainer.Source == ESpellRiseInventoryContainerSource::PlayerInventory;
+	const bool bDestinationIsPlayer =
+		DestinationContainer.Source == ESpellRiseInventoryContainerSource::PlayerInventory;
+
+	if (bSourceIsPlayer && !bDestinationIsPlayer)
+	{
+		if (!DestinationContainer.Storage)
+		{
+			return RejectRequest(TransferRequest, InvalidStorage);
+		}
+		return RequestDepositToStorage(
+			DestinationContainer.Storage,
+			ItemInstanceId,
+			INDEX_NONE,
+			Quantity);
+	}
+
+	if (!bSourceIsPlayer && bDestinationIsPlayer)
+	{
+		if (!SourceContainer.Storage)
+		{
+			return RejectRequest(TransferRequest, InvalidStorage);
+		}
+		return RequestWithdrawFromStorage(
+			SourceContainer.Storage,
+			ItemInstanceId,
+			INDEX_NONE,
+			Quantity);
+	}
+
+	if (SourceContainer.Source == DestinationContainer.Source
+		&& SourceContainer.Storage == DestinationContainer.Storage)
+	{
+		return RejectRequest(TransferRequest, SameContainer);
+	}
+
+	return RejectRequest(TransferRequest, UnsupportedTransferRoute);
+}
+
 void USpellRiseInventoryViewModelComponent::WatchStorage(USpellRiseStorageComponent* Storage)
 {
 	if (!Storage || WatchedStorageComponents.Contains(Storage))
@@ -569,7 +695,19 @@ void USpellRiseInventoryViewModelComponent::WatchStorage(USpellRiseStorageCompon
 		return;
 	}
 	WatchedStorageComponents.Add(Storage);
-	Storage->OnStorageChanged.AddDynamic(this, &ThisClass::HandleStorageChanged);
+	// BeginPlay já bind o storage do próprio owner — evita duplicate binding
+	if (!Storage->OnStorageChanged.IsAlreadyBound(this, &ThisClass::HandleStorageChanged))
+	{
+		Storage->OnStorageChanged.AddDynamic(this, &ThisClass::HandleStorageChanged);
+	}
+	// Fecha o widget automaticamente se o bag actor for destruído
+	if (AActor* StorageOwner = Storage->GetOwner())
+	{
+		if (!StorageOwner->OnDestroyed.IsAlreadyBound(this, &ThisClass::HandleWatchedStorageOwnerDestroyed))
+		{
+			StorageOwner->OnDestroyed.AddDynamic(this, &ThisClass::HandleWatchedStorageOwnerDestroyed);
+		}
+	}
 	BroadcastStorageSnapshot(Storage);
 }
 
@@ -581,7 +719,58 @@ void USpellRiseInventoryViewModelComponent::UnwatchStorage(USpellRiseStorageComp
 	}
 	if (WatchedStorageComponents.Remove(Storage) > 0)
 	{
+		// Não remove o binding se foi o BeginPlay que adicionou (storage do próprio owner)
+		const bool bIsBoundByBeginPlay = GetOwner() &&
+			GetOwner()->FindComponentByClass<USpellRiseStorageComponent>() == Storage;
+		if (!bIsBoundByBeginPlay)
+		{
+			Storage->OnStorageChanged.RemoveDynamic(this, &ThisClass::HandleStorageChanged);
+		}
+
+		// Desvincula OnDestroyed do actor owner se não há mais storages desse actor sendo observados
+		if (AActor* StorageOwner = Storage->GetOwner())
+		{
+			bool bStillWatching = false;
+			for (const TObjectPtr<USpellRiseStorageComponent>& S : WatchedStorageComponents)
+			{
+				if (S && S->GetOwner() == StorageOwner)
+				{
+					bStillWatching = true;
+					break;
+				}
+			}
+			if (!bStillWatching)
+			{
+				StorageOwner->OnDestroyed.RemoveDynamic(this, &ThisClass::HandleWatchedStorageOwnerDestroyed);
+			}
+		}
+	}
+}
+
+void USpellRiseInventoryViewModelComponent::HandleWatchedStorageOwnerDestroyed(AActor* DestroyedActor)
+{
+	TArray<USpellRiseStorageComponent*> ToClose;
+	for (const TObjectPtr<USpellRiseStorageComponent>& S : WatchedStorageComponents)
+	{
+		if (S && S->GetOwner() == DestroyedActor)
+		{
+			ToClose.Add(S.Get());
+		}
+	}
+
+	for (USpellRiseStorageComponent* Storage : ToClose)
+	{
+		WatchedStorageComponents.Remove(Storage);
 		Storage->OnStorageChanged.RemoveDynamic(this, &ThisClass::HandleStorageChanged);
+		PendingForceCloseStorages.Add(TWeakObjectPtr<USpellRiseStorageComponent>(Storage));
+	}
+
+	if (!ToClose.IsEmpty())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(this, &ThisClass::BroadcastPendingForceClose);
+		}
 	}
 }
 
@@ -766,11 +955,65 @@ void USpellRiseInventoryViewModelComponent::HandleInventoryChanged(
 	const ESpellRiseInventoryChangeType ChangeType,
 	const FSpellRiseItemInstance Item)
 {
-	if (ChangeType == ESpellRiseInventoryChangeType::Removed)
-	{
-		OnInventorySlotRemoved.Broadcast(Item.SlotIndex, Item.ItemInstanceId);
-	}
 	RefreshFromAuthoritativeComponents();
+	ShowInventoryHUDNotification(ChangeType, Item);
+}
+
+void USpellRiseInventoryViewModelComponent::ShowInventoryHUDNotification(
+	const ESpellRiseInventoryChangeType ChangeType,
+	const FSpellRiseItemInstance& Item)
+{
+	if (ChangeType != ESpellRiseInventoryChangeType::Added && ChangeType != ESpellRiseInventoryChangeType::Removed)
+	{
+		return;
+	}
+
+	const APlayerState* PS = Cast<APlayerState>(GetOwner());
+	if (!PS)
+	{
+		return;
+	}
+
+	APlayerController* PC = PS->GetPlayerController();
+	if (!PC || !PC->IsLocalController())
+	{
+		return;
+	}
+
+	const USpellRiseItemDefinition* Definition = SpellRiseItemDefinitionResolver::ResolveItemDefinition(Item.DefinitionId);
+	if (!Definition)
+	{
+		return;
+	}
+
+	const int32 Qty = FMath::Abs(Item.Quantity);
+	if (Qty <= 0)
+	{
+		return;
+	}
+
+	const FText ItemName = Definition->DisplayName;
+	FText NotificationText;
+
+	if (ChangeType == ESpellRiseInventoryChangeType::Added)
+	{
+		NotificationText = FText::Format(NSLOCTEXT("SpellRise", "ItemAdded", "+{0} {1}"),
+			FText::AsNumber(Qty), ItemName);
+	}
+	else
+	{
+		NotificationText = FText::Format(NSLOCTEXT("SpellRise", "ItemRemoved", "-{0} {1}"),
+			FText::AsNumber(Qty), ItemName);
+	}
+
+	UNarrativeCommonUISubsystem* HUDSubsystem = PC->GetGameInstance()
+		? PC->GetGameInstance()->GetSubsystem<UNarrativeCommonUISubsystem>()
+		: nullptr;
+
+	if (HUDSubsystem)
+	{
+		HUDSubsystem->ShowNotification(NotificationText, 3.f);
+	}
 }
 
 void USpellRiseInventoryViewModelComponent::HandleEquipmentChanged()

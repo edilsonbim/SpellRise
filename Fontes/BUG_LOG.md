@@ -32,6 +32,39 @@
 - Evidência de log (paths):
 
 ## Open Issues
+
+### BUG-2026-06-30-060
+- Date: 2026-06-30
+- Severity: High
+- Status: Fixed
+- Area: Full Loot / Death / Native Inventory / Persistence
+- Issue: ao morrer com inventário nativo cheio, nenhum item dropava e o player nascia com os mesmos itens.
+- Reproduction: morrer com itens no `USpellRiseInventoryComponent`; observar ausência de loot bag e inventário intacto no respawn.
+- Expected: bag spawna próxima ao local com todos os itens droppáveis (sem flag `NoDrop`); marker vermelho visível apenas à vítima no Narrative Navigator; respawn com inventário vazio.
+- Actual: nenhuma bag spawnava; player respawnava com os itens intactos.
+- Root Cause: três causas encadeadas: (1) `FullLootBagClass` no BP apontava para `BP_Bag_C` (sem `USpellRiseStorageComponent`), que era destruída imediatamente; (2) `FSpellRiseStarterInventoryItem::bNoDrop = true` como default filtrava todos os starter items do snapshot; (3) `SaveCharacterForController` não era chamado pós-drop, então `ApplyCharacterDataToController` no respawn restaurava o snapshot pré-morte.
+- Fix: `bNoDrop` default alterado para `false`; `SetMaxSlots_Authority` adicionado ao `StorageComponent`; `SaveCharacterForController` chamado em `ProcessFullLootDrop_Server`; `ClientShowLootBagMarker` RPC adicionado ao PlayerController para marker local na vítima; usuário deve setar `FullLootBagClass = None` (ou `BP_StorageMaster1`) no `BP_SpellRiseCharacter`.
+- Net Scope: morte/loot | persistência
+- Authority Boundary: servidor decide drop, extração e save; cliente recebe marker via RPC.
+- RPCs afetados: `ClientShowLootBagMarker` (Client Reliable, 1x por morte, ~8 bytes).
+- Overflow (`FBitReader::SetOverflowed`): não observado; payload mínimo.
+- Tested On: 2026-06-30, build `SpellRiseEditor Win64 Development` PASS; validação manual PIE confirmada pelo operador.
+- Standalone: validado em PIE
+- Listen Server: pendente
+- Dedicated Server: pendente
+- Owner: Gameplay/Inventory/Loot
+
+### BUG-2026-06-30-061
+- Date: 2026-06-30
+- Severity: High
+- Status: Fixed
+- Area: GAS / Tags / Downed / Cooldown
+- Issue: a tag `State.Downed.Cooldown` era filha de `State.Downed`, causando `HasMatchingGameplayTag("State.Downed") = true` durante o período de cooldown pós-downed; efeitos de downed persistiam indevidamente.
+- Root Cause: hierarquia de tags do UE: qualquer query por tag pai retorna `true` para filhas.
+- Fix: tag renomeada para `State.DownedCooldown` (tag raiz independente); `SpellRiseTags::State_Downed_Cooldown()` atualizado; `.ini` atualizado.
+- Tested On: 2026-06-30, build `SpellRiseEditor Win64 Development` PASS.
+- Owner: Gameplay/GAS
+
 ### BUG-2026-06-25-058
 - Date: 2026-06-25
 - Severity: High
@@ -52,14 +85,15 @@
 ### BUG-2026-06-25-059
 - Date: 2026-06-25
 - Severity: High
-- Status: Open
+- Status: Fixed
 - Area: Death / Downed / Respawn / GAS / Camera
 - Issue: após a migração concluída, permanecem bugs herdados da versão anterior: abilities após renascer/sair de downed e bug de câmera.
 - Reproduction: entrar em downed, sair por revive/respawn/recovery e tentar usar abilities; validar também transição/posicionamento da câmera em cliente visual real.
 - Expected: ao voltar para `Alive`, ActorInfo/ASC/possession/input estão reconciliados e abilities ativam normalmente quando custo/cooldown/tags permitem; câmera não quebra o fluxo visual.
-- Actual: pendente de revalidação no build migrado; operador classifica como bug herdado.
-- Root Cause: pendente; investigar tags residuais (`State.Downed`, `State.ReviveRecovery`, `State.Dead`), ActorInfo/source stale, possession, input router e asset/runtime de câmera.
-- Fix: pendente.
+- Actual: ao sair de downed via revive, abilities permaneciam bloqueadas pelo cooldown do próprio downed.
+- Root Cause: a tag `State.Downed` aplicava o efeito de cooldown via tag filha `State.Downed.Cooldown`, que bloqueava ativação de abilities até o CD acabar — mesmo após o player já estar vivo novamente.
+- Fix: substituído `State.Downed.Cooldown` por `Ability.Downed.Cooldown`; a nova tag bloqueia `State.Downed` e transita direto para morte em vez de manter cooldown residual bloqueando abilities pós-revive.
+- Pending: widget de revive (prompt de interação) que deve aparecer quando outro player mirar e estiver próximo do corpo downed — ainda não implementado.
 - Net Scope: GAS | morte/loot | controller
 - Authority Boundary: servidor continua decidindo life state, activation/commit/cost/cooldown; câmera é apresentação client-side e não pode afetar DS.
 - Prediction Path (Client): input e câmera locais apenas para UX.

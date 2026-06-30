@@ -13,28 +13,22 @@
 #include "UObject/UnrealType.h"
 
 #include "InteractableComponent.h"
-#include "InventoryComponent.h"
-#include "InventoryFunctionLibrary.h"
-#include "NarrativeItem.h"
 #include "NavigationMarkerComponent.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
+#include "SpellRise/Core/SpellRisePlayerController.h"
+#include "SpellRise/Core/SpellRisePlayerState.h"
+#include "SpellRise/Equipment/SpellRiseEquipmentComponent.h"
+#include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
+#include "SpellRise/Inventory/SpellRiseItemTypes.h"
 #include "SpellRise/Inventory/SpellRiseLootBagActor.h"
 #include "SpellRise/Inventory/SpellRiseLootBagNameComponent.h"
+#include "SpellRise/Inventory/SpellRiseStorageComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseFullLoot, Log, All);
 
 namespace
 {
-	constexpr TCHAR DefaultNarrativeBagClassPath[] = TEXT("/Game/UI/InventorySystem/BP_Bag.BP_Bag_C");
-	constexpr TCHAR LegacyBagClassPath[] = TEXT("/Game/UI/InventorySystem/BP_Storage_Bag.BP_Storage_Bag_C");
-
-	struct FPendingNarrativeTransfer
-	{
-		TWeakObjectPtr<UNarrativeInventoryComponent> SourceInventory;
-		TWeakObjectPtr<UNarrativeItem> SourceItem;
-		TSubclassOf<UNarrativeItem> ItemClass = nullptr;
-		int32 Quantity = 0;
-	};
+	constexpr TCHAR DefaultNativeBagClassPath[] = TEXT("/Game/UI/InventorySystem/BP_StorageMaster1.BP_StorageMaster1_C");
 
 	static bool IsAuthorityWorld(const UWorld* World)
 	{
@@ -109,6 +103,8 @@ namespace
 		}
 	}
 
+	// Configura markers em bags Blueprint que já possuem UNavigationMarkerComponent nativo.
+	// Bags sem o componente no Blueprint não recebem marker aqui — use ClientShowLootBagMarker via RPC.
 	static void ConfigureLootMarkerForVictimOnly(AActor* LootBagActor)
 	{
 		if (!LootBagActor || !LootBagActor->HasAuthority())
@@ -118,17 +114,6 @@ namespace
 
 		TArray<UNavigationMarkerComponent*> MarkerComponents;
 		LootBagActor->GetComponents<UNavigationMarkerComponent>(MarkerComponents);
-
-		if (MarkerComponents.Num() <= 0)
-		{
-			UNavigationMarkerComponent* NewMarker = NewObject<UNavigationMarkerComponent>(LootBagActor, TEXT("SpellRiseLootVictimMarker"));
-			if (NewMarker)
-			{
-				LootBagActor->AddInstanceComponent(NewMarker);
-				NewMarker->RegisterComponent();
-				MarkerComponents.Add(NewMarker);
-			}
-		}
 
 		for (UNavigationMarkerComponent* Marker : MarkerComponents)
 		{
@@ -157,25 +142,11 @@ namespace
 	{
 		if (OverrideClass)
 		{
-			const bool bLooksLikeOfficialBag =
-				OverrideClass->GetName().Contains(TEXT("BP_Bag"), ESearchCase::CaseSensitive)
-				|| OverrideClass->IsChildOf(ASpellRiseLootBagActor::StaticClass());
-
-			if (bLooksLikeOfficialBag)
-			{
-				return OverrideClass;
-			}
-
+			return OverrideClass;
 		}
 
-		static TSoftClassPtr<AActor> DefaultBagClass{FSoftObjectPath(DefaultNarrativeBagClassPath)};
-		if (UClass* LoadedDefaultClass = DefaultBagClass.LoadSynchronous())
-		{
-			return LoadedDefaultClass;
-		}
-
-		static TSoftClassPtr<AActor> LegacyBagClass{FSoftObjectPath(LegacyBagClassPath)};
-		return LegacyBagClass.LoadSynchronous();
+		static TSoftClassPtr<AActor> DefaultBagClass{FSoftObjectPath(DefaultNativeBagClassPath)};
+		return DefaultBagClass.LoadSynchronous();
 	}
 
 	static FString ResolveDeadPlayerName(const ASpellRiseCharacterBase* DeadCharacter)
@@ -266,72 +237,6 @@ namespace
 		return nullptr;
 	}
 
-	static bool RollbackAddedQuantity(
-		UNarrativeInventoryComponent* BagInventory,
-		TSubclassOf<UNarrativeItem> ItemClass,
-		const int32 QuantityToRollback)
-	{
-		if (!BagInventory || !ItemClass || QuantityToRollback <= 0)
-		{
-			return true;
-		}
-
-		int32 LeftToRollback = QuantityToRollback;
-		TArray<UNarrativeItem*> BagStacks = BagInventory->FindItemsOfClass(ItemClass, false);
-		for (UNarrativeItem* Stack : BagStacks)
-		{
-			if (!Stack || LeftToRollback <= 0)
-			{
-				continue;
-			}
-
-			const int32 RemovedNow = BagInventory->ConsumeItem(Stack, LeftToRollback);
-			if (RemovedNow > 0)
-			{
-				LeftToRollback -= RemovedNow;
-			}
-		}
-
-		return LeftToRollback <= 0;
-	}
-
-	static bool IsInventoryEmpty(const UNarrativeInventoryComponent* Inventory)
-	{
-		if (!Inventory)
-		{
-			return true;
-		}
-
-		for (const UNarrativeItem* Item : Inventory->GetItems())
-		{
-			if (Item && Item->GetQuantity() > 0)
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	static int32 CountTotalItemQuantity(const UNarrativeInventoryComponent* Inventory)
-	{
-		if (!Inventory)
-		{
-			return 0;
-		}
-
-		int32 TotalQuantity = 0;
-		for (const UNarrativeItem* Item : Inventory->GetItems())
-		{
-			if (Item)
-			{
-				TotalQuantity += FMath::Max(0, Item->GetQuantity());
-			}
-		}
-
-		return TotalQuantity;
-	}
-
 	static void SetDeadPlayerNamePropertyIfPresent(UObject* TargetObject, const FString& DeadPlayerDisplayName, int32& InOutSetCount)
 	{
 		if (!TargetObject)
@@ -401,156 +306,6 @@ namespace
 			LootInteractable->SetInteractableNameText(FText::FromString(DeadPlayerDisplayName));
 			++SetCount;
 		}
-
-	}
-
-	static UNarrativeInventoryComponent* GetLootSourceReflective(const UNarrativeInventoryComponent* Inventory)
-	{
-		if (!Inventory)
-		{
-			return nullptr;
-		}
-
-		static const FObjectProperty* LootSourceProperty = FindFProperty<FObjectProperty>(
-			UNarrativeInventoryComponent::StaticClass(),
-			TEXT("LootSource"));
-		if (!LootSourceProperty)
-		{
-			return nullptr;
-		}
-
-		return Cast<UNarrativeInventoryComponent>(
-			LootSourceProperty->GetObjectPropertyValue_InContainer(Inventory));
-	}
-
-	static int32 ClearLootSourceReferencesToBag(UWorld* World, UNarrativeInventoryComponent* BagInventory)
-	{
-		if (!World || !BagInventory)
-		{
-			return 0;
-		}
-
-		int32 ClearedCount = 0;
-		TArray<UNarrativeInventoryComponent*> AllInventories;
-		for (TObjectIterator<UNarrativeInventoryComponent> It; It; ++It)
-		{
-			UNarrativeInventoryComponent* Inventory = *It;
-			if (!Inventory || Inventory == BagInventory || Inventory->GetWorld() != World)
-			{
-				continue;
-			}
-
-			if (!Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
-			{
-				continue;
-			}
-
-			if (GetLootSourceReflective(Inventory) == BagInventory)
-			{
-				Inventory->SetLootSource(nullptr);
-				++ClearedCount;
-			}
-		}
-
-		return ClearedCount;
-	}
-
-	static int32 ClearLootSourceReferencesToSources(
-		UWorld* World,
-		const TSet<TWeakObjectPtr<UNarrativeInventoryComponent>>& SourcesToClear)
-	{
-		if (!World || SourcesToClear.Num() <= 0)
-		{
-			return 0;
-		}
-
-		int32 ClearedCount = 0;
-		for (TObjectIterator<UNarrativeInventoryComponent> It; It; ++It)
-		{
-			UNarrativeInventoryComponent* Inventory = *It;
-			if (!Inventory || Inventory->GetWorld() != World)
-			{
-				continue;
-			}
-
-			if (!Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
-			{
-				continue;
-			}
-
-			UNarrativeInventoryComponent* CurrentLootSource = GetLootSourceReflective(Inventory);
-			if (!CurrentLootSource)
-			{
-				continue;
-			}
-
-			if (SourcesToClear.Contains(CurrentLootSource))
-			{
-				Inventory->SetLootSource(nullptr);
-				++ClearedCount;
-			}
-		}
-
-		return ClearedCount;
-	}
-
-	static bool IsPlayerOwnedInventory(const UNarrativeInventoryComponent* Inventory)
-	{
-		if (!Inventory)
-		{
-			return false;
-		}
-
-		const AActor* Owner = Inventory->GetOwner();
-		if (Owner && (Owner->IsA<APawn>() || Owner->IsA<APlayerState>() || Owner->IsA<APlayerController>()))
-		{
-			return true;
-		}
-
-		return Inventory->GetOwningController() != nullptr || Inventory->GetOwningPawn() != nullptr;
-	}
-
-	static int32 ClearInvalidPlayerLootSources(UWorld* World)
-	{
-		if (!World)
-		{
-			return 0;
-		}
-
-		int32 ClearedCount = 0;
-		for (TObjectIterator<UNarrativeInventoryComponent> It; It; ++It)
-		{
-			UNarrativeInventoryComponent* Inventory = *It;
-			if (!Inventory || Inventory->GetWorld() != World || !IsPlayerOwnedInventory(Inventory))
-			{
-				continue;
-			}
-
-			if (!Inventory->GetOwner() || !Inventory->GetOwner()->HasAuthority())
-			{
-				continue;
-			}
-
-			UNarrativeInventoryComponent* CurrentLootSource = GetLootSourceReflective(Inventory);
-			if (!CurrentLootSource)
-			{
-				continue;
-			}
-
-			const bool bInvalidSource =
-				!IsValid(CurrentLootSource)
-				|| !IsValid(CurrentLootSource->GetOwner())
-				|| CurrentLootSource->GetOwner()->IsActorBeingDestroyed();
-
-			const bool bBlockedSource = IsPlayerOwnedInventory(CurrentLootSource);
-			if (bInvalidSource || bBlockedSource)
-			{
-				Inventory->SetLootSource(nullptr);
-				++ClearedCount;
-			}
-		}
-
-		return ClearedCount;
 	}
 }
 
@@ -633,87 +388,75 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 		return;
 	}
 
-	const int32 ClearedInvalidPlayerLootSources = ClearInvalidPlayerLootSources(World);
-	if (ClearedInvalidPlayerLootSources > 0)
+	ASpellRisePlayerState* VictimPS = DeadCharacter->GetPlayerState<ASpellRisePlayerState>();
+	USpellRiseInventoryComponent* SourceInventory = VictimPS ? VictimPS->GetInventoryComponent() : nullptr;
+	USpellRiseEquipmentComponent* EquipmentComp = VictimPS ? VictimPS->GetEquipmentComponent() : nullptr;
+	if (!SourceInventory)
 	{
-	}
-
-	TArray<UNarrativeInventoryComponent*> SourceInventories;
-	GatherEligibleInventoryComponents(DeadCharacter->GetPlayerState(), true, SourceInventories);
-
-	if (SourceInventories.Num() <= 0)
-	{
+		UE_LOG(LogSpellRiseFullLoot, Warning, TEXT("ProcessCharacterDeathNow: sem InventoryComponent para %s"), *GetNameSafe(DeadCharacter));
 		return;
 	}
 
-	TSet<TWeakObjectPtr<UNarrativeInventoryComponent>> VictimSourceSet;
-	for (UNarrativeInventoryComponent* SourceInventory : SourceInventories)
-	{
-		if (SourceInventory)
-		{
-			VictimSourceSet.Add(SourceInventory);
-		}
-	}
+	UE_LOG(LogSpellRiseFullLoot, Log,
+		TEXT("ProcessCharacterDeathNow: INICIO character=%s NativeEnabled=%d TotalItems=%d TotalEquip=%d"),
+		*GetNameSafe(DeadCharacter),
+		SourceInventory->IsNativeInventoryEnabled() ? 1 : 0,
+		SourceInventory->GetItems().Num(),
+		EquipmentComp ? EquipmentComp->GetPrivateEquipment().Entries.Num() : 0);
 
-	const int32 ClearedVictimSourceLooters = ClearLootSourceReferencesToSources(World, VictimSourceSet);
-	if (ClearedVictimSourceLooters > 0)
+	// Snapshot de itens droppáveis do inventário
+	TArray<FSpellRiseItemInstance> InventorySnapshot;
+	for (const FSpellRiseItemInstance& Item : SourceInventory->GetItems())
 	{
-	}
-
-	TArray<FPendingNarrativeTransfer> PendingTransfers;
-	int32 CandidateItemStacks = 0;
-	int32 CandidateQuantity = 0;
-	int32 RejectedNonDroppable = 0;
-	int32 RejectedInvalid = 0;
-
-	for (UNarrativeInventoryComponent* SourceInventory : SourceInventories)
-	{
-		if (!SourceInventory)
+		const bool bNoDrop = (Item.Flags & static_cast<uint8>(ESpellRiseItemInstanceFlags::NoDrop)) != 0;
+		UE_LOG(LogSpellRiseFullLoot, Verbose,
+			TEXT("  Item=%s Qty=%d Flags=%d NoDrop=%d"),
+			*Item.DefinitionId.ToString(), Item.Quantity, Item.Flags, bNoDrop ? 1 : 0);
+		if (Item.Quantity <= 0 || bNoDrop)
 		{
 			continue;
 		}
+		InventorySnapshot.Add(Item);
+	}
 
-		for (UNarrativeItem* Item : SourceInventory->GetItems())
+	// Snapshot de itens droppáveis do equipamento
+	TArray<FSpellRiseItemInstance> EquipmentSnapshot;
+	if (EquipmentComp)
+	{
+		for (const FSpellRiseEquippedItemEntry& Entry : EquipmentComp->GetPrivateEquipment().Entries)
 		{
-			if (!Item || !Item->GetClass())
+			if (!Entry.DefinitionId.IsValid() || (Entry.Flags & static_cast<uint8>(ESpellRiseItemInstanceFlags::NoDrop)))
 			{
-				++RejectedInvalid;
 				continue;
 			}
-
-			const int32 Quantity = Item->GetQuantity();
-			if (Quantity <= 0)
-			{
-				++RejectedInvalid;
-				continue;
-			}
-
-			if (!Item->CanBeRemoved())
-			{
-				++RejectedNonDroppable;
-				continue;
-			}
-
-			FPendingNarrativeTransfer Transfer;
-			Transfer.SourceInventory = SourceInventory;
-			Transfer.SourceItem = Item;
-			Transfer.ItemClass = Item->GetClass();
-			Transfer.Quantity = Quantity;
-			PendingTransfers.Add(MoveTemp(Transfer));
-
-			++CandidateItemStacks;
-			CandidateQuantity += Quantity;
+			FSpellRiseItemInstance Inst;
+			Inst.ItemInstanceId = Entry.ItemInstanceId;
+			Inst.DefinitionId   = Entry.DefinitionId;
+			Inst.Quantity        = 1;
+			Inst.Durability      = Entry.Durability;
+			Inst.Flags           = Entry.Flags;
+			EquipmentSnapshot.Add(Inst);
 		}
 	}
 
-	if (PendingTransfers.Num() <= 0)
+	if (InventorySnapshot.IsEmpty() && EquipmentSnapshot.IsEmpty())
 	{
+		UE_LOG(LogSpellRiseFullLoot, Warning,
+			TEXT("ProcessCharacterDeathNow: nenhum item droppavel encontrado para %s (InvItems=%d EquipItems=%d). Verifique flag NoDrop."),
+			*GetNameSafe(DeadCharacter),
+			SourceInventory->GetItems().Num(),
+			EquipmentComp ? EquipmentComp->GetPrivateEquipment().Entries.Num() : 0);
 		return;
 	}
+
+	UE_LOG(LogSpellRiseFullLoot, Log,
+		TEXT("ProcessCharacterDeathNow: dropando %d item(ns) de inventario + %d de equipment para %s"),
+		InventorySnapshot.Num(), EquipmentSnapshot.Num(), *GetNameSafe(DeadCharacter));
 
 	const TSubclassOf<AActor> LootBagClass = ResolveLootBagClass(LootBagClassOverride);
 	if (!LootBagClass)
 	{
+		UE_LOG(LogSpellRiseFullLoot, Error, TEXT("ProcessCharacterDeathNow: classe de loot bag não encontrada"));
 		return;
 	}
 
@@ -726,9 +469,9 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 	{
 		LootBagOwner = VictimController;
 	}
-	else if (APlayerState* VictimPlayerState = DeadCharacter->GetPlayerState<APlayerState>())
+	else if (VictimPS)
 	{
-		LootBagOwner = VictimPlayerState;
+		LootBagOwner = VictimPS;
 	}
 	else
 	{
@@ -743,6 +486,7 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
 	if (!LootBagActor)
 	{
+		UE_LOG(LogSpellRiseFullLoot, Error, TEXT("ProcessCharacterDeathNow: falha ao spawnar loot bag para %s"), *GetNameSafe(DeadCharacter));
 		return;
 	}
 
@@ -759,201 +503,86 @@ void USpellRiseFullLootSubsystem::ProcessCharacterDeathNow(
 		DeadPlayerNameMaxUtf8Bytes);
 	SetLootBagDeadPlayerName(LootBagActor, DeadPlayerDisplayName);
 
-	UNarrativeInventoryComponent* LootBagInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(LootBagActor);
-	if (!LootBagInventory)
+	USpellRiseStorageComponent* LootBagStorage = LootBagActor->FindComponentByClass<USpellRiseStorageComponent>();
+	if (!LootBagStorage)
 	{
-		LootBagInventory = LootBagActor->FindComponentByClass<UNarrativeInventoryComponent>();
-	}
-
-	if (!LootBagInventory)
-	{
+		UE_LOG(LogSpellRiseFullLoot, Error, TEXT("ProcessCharacterDeathNow: loot bag sem SpellRiseStorageComponent. Bag=%s"), *GetNameSafe(LootBagActor));
 		LootBagActor->Destroy();
 		return;
 	}
 
-	int32 AttemptedTransfers = 0;
-	int32 MovedTransfers = 0;
-	int32 MovedQuantity = 0;
-	int32 RejectedByCapacity = 0;
-	int32 RollbackFailures = 0;
+	// Garante que o storage comporta todos os itens droppáveis
+	LootBagStorage->SetMaxSlots_Authority(InventorySnapshot.Num() + EquipmentSnapshot.Num());
 
-	for (const FPendingNarrativeTransfer& Transfer : PendingTransfers)
+	// Remove todos os itens do equipment ANTES de transferir (NoDrop permanecem no respawn)
+	if (EquipmentComp && !EquipmentSnapshot.IsEmpty())
 	{
-		UNarrativeInventoryComponent* SourceInventory = Transfer.SourceInventory.Get();
-		UNarrativeItem* SourceItem = Transfer.SourceItem.Get();
+		EquipmentComp->ResetEquipment_Server();
+	}
 
-		if (!SourceInventory || !SourceItem || !Transfer.ItemClass)
+	int32 MovedItems = 0;
+
+	// Transfere itens do equipamento diretamente para o loot bag
+	for (const FSpellRiseItemInstance& Item : EquipmentSnapshot)
+	{
+		FString InsertReason;
+		if (!LootBagStorage->InsertItem_Server(Item, INDEX_NONE, InsertReason))
 		{
+			UE_LOG(LogSpellRiseFullLoot, Warning, TEXT("ProcessCharacterDeathNow: InsertItem (equipment) falhou para %s — %s"),
+				*Item.DefinitionId.ToString(), *InsertReason);
+			continue;
+		}
+		++MovedItems;
+	}
+
+	// Transfere itens do inventário para o loot bag
+	for (const FSpellRiseItemInstance& Snapshot : InventorySnapshot)
+	{
+		FSpellRiseItemInstance Extracted;
+		FString ExtractReason;
+		if (!SourceInventory->ExtractItem_Server(Snapshot.ItemInstanceId, Snapshot.Quantity, Extracted, ExtractReason))
+		{
+			UE_LOG(LogSpellRiseFullLoot, Warning, TEXT("ProcessCharacterDeathNow: ExtractItem falhou para %s — %s"),
+				*Snapshot.DefinitionId.ToString(), *ExtractReason);
 			continue;
 		}
 
-		if (!SourceItem->CanBeRemoved())
+		FString InsertReason;
+		if (!LootBagStorage->InsertItem_Server(Extracted, INDEX_NONE, InsertReason))
 		{
-			continue;
-		}
+			UE_LOG(LogSpellRiseFullLoot, Warning, TEXT("ProcessCharacterDeathNow: InsertItem (inventory) falhou para %s — %s. Devolvendo ao inventário."),
+				*Extracted.DefinitionId.ToString(), *InsertReason);
 
-		const int32 CurrentQuantity = SourceItem->GetQuantity();
-		if (CurrentQuantity <= 0)
-		{
-			continue;
-		}
-
-		const int32 RequestedQuantity = FMath::Clamp(Transfer.Quantity, 1, CurrentQuantity);
-		++AttemptedTransfers;
-
-		const FItemAddResult AddResult = LootBagInventory->TryAddItemFromClass(Transfer.ItemClass, RequestedQuantity, false);
-		if (AddResult.AmountGiven <= 0)
-		{
-			++RejectedByCapacity;
-			continue;
-		}
-
-		int32 RemovedFromSource = SourceInventory->ConsumeItem(SourceItem, AddResult.AmountGiven);
-		if (RemovedFromSource < 0)
-		{
-			RemovedFromSource = 0;
-		}
-		RemovedFromSource = FMath::Min(RemovedFromSource, AddResult.AmountGiven);
-
-		const int32 ExcessInBag = AddResult.AmountGiven - RemovedFromSource;
-		if (ExcessInBag > 0)
-		{
-			const bool bRollbackOk = RollbackAddedQuantity(LootBagInventory, Transfer.ItemClass, ExcessInBag);
-			if (!bRollbackOk)
+			FString ReturnReason;
+			if (!SourceInventory->InsertItem_Server(Extracted, Snapshot.SlotIndex, ReturnReason))
 			{
-				++RollbackFailures;
+				UE_LOG(LogSpellRiseFullLoot, Error, TEXT("ProcessCharacterDeathNow: falha ao devolver item %s ao inventário — %s. Item perdido."),
+					*Extracted.DefinitionId.ToString(), *ReturnReason);
 			}
+			continue;
 		}
 
-		if (RemovedFromSource > 0)
-		{
-			++MovedTransfers;
-			MovedQuantity += RemovedFromSource;
-		}
+		++MovedItems;
 	}
 
-	if (MovedQuantity <= 0)
+	if (MovedItems <= 0)
 	{
-		const int32 ClearedInvalidAfterAbort = ClearInvalidPlayerLootSources(World);
-		if (ClearedInvalidAfterAbort > 0)
-		{
-		}
-
 		LootBagActor->Destroy();
 		return;
 	}
 
-	RegisterTrackedLootBag(LootBagActor, LootBagInventory);
-
-	const int32 ClearedInvalidAfterTransfer = ClearInvalidPlayerLootSources(World);
-	if (ClearedInvalidAfterTransfer > 0)
+	// Notifica somente o cliente da vítima para exibir o marker no Navigator (marker local, não replicado)
+	if (ASpellRisePlayerController* VictimPC = Cast<ASpellRisePlayerController>(LootBagOwner))
 	{
+		VictimPC->ClientShowLootBagMarker(LootBagActor);
 	}
 
+	RegisterTrackedLootBag(LootBagActor, LootBagStorage);
 }
 
-void USpellRiseFullLootSubsystem::GatherEligibleInventoryComponents(
-	AActor* OwnerActor,
-	const bool bOwnerIsPlayerState,
-	TArray<UNarrativeInventoryComponent*>& OutInventoryComponents) const
+void USpellRiseFullLootSubsystem::RegisterTrackedLootBag(AActor* BagActor, USpellRiseStorageComponent* StorageComponent)
 {
-	if (!OwnerActor)
-	{
-		return;
-	}
-
-	if (UNarrativeInventoryComponent* PrimaryInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwnerActor))
-	{
-		FString PrimaryRejectReason;
-		if (IsInventoryComponentEligibleForDeathLoot(PrimaryInventory, bOwnerIsPlayerState, PrimaryRejectReason))
-		{
-			OutInventoryComponents.AddUnique(PrimaryInventory);
-		}
-	}
-
-	TArray<UNarrativeInventoryComponent*> OwnerInventories;
-	OwnerActor->GetComponents<UNarrativeInventoryComponent>(OwnerInventories);
-
-	int32 AddedForOwner = 0;
-	for (UNarrativeInventoryComponent* InventoryComponent : OwnerInventories)
-	{
-		if (!InventoryComponent)
-		{
-			continue;
-		}
-
-		FString RejectReason;
-		if (!IsInventoryComponentEligibleForDeathLoot(InventoryComponent, bOwnerIsPlayerState, RejectReason))
-		{
-			continue;
-		}
-
-		OutInventoryComponents.AddUnique(InventoryComponent);
-		++AddedForOwner;
-
-		if (AddedForOwner >= FMath::Max(1, MaxCollectedInventoryComponentsPerOwner))
-		{
-			break;
-		}
-	}
-}
-
-bool USpellRiseFullLootSubsystem::IsInventoryComponentEligibleForDeathLoot(
-	const UNarrativeInventoryComponent* InventoryComponent,
-	const bool bOwnerIsPlayerState,
-	FString& OutRejectReason) const
-{
-	OutRejectReason.Reset();
-
-	if (!InventoryComponent)
-	{
-		OutRejectReason = TEXT("NullInventory");
-		return false;
-	}
-
-	const FName ComponentName = InventoryComponent->GetFName();
-	if (DeniedDeathLootInventoryComponentNames.Contains(ComponentName))
-	{
-		OutRejectReason = TEXT("DeniedByName");
-		return false;
-	}
-
-	if (!bUseStrictDeathLootInventoryPolicy)
-	{
-		return true;
-	}
-
-	const TArray<FName>& AllowedNames = bOwnerIsPlayerState
-		? AllowedPlayerStateInventoryComponentNames
-		: AllowedCharacterInventoryComponentNames;
-
-	if (AllowedNames.Num() <= 0)
-	{
-		OutRejectReason = TEXT("AllowedListEmpty");
-		return false;
-	}
-
-	if (!AllowedNames.Contains(ComponentName))
-	{
-		const FString ComponentNameLower = ComponentName.ToString().ToLower();
-		const bool bLooksLikeNarrativePlayerInventory =
-			ComponentNameLower.Contains(TEXT("narrativeinventory"))
-			|| ComponentNameLower.Contains(TEXT("inventory"))
-			|| ComponentNameLower.Contains(TEXT("hotbar"));
-
-		if (!bLooksLikeNarrativePlayerInventory)
-		{
-			OutRejectReason = TEXT("NotInAllowedList");
-			return false;
-		}
-	}
-
-	return true;
-}
-
-void USpellRiseFullLootSubsystem::RegisterTrackedLootBag(AActor* BagActor, UNarrativeInventoryComponent* InventoryComponent)
-{
-	if (!BagActor || !InventoryComponent)
+	if (!BagActor || !StorageComponent)
 	{
 		return;
 	}
@@ -962,7 +591,26 @@ void USpellRiseFullLootSubsystem::RegisterTrackedLootBag(AActor* BagActor, UNarr
 	{
 		FTrackedLootBag NewBag;
 		NewBag.BagActor = BagActor;
-		NewBag.InventoryComponent = InventoryComponent;
+		NewBag.StorageComponent = StorageComponent;
+		NewBag.ExpireAtServerTimeSeconds = static_cast<double>(World->GetTimeSeconds()) + LootBagLifetimeSeconds;
+
+		TrackedLootBags.Add(MoveTemp(NewBag));
+		EnsureMonitorTimer();
+	}
+}
+
+void USpellRiseFullLootSubsystem::RegisterTrackedLootBag(AActor* BagActor)
+{
+	if (!BagActor)
+	{
+		return;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		FTrackedLootBag NewBag;
+		NewBag.BagActor = BagActor;
+		NewBag.StorageComponent = nullptr;
 		NewBag.ExpireAtServerTimeSeconds = static_cast<double>(World->GetTimeSeconds()) + LootBagLifetimeSeconds;
 
 		TrackedLootBags.Add(MoveTemp(NewBag));
@@ -1017,16 +665,18 @@ void USpellRiseFullLootSubsystem::TickLootBags()
 	{
 		FTrackedLootBag& TrackedBag = TrackedLootBags[Index];
 		AActor* BagActor = TrackedBag.BagActor.Get();
-		UNarrativeInventoryComponent* BagInventory = TrackedBag.InventoryComponent.Get();
+		USpellRiseStorageComponent* BagStorage = TrackedBag.StorageComponent.Get();
 
-		if (!BagActor || !BagInventory)
+		if (!BagActor)
 		{
 			TrackedLootBags.RemoveAtSwap(Index);
 			continue;
 		}
 
 		const bool bExpired = ServerTimeSeconds >= TrackedBag.ExpireAtServerTimeSeconds;
-		const bool bEmpty = IsInventoryEmpty(BagInventory);
+		const bool bEmpty = BagStorage
+			? !BagStorage->GetItems().ContainsByPredicate([](const FSpellRiseItemInstance& I) { return I.Quantity > 0; })
+			: false;
 
 		if (bEmpty)
 		{
@@ -1047,7 +697,6 @@ void USpellRiseFullLootSubsystem::TickLootBags()
 
 		if (bExpired || bEmptyDelayElapsed)
 		{
-			const int32 ClearedLooters = ClearLootSourceReferencesToBag(World, BagInventory);
 			BagActor->Destroy();
 			TrackedLootBags.RemoveAtSwap(Index);
 		}

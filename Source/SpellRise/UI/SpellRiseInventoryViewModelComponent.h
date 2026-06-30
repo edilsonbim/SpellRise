@@ -149,6 +149,22 @@ struct SPELLRISE_API FSpellRiseInventoryContainerViewSnapshot
 	int32 Revision = 0;
 };
 
+/**
+ * Lightweight identity for an inventory container shown by UMG.
+ * Widgets pass handles and item intent only; they never mutate gameplay state.
+ */
+USTRUCT(BlueprintType)
+struct SPELLRISE_API FSpellRiseInventoryContainerHandle
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Inventory")
+	ESpellRiseInventoryContainerSource Source = ESpellRiseInventoryContainerSource::PlayerInventory;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|Inventory")
+	TObjectPtr<USpellRiseStorageComponent> Storage = nullptr;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FSpellRiseInventoryViewSnapshotChangedSignature,
 	const FSpellRiseInventoryViewSnapshot&,
@@ -208,6 +224,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	const FSpellRiseInventoryContainerViewSnapshot&,
 	Snapshot);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FSpellRiseStorageForceClosedSignature,
+	USpellRiseStorageComponent*,
+	Storage);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 	FSpellRiseInventoryRequestRejectedSignature,
 	FName,
@@ -244,6 +265,7 @@ public:
 	USpellRiseInventoryViewModelComponent();
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UFUNCTION(BlueprintPure, Category="SpellRise|Inventory|ViewModel")
 	const FSpellRiseInventoryViewSnapshot& GetInventorySnapshot() const { return InventorySnapshot; }
@@ -305,6 +327,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
 	bool RequestMoveStorageItem(USpellRiseStorageComponent* Storage, FGuid StorageItemInstanceId, int32 DestinationSlot, int32 Quantity);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Requests")
+	bool RequestQuickTransfer(
+		const FSpellRiseInventoryContainerHandle& SourceContainer,
+		const FSpellRiseInventoryContainerHandle& DestinationContainer,
+		FGuid ItemInstanceId,
+		int32 Quantity);
+
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Inventory|ViewModel|Storage")
 	void WatchStorage(USpellRiseStorageComponent* Storage);
 
@@ -347,6 +376,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Storage")
 	FSpellRiseStorageSlotRemovedSignature OnStorageSlotRemoved;
 
+	UPROPERTY(BlueprintAssignable, Category="SpellRise|Inventory|ViewModel|Storage")
+	FSpellRiseStorageForceClosedSignature OnStorageForceClosed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="SpellRise|ViewModel|Storage", meta=(ClampMin="1.0"))
+	float StorageCloseDistance = 200.0f;
+
 private:
 	bool RejectRequest(FName RequestType, FName Reason);
 	int32 CountFreeSlotsInSnapshot() const;
@@ -368,17 +403,22 @@ private:
 	UFUNCTION()
 	void HandleStorageChanged(ESpellRiseInventoryChangeType ChangeType, FSpellRiseItemInstance Item);
 
-	UPROPERTY(Transient)
+	UFUNCTION()
+	void HandleWatchedStorageOwnerDestroyed(AActor* DestroyedActor);
+
+	void BroadcastPendingForceClose();
+
+	void ShowInventoryHUDNotification(ESpellRiseInventoryChangeType ChangeType, const FSpellRiseItemInstance& Item);
+
 	FSpellRiseInventoryViewSnapshot InventorySnapshot;
 
-	UPROPERTY(Transient)
 	FSpellRiseEquipmentViewSnapshot EquipmentSnapshot;
 
-	UPROPERTY(Transient)
 	TSet<TObjectPtr<USpellRiseStorageComponent>> WatchedStorageComponents;
 
-	UPROPERTY(Transient)
-	TObjectPtr<USpellRiseInventoryViewModelComponent> TransferAuthorityInventoryVM;
+	TArray<TWeakObjectPtr<USpellRiseStorageComponent>> PendingForceCloseStorages;
+
+	USpellRiseInventoryViewModelComponent* TransferAuthorityInventoryVM = nullptr;
 
 	int32 NextClientRequestId = 1;
 };

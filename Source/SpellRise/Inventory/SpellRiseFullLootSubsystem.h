@@ -7,7 +7,7 @@
 #include "SpellRiseFullLootSubsystem.generated.h"
 
 class ASpellRiseCharacterBase;
-class UNarrativeInventoryComponent;
+class USpellRiseStorageComponent;
 
 UCLASS()
 class SPELLRISE_API USpellRiseFullLootSubsystem : public UWorldSubsystem
@@ -20,13 +20,14 @@ public:
 
 	void HandleCharacterDeath(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride);
 	void HandleCharacterCorpseDespawn(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride, const FVector& CorpseLocation);
-	void RegisterTrackedLootBag(AActor* BagActor, UNarrativeInventoryComponent* InventoryComponent);
+	void RegisterTrackedLootBag(AActor* BagActor, USpellRiseStorageComponent* StorageComponent);
+	void RegisterTrackedLootBag(AActor* BagActor); // despawn por timeout apenas, sem check de esvaziamento
 
 private:
 	struct FTrackedLootBag
 	{
 		TWeakObjectPtr<AActor> BagActor;
-		TWeakObjectPtr<UNarrativeInventoryComponent> InventoryComponent;
+		TWeakObjectPtr<USpellRiseStorageComponent> StorageComponent;
 		double ExpireAtServerTimeSeconds = 0.0;
 		double EmptySinceServerTimeSeconds = -1.0;
 	};
@@ -43,34 +44,6 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot", meta=(ClampMin="0.0"))
 	float LootBagEmptyDespawnDelaySeconds = 0.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Policy")
-	bool bUseStrictDeathLootInventoryPolicy = false;
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Policy")
-	TArray<FName> AllowedCharacterInventoryComponentNames
-	{
-		TEXT("NarrativeInventoryComponent"),
-		TEXT("InventoryComponent"),
-		TEXT("HotbarComponent")
-	};
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Policy")
-	TArray<FName> AllowedPlayerStateInventoryComponentNames
-	{
-		TEXT("NarrativeInventoryComponent"),
-		TEXT("InventoryComponent"),
-		TEXT("HotbarComponent")
-	};
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Policy")
-	TArray<FName> DeniedDeathLootInventoryComponentNames
-	{
-		TEXT("StorageInventory")
-	};
-
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Policy", meta=(ClampMin="1"))
-	int32 MaxCollectedInventoryComponentsPerOwner = 8;
-
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Loot|Network", meta=(ClampMin="1.0"))
 	float LootBagNetUpdateFrequency = 5.0f;
 
@@ -81,8 +54,6 @@ private:
 	TArray<FTrackedLootBag> TrackedLootBags;
 
 	void ProcessCharacterDeathNow(ASpellRiseCharacterBase* DeadCharacter, TSubclassOf<AActor> LootBagClassOverride, const FVector& DeathLocation);
-	void GatherEligibleInventoryComponents(AActor* OwnerActor, bool bOwnerIsPlayerState, TArray<UNarrativeInventoryComponent*>& OutInventoryComponents) const;
-	bool IsInventoryComponentEligibleForDeathLoot(const UNarrativeInventoryComponent* InventoryComponent, bool bOwnerIsPlayerState, FString& OutRejectReason) const;
 	void EnsureMonitorTimer();
 	void StopMonitorTimerIfIdle();
 	void TickLootBags();

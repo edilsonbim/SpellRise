@@ -28,7 +28,6 @@ public class SpellRise : ModuleRules
 				"UMG",
 				"Niagara",
 				"ModularGameplay",
-				"NarrativeInventory",
 				"NarrativeEquipment",
 				"NarrativeInteraction",
 				"NarrativeNavigator"
@@ -60,7 +59,9 @@ public class SpellRise : ModuleRules
 
 
 				"AudioMixer",
-				"AIModule"
+				"AIModule",
+				"NarrativeInventory",
+				"NarrativeCommonUI"
 			}
 		);
 

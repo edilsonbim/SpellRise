@@ -549,6 +549,14 @@ bool USpellRiseStorageComponent::InsertItem_Server(
 	return PlaceItemWithStacking_Server(Item, PreferredSlot, OutRejectReason);
 }
 
+void USpellRiseStorageComponent::SetMaxSlots_Authority(const int32 NewMaxSlots)
+{
+	if (GetOwner() && GetOwner()->HasAuthority() && NewMaxSlots > MaxSlots)
+	{
+		MaxSlots = NewMaxSlots;
+	}
+}
+
 bool USpellRiseStorageComponent::RestoreExtractedItem_Server(
 	const FSpellRiseItemInstance& Item,
 	FString& OutRejectReason)

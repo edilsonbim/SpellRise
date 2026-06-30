@@ -15,7 +15,6 @@ class USpellRiseInputRouterComponent;
 class USpellRiseNumberPopComponent_NiagaraText;
 class USpellRiseAbilitySystemComponent;
 class UNarrativeInteractionComponent;
-class UNarrativeInventoryComponent;
 class UActorComponent;
 class UPrimitiveComponent;
 
@@ -47,6 +46,10 @@ public:
 		const FGameplayTagContainer& TargetTags,
 		bool bIsCritical
 	);
+
+	// RPC: DS→client (vitima). Payload: net GUID do ator (~4-8 bytes). Rate: 1x por morte. Cosmético — falha silenciosa.
+	UFUNCTION(Client, Reliable, Category="SpellRise|Loot")
+	void ClientShowLootBagMarker(AActor* LootBag);
 
 	UFUNCTION(Client, Reliable, Category="SpellRise|Chat")
 	void ClientReceiveCombatLogEntry(float Damage, const FString& OtherActorName, bool bIsOutgoing);
@@ -263,7 +266,6 @@ private:
 	bool IsControlledCharacterDead() const;
 	bool IsGameplayInputBlocked() const;
 	UNarrativeInteractionComponent* ResolveNarrativeInteractionComponent() const;
-	UNarrativeInventoryComponent* ResolveNarrativeInventoryComponentForUI() const;
 	bool TryStopLootingFromUIInput(const FName Source);
 	void AuditRejectedInventoryRpc(const TCHAR* RpcName, const FString& RejectReason);
 

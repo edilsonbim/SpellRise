@@ -8,6 +8,8 @@
 #include "Net/UnrealNetwork.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
 #include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
+#include "SpellRise/Inventory/SpellRiseItemDefinition.h"
+#include "SpellRise/Inventory/SpellRiseItemDefinitionResolver.h"
 
 DEFINE_LOG_CATEGORY(LogSpellRiseEquipment);
 
@@ -312,6 +314,7 @@ bool USpellRiseEquipmentComponent::UnequipItem_Server(
 		return false;
 	}
 
+	RemoveDamagedPenalty_Server(Item.ItemInstanceId, Slot);
 	RemoveGrants(Item.ItemInstanceId);
 	RemoveReplicatedEntry(EntryIndex);
 	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
@@ -739,6 +742,7 @@ bool USpellRiseEquipmentComponent::RestoreEquippedItem_Server(
 		OutRejectReason = TEXT("restore_grants_failed");
 		return false;
 	}
+	CheckAndUpdateDamagedState_Server(FindPrivateIndexBySlot(Slot));
 	if (AActor* OwnerActor = GetOwner())
 	{
 		OwnerActor->ForceNetUpdate();
@@ -751,6 +755,10 @@ void USpellRiseEquipmentComponent::ResetEquipment_Server()
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return;
+	}
+	for (const FSpellRiseEquippedItemEntry& Entry : PrivateEquipment.Entries)
+	{
+		RemoveDamagedPenalty_Server(Entry.ItemInstanceId, Entry.Slot);
 	}
 	TArray<FGuid> GrantedIds;
 	ActiveGrantHandles.GetKeys(GrantedIds);
@@ -773,4 +781,259 @@ void USpellRiseEquipmentComponent::HandlePrivateReplicationChanged()
 void USpellRiseEquipmentComponent::HandleVisualReplicationChanged()
 {
 	OnEquipmentChanged.Broadcast();
+}
+
+void USpellRiseEquipmentComponent::OnHitTakenByOwner_Server()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+
+	for (int32 i = PrivateEquipment.Entries.Num() - 1; i >= 0; --i)
+	{
+		const FSpellRiseEquippedItemEntry& Entry = PrivateEquipment.Entries[i];
+		const USpellRiseItemDefinition* Def = SpellRiseItemDefinitionResolver::ResolveItemDefinition(Entry.DefinitionId);
+		if (!Def || Def->MaxDurability <= 0 || Def->ItemKind != ESpellRiseItemKind::Armor) continue;
+		const USpellRiseArmorItemDefinition* ArmorDef = Cast<USpellRiseArmorItemDefinition>(Def);
+		if (!ArmorDef || ArmorDef->DurabilityLossWhenHit <= 0) continue;
+		ApplyDurabilityLoss_Server(i, ArmorDef->DurabilityLossWhenHit);
+	}
+}
+
+void USpellRiseEquipmentComponent::OnHitGivenByOwner_Server()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+
+	static const ESpellRiseEquipmentSlot WeaponSlots[] = {
+		ESpellRiseEquipmentSlot::MainHand, ESpellRiseEquipmentSlot::OffHand
+	};
+	for (const ESpellRiseEquipmentSlot Slot : WeaponSlots)
+	{
+		const int32 Index = FindPrivateIndexBySlot(Slot);
+		if (!PrivateEquipment.Entries.IsValidIndex(Index)) continue;
+		const FSpellRiseEquippedItemEntry& Entry = PrivateEquipment.Entries[Index];
+		const USpellRiseItemDefinition* Def = SpellRiseItemDefinitionResolver::ResolveItemDefinition(Entry.DefinitionId);
+		if (!Def || Def->MaxDurability <= 0 || Def->ItemKind != ESpellRiseItemKind::Weapon) continue;
+		const USpellRiseWeaponItemDefinition* WeaponDef = Cast<USpellRiseWeaponItemDefinition>(Def);
+		if (!WeaponDef || WeaponDef->DurabilityLossPerAttack <= 0) continue;
+		ApplyDurabilityLoss_Server(Index, WeaponDef->DurabilityLossPerAttack);
+	}
+}
+
+void USpellRiseEquipmentComponent::ApplyDurabilityLoss_Server(const int32 PrivateIndex, const int32 Loss)
+{
+	if (!PrivateEquipment.Entries.IsValidIndex(PrivateIndex) || Loss <= 0) return;
+
+	FSpellRiseEquippedItemEntry& Entry = PrivateEquipment.Entries[PrivateIndex];
+	const int32 Previous = Entry.Durability;
+	Entry.Durability = FMath::Max(0, Entry.Durability - Loss);
+	Entry.ServerItemData.Durability = Entry.Durability;
+
+	UE_LOG(LogSpellRiseEquipment, Verbose,
+		TEXT("[Durability][Decay] Owner=%s Slot=%d Item=%s Durability=%d->%d"),
+		*GetNameSafe(GetOwner()),
+		static_cast<int32>(Entry.Slot),
+		*Entry.ItemInstanceId.ToString(),
+		Previous,
+		Entry.Durability);
+
+	if (Entry.Durability <= 0)
+	{
+		DestroyEquippedItem_Server(PrivateIndex);
+		return;
+	}
+
+	CheckAndUpdateDamagedState_Server(PrivateIndex);
+	Entry.Revision = ++EquipmentRevision;
+	PrivateEquipment.MarkItemDirty(Entry);
+	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
+}
+
+void USpellRiseEquipmentComponent::DestroyEquippedItem_Server(const int32 PrivateIndex)
+{
+	if (!PrivateEquipment.Entries.IsValidIndex(PrivateIndex)) return;
+
+	const FGuid ItemInstanceId = PrivateEquipment.Entries[PrivateIndex].ItemInstanceId;
+	const ESpellRiseEquipmentSlot Slot = PrivateEquipment.Entries[PrivateIndex].Slot;
+	const FPrimaryAssetId DefinitionId = PrivateEquipment.Entries[PrivateIndex].DefinitionId;
+
+	UE_LOG(LogSpellRiseEquipment, Warning,
+		TEXT("[Durability][Destroyed] Owner=%s Slot=%d Item=%s Definition=%s"),
+		*GetNameSafe(GetOwner()),
+		static_cast<int32>(Slot),
+		*ItemInstanceId.ToString(),
+		*DefinitionId.ToString());
+
+	RemoveDamagedPenalty_Server(ItemInstanceId, Slot);
+	RemoveGrants(ItemInstanceId);
+	RemoveReplicatedEntry(PrivateIndex);
+	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
+}
+
+FGameplayTag USpellRiseEquipmentComponent::GetDamagedTagForSlot(const ESpellRiseEquipmentSlot Slot)
+{
+	switch (Slot)
+	{
+	case ESpellRiseEquipmentSlot::Head:     return FGameplayTag::RequestGameplayTag("Item.Damaged.Head", false);
+	case ESpellRiseEquipmentSlot::Chest:    return FGameplayTag::RequestGameplayTag("Item.Damaged.Chest", false);
+	case ESpellRiseEquipmentSlot::Hands:    return FGameplayTag::RequestGameplayTag("Item.Damaged.Hands", false);
+	case ESpellRiseEquipmentSlot::Legs:     return FGameplayTag::RequestGameplayTag("Item.Damaged.Legs", false);
+	case ESpellRiseEquipmentSlot::Feet:     return FGameplayTag::RequestGameplayTag("Item.Damaged.Feet", false);
+	case ESpellRiseEquipmentSlot::MainHand: return FGameplayTag::RequestGameplayTag("Item.Damaged.MainHand", false);
+	case ESpellRiseEquipmentSlot::OffHand:  return FGameplayTag::RequestGameplayTag("Item.Damaged.OffHand", false);
+	default:                                return FGameplayTag();
+	}
+}
+
+void USpellRiseEquipmentComponent::CheckAndUpdateDamagedState_Server(const int32 PrivateIndex)
+{
+	if (!PrivateEquipment.Entries.IsValidIndex(PrivateIndex)) return;
+
+	const FSpellRiseEquippedItemEntry& Entry = PrivateEquipment.Entries[PrivateIndex];
+	const USpellRiseItemDefinition* Def = SpellRiseItemDefinitionResolver::ResolveItemDefinition(Entry.DefinitionId);
+	if (!Def || Def->MaxDurability <= 0) return;
+
+	const bool bIsDamaged = Entry.Durability < static_cast<int32>(Def->MaxDurability * 0.2f);
+	const bool bTagged = DamagedTaggedItems.Contains(Entry.ItemInstanceId);
+
+	if (bIsDamaged && !bTagged)
+	{
+		ApplyDamagedPenalty_Server(Entry.ItemInstanceId, Entry.Slot);
+	}
+	else if (!bIsDamaged && bTagged)
+	{
+		RemoveDamagedPenalty_Server(Entry.ItemInstanceId, Entry.Slot);
+	}
+}
+
+void USpellRiseEquipmentComponent::ApplyDamagedPenalty_Server(
+	const FGuid& ItemInstanceId,
+	const ESpellRiseEquipmentSlot Slot)
+{
+	UAbilitySystemComponent* ASC = ResolveAbilitySystem();
+	if (!ASC) return;
+
+	const FGameplayTag DamagedTag = GetDamagedTagForSlot(Slot);
+	if (DamagedTag.IsValid())
+	{
+		ASC->AddLooseGameplayTag(DamagedTag);
+		DamagedTaggedItems.Add(ItemInstanceId);
+		UE_LOG(LogSpellRiseEquipment, Log,
+			TEXT("[Durability][Damaged] Owner=%s Slot=%d Item=%s Tag=%s"),
+			*GetNameSafe(GetOwner()), static_cast<int32>(Slot),
+			*ItemInstanceId.ToString(), *DamagedTag.ToString());
+	}
+}
+
+void USpellRiseEquipmentComponent::RemoveDamagedPenalty_Server(
+	const FGuid& ItemInstanceId,
+	const ESpellRiseEquipmentSlot Slot)
+{
+	if (!DamagedTaggedItems.Contains(ItemInstanceId)) return;
+
+	UAbilitySystemComponent* ASC = ResolveAbilitySystem();
+	const FGameplayTag DamagedTag = GetDamagedTagForSlot(Slot);
+	if (DamagedTag.IsValid() && ASC)
+	{
+		ASC->RemoveLooseGameplayTag(DamagedTag);
+	}
+	DamagedTaggedItems.Remove(ItemInstanceId);
+}
+
+void USpellRiseEquipmentComponent::RequestRepairItem(FGuid ItemInstanceId, const int32 ClientRequestId)
+{
+	ServerRequestRepairItem(ItemInstanceId, ClientRequestId);
+}
+
+void USpellRiseEquipmentComponent::ServerRequestRepairItem_Implementation(
+	const FGuid ItemInstanceId,
+	const int32 ClientRequestId)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()) return;
+
+	if (!ItemInstanceId.IsValid())
+	{
+		RejectRequest(TEXT("repair"), ESpellRiseEquipmentRejectReason::InvalidItem, ClientRequestId);
+		return;
+	}
+	if (IsDuplicateRequest(ClientRequestId))
+	{
+		RejectRequest(TEXT("repair"), ESpellRiseEquipmentRejectReason::DuplicateRequest, ClientRequestId);
+		return;
+	}
+	if (!ConsumeRateLimit(false))
+	{
+		RejectRequest(TEXT("repair"), ESpellRiseEquipmentRejectReason::RateLimited, ClientRequestId);
+		return;
+	}
+
+	// TODO: deduct repair cost (economy system)
+
+	const int32 EquippedIndex = PrivateEquipment.Entries.IndexOfByPredicate(
+		[&ItemInstanceId](const FSpellRiseEquippedItemEntry& E)
+		{
+			return E.ItemInstanceId == ItemInstanceId;
+		});
+
+	if (PrivateEquipment.Entries.IsValidIndex(EquippedIndex))
+	{
+		if (!RepairEquippedItem_Server(EquippedIndex))
+		{
+			RejectRequest(TEXT("repair"), ESpellRiseEquipmentRejectReason::InvalidItem, ClientRequestId);
+		}
+		else
+		{
+			RecordAcceptedRequest(ClientRequestId);
+		}
+		return;
+	}
+
+	if (!RepairInventoryItem_Server(ItemInstanceId))
+	{
+		RejectRequest(TEXT("repair"), ESpellRiseEquipmentRejectReason::InvalidItem, ClientRequestId);
+	}
+	else
+	{
+		RecordAcceptedRequest(ClientRequestId);
+	}
+}
+
+bool USpellRiseEquipmentComponent::RepairEquippedItem_Server(const int32 PrivateIndex)
+{
+	if (!PrivateEquipment.Entries.IsValidIndex(PrivateIndex)) return false;
+
+	FSpellRiseEquippedItemEntry& Entry = PrivateEquipment.Entries[PrivateIndex];
+	const USpellRiseItemDefinition* Def = SpellRiseItemDefinitionResolver::ResolveItemDefinition(Entry.DefinitionId);
+	if (!Def || Def->MaxDurability <= 0 || Entry.Durability >= Def->MaxDurability) return false;
+
+	const int32 Previous = Entry.Durability;
+	Entry.Durability = Def->MaxDurability;
+	Entry.ServerItemData.Durability = Def->MaxDurability;
+
+	CheckAndUpdateDamagedState_Server(PrivateIndex);
+
+	Entry.Revision = ++EquipmentRevision;
+	PrivateEquipment.MarkItemDirty(Entry);
+	if (AActor* OwnerActor = GetOwner()) OwnerActor->ForceNetUpdate();
+
+	UE_LOG(LogSpellRiseEquipment, Log,
+		TEXT("[Repair][Equipped] Owner=%s Slot=%d Item=%s Durability=%d->%d"),
+		*GetNameSafe(GetOwner()), static_cast<int32>(Entry.Slot),
+		*Entry.ItemInstanceId.ToString(), Previous, Entry.Durability);
+	return true;
+}
+
+bool USpellRiseEquipmentComponent::RepairInventoryItem_Server(const FGuid& ItemInstanceId)
+{
+	const ASpellRisePlayerState* PS = Cast<ASpellRisePlayerState>(GetOwner());
+	USpellRiseInventoryComponent* Inventory = PS ? PS->GetInventoryComponent() : nullptr;
+	if (!Inventory) return false;
+
+	FString RejectReason;
+	if (!Inventory->RepairItem_Server(ItemInstanceId, RejectReason))
+	{
+		UE_LOG(LogSpellRiseEquipment, Warning,
+			TEXT("[Repair][Inventory] Rejected Item=%s Reason=%s"),
+			*ItemInstanceId.ToString(), *RejectReason);
+		return false;
+	}
+	return true;
 }

@@ -67,8 +67,7 @@ struct SPELLRISE_API FSpellRiseEquipmentPrivateList : public FFastArraySerialize
 	UPROPERTY()
 	TArray<FSpellRiseEquippedItemEntry> Entries;
 
-	UPROPERTY(NotReplicated)
-	TObjectPtr<USpellRiseEquipmentComponent> Owner = nullptr;
+	USpellRiseEquipmentComponent* Owner = nullptr;
 
 	bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParms)
 	{
@@ -116,8 +115,7 @@ struct SPELLRISE_API FSpellRiseEquipmentVisualList : public FFastArraySerializer
 	UPROPERTY()
 	TArray<FSpellRiseEquipmentVisualEntry> Entries;
 
-	UPROPERTY(NotReplicated)
-	TObjectPtr<USpellRiseEquipmentComponent> Owner = nullptr;
+	USpellRiseEquipmentComponent* Owner = nullptr;
 
 	bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParms)
 	{
@@ -166,6 +164,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
 	void RequestSwapEquipmentSlots(ESpellRiseEquipmentSlot FromSlot, ESpellRiseEquipmentSlot ToSlot, int32 ClientRequestId);
 
+	UFUNCTION(BlueprintCallable, Category="SpellRise|Equipment")
+	void RequestRepairItem(FGuid ItemInstanceId, int32 ClientRequestId);
+
 	UFUNCTION(BlueprintPure, Category="SpellRise|Equipment")
 	bool GetEquippedItem(ESpellRiseEquipmentSlot Slot, FSpellRiseEquippedItemEntry& OutEntry) const;
 
@@ -176,6 +177,9 @@ public:
 	bool UnequipItemById_Server(const FGuid& ItemInstanceId, int32 PreferredInventorySlot, FString& OutRejectReason);
 	bool IsItemEquipped(const FGuid& ItemInstanceId, ESpellRiseEquipmentSlot& OutSlot) const;
 	void ResetEquipment_Server();
+
+	void OnHitTakenByOwner_Server();
+	void OnHitGivenByOwner_Server();
 
 	const FSpellRiseEquipmentPrivateList& GetPrivateEquipment() const { return PrivateEquipment; }
 	const FSpellRiseEquipmentVisualList& GetPublicVisualEquipment() const { return PublicVisualEquipment; }
@@ -197,6 +201,9 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestSwapEquipmentSlots(ESpellRiseEquipmentSlot FromSlot, ESpellRiseEquipmentSlot ToSlot, int32 ClientRequestId);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestRepairItem(FGuid ItemInstanceId, int32 ClientRequestId);
 
 	UPROPERTY(Replicated)
 	FSpellRiseEquipmentPrivateList PrivateEquipment;
@@ -231,11 +238,20 @@ private:
 
 	int32 FindPrivateIndexBySlot(ESpellRiseEquipmentSlot Slot) const;
 	int32 FindVisualIndexBySlot(ESpellRiseEquipmentSlot Slot) const;
+	void ApplyDurabilityLoss_Server(int32 PrivateIndex, int32 Loss);
+	void DestroyEquippedItem_Server(int32 PrivateIndex);
+	bool RepairEquippedItem_Server(int32 PrivateIndex);
+	bool RepairInventoryItem_Server(const FGuid& ItemInstanceId);
+	void CheckAndUpdateDamagedState_Server(int32 PrivateIndex);
+	void ApplyDamagedPenalty_Server(const FGuid& ItemInstanceId, ESpellRiseEquipmentSlot Slot);
+	void RemoveDamagedPenalty_Server(const FGuid& ItemInstanceId, ESpellRiseEquipmentSlot Slot);
+	static FGameplayTag GetDamagedTagForSlot(ESpellRiseEquipmentSlot Slot);
 
 	UPROPERTY(Transient)
 	TMap<FGuid, TObjectPtr<USpellRiseEquipmentGrantSource>> GrantSources;
 
 	TMap<FGuid, FGrantHandles> ActiveGrantHandles;
+	TSet<FGuid> DamagedTaggedItems;
 	TArray<int32> RecentRequestIds;
 	double RateWindowStartSeconds = 0.0;
 	int32 RequestsInRateWindow = 0;

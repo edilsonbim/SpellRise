@@ -1,6 +1,7 @@
 #include "SpellRise/Characters/SpellRiseLifeStateComponent.h"
 
 #include "AbilitySystemComponent.h"
+#include "SpellRise/GameplayAbilitySystem/Abilities/SpellRiseGameplayAbility.h"
 #include "Net/UnrealNetwork.h"
 #include "SpellRise/Characters/SpellRiseCharacterBase.h"
 #include "SpellRise/Core/SpellRisePlayerState.h"
@@ -151,6 +152,8 @@ void USpellRiseLifeStateComponent::ClearDowned_Server()
 	if (Character->DownedStateTag.IsValid())
 	{
 		ASC->SetLooseGameplayTagCount(Character->DownedStateTag, 0);
+		// Remove GEs que concedem State.Downed (ex: GE aplicada pela GA_Downed que não é removida por CancelAbility)
+		ASC->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(Character->DownedStateTag));
 	}
 	Character->bIsDowned = false;
 	CancelDownedAbility_Server();
@@ -368,9 +371,39 @@ void USpellRiseLifeStateComponent::CancelDownedAbility_Server()
 {
 	ASpellRiseCharacterBase* Character = GetCharacter();
 	USpellRiseAbilitySystemComponent* ASC = Character ? Character->GetSpellRiseASC() : nullptr;
-	if (ASC && DownedAbilityHandle.IsValid())
+	if (!ASC || !DownedAbilityHandle.IsValid())
 	{
-		ASC->CancelAbilityHandle(DownedAbilityHandle);
+		return;
+	}
+
+	FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle(DownedAbilityHandle);
+	if (!Spec)
+	{
+		// Spec removida externamente — handle stale, nada a fazer
+		return;
+	}
+
+	TArray<UGameplayAbility*> Instances = Spec->GetAbilityInstances();
+	for (UGameplayAbility* Instance : Instances)
+	{
+		if (!Instance || !Instance->IsActive())
+		{
+			continue;
+		}
+
+		// ForceEndAbilityForLifeStateTransition bypassa bCanBeCanceled usando estado interno da instância
+		if (USpellRiseGameplayAbility* SRInstance = Cast<USpellRiseGameplayAbility>(Instance))
+		{
+			SRInstance->ForceEndAbilityForLifeStateTransition();
+			UE_LOG(LogSpellRiseLifeState, Log,
+				TEXT("[LifeState][CancelDownedAbility] ForceEnded Ability=%s Character=%s"),
+				*GetNameSafe(SRInstance), *GetNameSafe(Character));
+		}
+		else
+		{
+			// Ability não é USpellRiseGameplayAbility: fallback respeitando CanBeCanceled
+			ASC->CancelAbilityHandle(DownedAbilityHandle);
+		}
 	}
 }
 

@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-06-30 — Full Loot nativo, tag DownedCooldown e notificações HUD de inventário
+
+### Full Loot com SpellRiseInventoryComponent
+- `USpellRiseFullLootSubsystem::ProcessCharacterDeathNow` agora captura snapshot do inventário nativo e do equipamento ao morrer, extrai itens droppáveis (sem flag `NoDrop`) e os transfere para a loot bag.
+- `FSpellRiseStarterInventoryItem::bNoDrop` passou de `true` para `false` como default; itens bound devem marcar explicitamente `bNoDrop=true` no Blueprint.
+- `USpellRiseStorageComponent::SetMaxSlots_Authority` adicionado para expandir dinamicamente a capacidade da bag conforme o total de itens droppados.
+- `ASpellRiseCharacterBase::ProcessFullLootDrop_Server` passa a chamar `USpellRisePersistenceSubsystem::SaveCharacterForController` imediatamente após o drop, garantindo que o respawn restaure o inventário pós-loot e não o snapshot pré-morte.
+- Root cause do bug "nada dropa": `FullLootBagClass` no `BP_SpellRiseCharacter` apontava para `BP_Bag_C` (bag antigo do NarrativeInventory), que não possui `USpellRiseStorageComponent`; ao detectar a ausência do componente, a bag era destruída. Solução: limpar `FullLootBagClass` no BP ou apontar para `BP_StorageMaster1`.
+- Equipamento (`USpellRiseEquipmentComponent`) é resetado via `ResetEquipment_Server` antes da transferência; itens com `NoDrop` no equipamento permanecem no respawn.
+- Logs de diagnóstico adicionados: `LogSpellRiseFullLoot` registra total de itens encontrados, quantos têm `NoDrop`, quantos foram dropados e erros de bag/storage.
+
+### Marker Narrative Navigator para a vítima
+- `ASpellRisePlayerController::ClientShowLootBagMarker` (Client Reliable) notifica o cliente da vítima para adicionar localmente um `UNavigationMarkerComponent` vermelho na bag, visível apenas pelo player morto.
+- Marker dinâmico adicionado no servidor via `AddInstanceComponent` foi removido do `ConfigureLootMarkerForVictimOnly` por não replicar para clientes; `ConfigureLootMarkerForVictimOnly` agora configura apenas componentes já presentes no Blueprint da bag.
+- RPC: DS→client, payload ~8 bytes (NetGUID do ator), disparado 1x por evento de morte, cosmético sem impacto de autoridade.
+
+### Fix: State.Downed.Cooldown → State.DownedCooldown
+- `Config/DefaultGameplayTags.ini`: tag renomeada de `State.Downed.Cooldown` para `State.DownedCooldown`, eliminando a hierarquia que fazia `HasMatchingGameplayTag("State.Downed")` retornar `true` durante o cooldown pós-downed.
+- `SpellRiseTags::State_Downed_Cooldown()` atualizado para `FGameplayTag::RequestGameplayTag(TEXT("State.DownedCooldown"))`.
+
+### HUD Notifications de inventário nativo
+- `USpellRiseInventoryViewModelComponent::HandleInventoryChanged` passa a chamar `ShowInventoryHUDNotification` para eventos `Added`/`Removed`, exibindo `+N Item` / `-N Item` via `UNarrativeCommonUISubsystem::ShowNotification` por 3s.
+- Guard de `IsLocalController()` garante que a notificação não execute em DS.
+- `SpellRise.Build.cs` adicionou `NarrativeCommonUI` em `PrivateDependencyModuleNames`.
+
+## 2026-06-28 — Fix: abilities bloqueadas após revive do estado Downed
+- `USpellRiseLifeStateComponent::CancelDownedAbility_Server` agora força `EndAbility` diretamente na instância da GA_Downed, ignorando `bCanBeCanceled`, para garantir que `BlockAbilitiesWithTag` e `ActivationOwnedTags` sejam limpos mesmo se o Blueprint definir a ability como não-cancelável.
+- `USpellRiseLifeStateComponent::ClearDowned_Server` passou a chamar `RemoveActiveEffectsWithGrantedTags(DownedStateTag)` após `SetLooseGameplayTagCount(0)`, removendo qualquer GE que conceda `State.Downed` via `GrantedTags` e que não seria limpa pela simples remoção do loose tag.
+- Adicionado include `Abilities/GameplayAbility.h` em `SpellRiseLifeStateComponent.cpp` para acesso a `UGameplayAbility::EndAbility` e `FGameplayAbilitySpec::GetAbilityInstances`.
+
+## 2026-06-28 — Quick transfer de inventário orientado por container
+- `USpellRiseInventoryViewModelComponent` passa a expor `RequestQuickTransfer` com handles leves de origem/destino para UMG.
+- O slot envia somente intenção (`ItemInstanceId`, quantidade e container); a escolha automática do primeiro slot usa `INDEX_NONE` e continua validada no servidor pelos RPCs existentes de depósito/saque.
+- Sem RPC, propriedade replicada ou dependência de UI nova no Dedicated Server.
+
 - Rating competitivo passou a ser autoritativo no `USpellRiseProgressionComponent` do `PlayerState`, com `MatchRating` replicado `OwnerOnly`, persistido no snapshot e ajustado no servidor em morte final: derrota perde rating, finalizador ganha rating. Defaults começam em `1000` com delta padrão de `25`.
 - `USpellRiseInventoryViewModelComponent` agora expõe contrato unificado para UI de inventário e storage: snapshots de container compatíveis, `WatchStorage`, refresh por evento e intenções BP de deposit/withdraw/move roteadas por RPC owner-bound validado no servidor para `USpellRiseStorageComponent`, sem mover autoridade para widget, baú ou PlayerController.
 - `USpellRiseInventoryViewModelComponent` ganhou `RequestMoveItemFromInventory`, permitindo que `WB_ItemSlot` use o ViewModel de origem carregado pelo drag operation e o ViewModel de destino do slot para rotear automaticamente player->player, player->storage e storage->player sem especializar `WB_SlotsContainer`.

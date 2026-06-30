@@ -47,14 +47,12 @@
 #include "SpellRise/GameplayAbilitySystem/SpellRiseAbilitySystemComponent.h"
 #include "SpellRise/Inventory/SpellRiseFullLootSubsystem.h"
 #include "SpellRise/Inventory/SpellRiseInventoryComponent.h"
+#include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/Security/SpellRiseAuditTrail.h"
 #include "SpellRise/UI/SpellRiseDamageEdgeWidget.h"
 #include "SpellRise/UI/SpellRiseDeathScreenWidget.h"
 #include "EquippableItem.h"
 #include "EquipmentComponent.h"
-#include "InventoryComponent.h"
-#include "InventoryFunctionLibrary.h"
-
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseDeathLoot, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseSecurity, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRiseCharacterRuntime, Log, All);
@@ -76,7 +74,7 @@ namespace SpellRiseTags
 
 	static const FGameplayTag& State_Downed_Cooldown()
 	{
-		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.Downed.Cooldown"));
+		static FGameplayTag Tag = FGameplayTag::RequestGameplayTag(TEXT("State.DownedCooldown"));
 		return Tag;
 	}
 
@@ -548,7 +546,6 @@ void ASpellRiseCharacterBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(ASCInitializationRetryTimerHandle);
 		World->GetTimerManager().ClearTimer(ResourceRegenTimerHandle);
 	}
-	UnbindNarrativeInventoryWeightDelegates();
 	UnbindNativeInventoryWeightDelegates();
 	UnbindEquipmentDelegates();
 	ResetLocalDeathPresentation();
@@ -1828,7 +1825,7 @@ void ASpellRiseCharacterBase::BindASCDelegates()
 		->RegisterGameplayTagEvent(SpellRiseTags::Debuff_Ice(), EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &ASpellRiseCharacterBase::OnFrozenStatusChanged);
 
-	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("BindASCDelegates"));
+	SyncInventoryWeightCapacityFromCarryWeight(TEXT("BindASCDelegates"));
 	RefreshMovementSpeedFromAttributes(TEXT("BindASCDelegates"));
 }
 
@@ -1854,17 +1851,7 @@ bool ASpellRiseCharacterBase::InitializeAbilitySystemFromPlayerState()
 	return true;
 }
 
-UNarrativeInventoryComponent* ASpellRiseCharacterBase::ResolveNarrativeInventoryComponent() const
-{
-	if (APlayerState* OwningPlayerState = GetPlayerState())
-	{
-		return UInventoryFunctionLibrary::GetInventoryComponentFromTarget(OwningPlayerState);
-	}
-
-	return nullptr;
-}
-
-void ASpellRiseCharacterBase::SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context)
+void ASpellRiseCharacterBase::SyncInventoryWeightCapacityFromCarryWeight(const TCHAR* Context)
 {
 	if (!ResourceAttributeSet)
 	{
@@ -1877,21 +1864,8 @@ void ASpellRiseCharacterBase::SyncNarrativeInventoryWeightCapacityFromCarryWeigh
 		return;
 	}
 
-	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponent();
-	if (!Inventory)
-	{
-		return;
-	}
-	BindNarrativeInventoryWeightDelegates(Inventory);
-
 	const float DesiredWeightCapacity = FMath::Max(0.f, CarryWeight);
-	if (FMath::IsNearlyEqual(Inventory->GetWeightCapacity(), DesiredWeightCapacity, 0.01f))
-	{
-		RefreshInventoryEncumbranceMovement(Context);
-		return;
-	}
 
-	Inventory->SetWeightCapacity(DesiredWeightCapacity);
 	if (ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>())
 	{
 		if (USpellRiseInventoryComponent* NativeInventory = SRPlayerState->GetInventoryComponent())
@@ -1903,39 +1877,12 @@ void ASpellRiseCharacterBase::SyncNarrativeInventoryWeightCapacityFromCarryWeigh
 	RefreshInventoryEncumbranceMovement(Context);
 
 	UE_LOG(LogSpellRiseCharacterRuntime, Verbose,
-		TEXT("[InventoryWeight][Sync] Character=%s Inventory=%s Capacity=%.2f Context=%s Authority=%d Local=%d"),
+		TEXT("[InventoryWeight][Sync] Character=%s Capacity=%.2f Context=%s Authority=%d Local=%d"),
 		*GetNameSafe(this),
-		*GetNameSafe(Inventory),
 		DesiredWeightCapacity,
 		Context ? Context : TEXT("unknown"),
 		HasAuthority() ? 1 : 0,
 		IsLocallyControlled() ? 1 : 0);
-}
-
-void ASpellRiseCharacterBase::BindNarrativeInventoryWeightDelegates(UNarrativeInventoryComponent* Inventory)
-{
-	if (CachedNarrativeInventoryForWeight == Inventory)
-	{
-		return;
-	}
-
-	UnbindNarrativeInventoryWeightDelegates();
-	CachedNarrativeInventoryForWeight = Inventory;
-
-	if (CachedNarrativeInventoryForWeight)
-	{
-		CachedNarrativeInventoryForWeight->OnInventoryUpdated.RemoveDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
-		CachedNarrativeInventoryForWeight->OnInventoryUpdated.AddUniqueDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
-	}
-}
-
-void ASpellRiseCharacterBase::UnbindNarrativeInventoryWeightDelegates()
-{
-	if (CachedNarrativeInventoryForWeight)
-	{
-		CachedNarrativeInventoryForWeight->OnInventoryUpdated.RemoveDynamic(this, &ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight);
-		CachedNarrativeInventoryForWeight = nullptr;
-	}
 }
 
 void ASpellRiseCharacterBase::BindNativeInventoryWeightDelegates(USpellRiseInventoryComponent* Inventory)
@@ -2058,33 +2005,18 @@ void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* C
 	}
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponent();
 	ASpellRisePlayerState* SRPlayerState = GetPlayerState<ASpellRisePlayerState>();
 	USpellRiseInventoryComponent* NativeInventory = SRPlayerState ? SRPlayerState->GetInventoryComponent() : nullptr;
 	USpellRiseEquipmentComponent* NativeEquipment = SRPlayerState ? SRPlayerState->GetEquipmentComponent() : nullptr;
-	if (!Movement || (!Inventory && !NativeInventory))
+	if (!Movement || !NativeInventory)
 	{
 		return;
 	}
 
-	if (Inventory)
-	{
-		BindNarrativeInventoryWeightDelegates(Inventory);
-	}
-	if (NativeInventory)
-	{
-		BindNativeInventoryWeightDelegates(NativeInventory);
-	}
+	BindNativeInventoryWeightDelegates(NativeInventory);
 
-	const bool bUseNativeInventory = NativeInventory
-		&& (!NativeInventory->GetItems().IsEmpty()
-			|| (NativeEquipment && !NativeEquipment->GetPrivateEquipment().Entries.IsEmpty()));
-	const float CurrentWeight = bUseNativeInventory
-		? FMath::Max(0.f, NativeInventory->GetCurrentWeight() + (NativeEquipment ? NativeEquipment->GetEquippedWeight() : 0.0f))
-		: FMath::Max(0.f, Inventory ? Inventory->GetCurrentWeight() : 0.0f);
-	const float WeightCapacity = bUseNativeInventory
-		? FMath::Max(0.f, NativeInventory->GetMaxWeight())
-		: FMath::Max(0.f, Inventory ? Inventory->GetWeightCapacity() : 0.0f);
+	const float CurrentWeight = FMath::Max(0.f, NativeInventory->GetCurrentWeight() + (NativeEquipment ? NativeEquipment->GetEquippedWeight() : 0.0f));
+	const float WeightCapacity = FMath::Max(0.f, NativeInventory->GetMaxWeight());
 
 	float SpeedMultiplier = 1.f;
 	int32 NewMoveState = 0;
@@ -2153,11 +2085,6 @@ void ASpellRiseCharacterBase::RefreshInventoryEncumbranceMovement(const TCHAR* C
 	}
 }
 
-void ASpellRiseCharacterBase::OnNarrativeInventoryUpdatedForWeight()
-{
-	RefreshInventoryEncumbranceMovement(TEXT("InventoryUpdated"));
-}
-
 void ASpellRiseCharacterBase::OnNativeInventoryUpdatedForWeight(
 	ESpellRiseInventoryChangeType,
 	FSpellRiseItemInstance)
@@ -2187,7 +2114,7 @@ void ASpellRiseCharacterBase::OnPrimaryChanged(const FOnAttributeChangeData& Dat
 
 void ASpellRiseCharacterBase::OnCarryWeightChanged(const FOnAttributeChangeData& Data)
 {
-	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("CarryWeightChanged"));
+	SyncInventoryWeightCapacityFromCarryWeight(TEXT("CarryWeightChanged"));
 }
 
 void ASpellRiseCharacterBase::OnMoveSpeedChanged(const FOnAttributeChangeData& Data)
@@ -2289,7 +2216,7 @@ void ASpellRiseCharacterBase::ApplyDerivedStatsInfinite()
 	}
 
 	GetSpellRiseASC()->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-	SyncNarrativeInventoryWeightCapacityFromCarryWeight(TEXT("ApplyDerivedStatsInfinite"));
+	SyncInventoryWeightCapacityFromCarryWeight(TEXT("ApplyDerivedStatsInfinite"));
 }
 
 void ASpellRiseCharacterBase::ApplyOrRefreshEffect(TSubclassOf<UGameplayEffect> EffectClass)
@@ -3460,10 +3387,25 @@ void ASpellRiseCharacterBase::ProcessFullLootDrop_Server(const FVector& LootOrig
 		return;
 	}
 
+	UE_LOG(LogSpellRiseDeathLoot, Log, TEXT("[FullLoot] ProcessFullLootDrop_Server chamado: Character=%s BagClass=%s"),
+		*GetNameSafe(this), *GetNameSafe(FullLootBagClass));
+
 	if (USpellRiseFullLootSubsystem* FullLootSubsystem = World->GetSubsystem<USpellRiseFullLootSubsystem>())
 	{
 		FullLootSubsystem->HandleCharacterCorpseDespawn(this, FullLootBagClass, LootOrigin);
 		bFullLootProcessedForCurrentDeath = true;
+	}
+
+	// Salva o estado pós-loot imediatamente para que o respawn restaure o inventário vazio
+	if (UGameInstance* GI = World->GetGameInstance())
+	{
+		if (USpellRisePersistenceSubsystem* Persistence = GI->GetSubsystem<USpellRisePersistenceSubsystem>())
+		{
+			if (AController* OwnedController = GetController())
+			{
+				Persistence->SaveCharacterForController(OwnedController);
+			}
+		}
 	}
 }
 

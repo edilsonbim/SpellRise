@@ -20,8 +20,6 @@
 #include "GameFramework/SpectatorPawnMovement.h"
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
-#include "InventoryComponent.h"
-#include "InventoryFunctionLibrary.h"
 #include "InteractionComponent.h"
 #include "Misc/DateTime.h"
 #include "Misc/CommandLine.h"
@@ -42,6 +40,7 @@
 #include "SpellRise/Progression/SpellRiseProgressionComponent.h"
 #include "SpellRise/Persistence/SpellRisePersistenceSubsystem.h"
 #include "SpellRise/GameplayAbilitySystem/AttributeSets/ResourceAttributeSet.h"
+#include "NavigationMarkerComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSpellRisePlayerControllerRuntime, Log, All);
 
@@ -2350,65 +2349,9 @@ UNarrativeInteractionComponent* ASpellRisePlayerController::ResolveNarrativeInte
 	return nullptr;
 }
 
-UNarrativeInventoryComponent* ASpellRisePlayerController::ResolveNarrativeInventoryComponentForUI() const
-{
-	if (AActor* PlayerStateActor = GetPlayerState<APlayerState>())
-	{
-		if (UNarrativeInventoryComponent* PlayerStateInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(PlayerStateActor))
-		{
-			return PlayerStateInventory;
-		}
-	}
-
-	if (APawn* ControlledPawn = GetPawn())
-	{
-		if (UNarrativeInventoryComponent* PawnInventory = UInventoryFunctionLibrary::GetInventoryComponentFromTarget(ControlledPawn))
-		{
-			return PawnInventory;
-		}
-	}
-
-	return UInventoryFunctionLibrary::GetInventoryComponentFromTarget(const_cast<ASpellRisePlayerController*>(this));
-}
-
 bool ASpellRisePlayerController::TryStopLootingFromUIInput(const FName Source)
 {
-	if (!IsLocalController() || GetNetMode() == NM_DedicatedServer)
-	{
-		return false;
-	}
-
-	UNarrativeInventoryComponent* Inventory = ResolveNarrativeInventoryComponentForUI();
-	if (!Inventory)
-	{
-		return false;
-	}
-
-	static const FObjectProperty* LootSourceProperty = FindFProperty<FObjectProperty>(
-		UNarrativeInventoryComponent::StaticClass(),
-		TEXT("LootSource"));
-	if (!LootSourceProperty)
-	{
-		return false;
-	}
-
-	UObject* LootSourceObject = LootSourceProperty->GetObjectPropertyValue_InContainer(Inventory);
-	if (!LootSourceObject)
-	{
-		return false;
-	}
-
-	Inventory->RequestStopLootingFromUI();
-	RestoreGameplayInputAfterUI(Source);
-
-	UE_LOG(LogSpellRisePlayerControllerRuntime, Log,
-		TEXT("[InventoryUI][StopLooting] Source=%s Controller=%s Inventory=%s LootSource=%s"),
-		*Source.ToString(),
-		*GetNameSafe(this),
-		*GetNameSafe(Inventory),
-		*GetNameSafe(LootSourceObject));
-
-	return true;
+	return false;
 }
 
 void ASpellRisePlayerController::OnClearSelectionPressed()
@@ -2496,6 +2439,33 @@ void ASpellRisePlayerController::ShowDamageNumber(
 	Request.bIsCriticalDamage = bIsCritical;
 
 	NumberPopComponent->AddNumberPop(Request);
+}
+
+void ASpellRisePlayerController::ClientShowLootBagMarker_Implementation(AActor* LootBag)
+{
+	if (!IsLocalController() || !LootBag)
+	{
+		return;
+	}
+
+	UNavigationMarkerComponent* Marker = NewObject<UNavigationMarkerComponent>(LootBag, TEXT("SpellRiseLootVictimMarker"));
+	if (!Marker)
+	{
+		return;
+	}
+
+	FGameplayTagContainer Domain;
+	Domain.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Navigator.NavigatorTypes.Minimap"), false));
+	Domain.AddTag(FGameplayTag::RequestGameplayTag(TEXT("Navigator.NavigatorTypes.WorldMap"), false));
+	Marker->SetDomain(Domain);
+
+	Marker->DefaultMarkerSettings.bOverride_IconTint = true;
+	Marker->DefaultMarkerSettings.IconTint = FLinearColor(1.f, 0.2f, 0.2f, 1.f);
+	Marker->DefaultMarkerSettings.bOverride_LocationDisplayName = true;
+	Marker->DefaultMarkerSettings.LocationDisplayName = NSLOCTEXT("SpellRise", "LootBagVictimMarker", "Meu Loot");
+
+	LootBag->AddInstanceComponent(Marker);
+	Marker->RegisterComponent();
 }
 
 void ASpellRisePlayerController::ClientReceiveCombatLogEntry_Implementation(float Damage, const FString& OtherActorName, bool bIsOutgoing)

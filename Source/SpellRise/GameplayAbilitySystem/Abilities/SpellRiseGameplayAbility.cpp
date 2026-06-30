@@ -172,6 +172,14 @@ bool USpellRiseGameplayAbility::SR_TriggerGameplayCueReliable(
 	return true;
 }
 
+void USpellRiseGameplayAbility::ForceEndAbilityForLifeStateTransition()
+{
+	if (IsActive())
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+	}
+}
+
 bool USpellRiseGameplayAbility::HasServerAuthority() const
 {
 	return CurrentActorInfo && CurrentActorInfo->IsNetAuthority();

@@ -33,7 +33,6 @@ class ASpellRisePlayerState;
 class USpellRiseWeaponComponent;
 class USpellRiseLifeStateComponent;
 enum class ESpellRiseLifeState : uint8;
-class UNarrativeInventoryComponent;
 class USpellRiseInventoryComponent;
 class USpellRiseEquipmentComponent;
 
@@ -135,7 +134,7 @@ public:
 	void EndDownedCrawl();
 	void HandleLifeStatePresentation(ESpellRiseLifeState NewState, ESpellRiseLifeState OldState);
 
-	void SyncNarrativeInventoryWeightCapacityFromCarryWeight(const TCHAR* Context);
+	void SyncInventoryWeightCapacityFromCarryWeight(const TCHAR* Context);
 
 	UFUNCTION()
 	void OnDeadTagChanged(FGameplayTag CallbackTag, int32 NewCount);
@@ -496,9 +495,6 @@ public:
 	TObjectPtr<USpellRiseAbilitySystemComponent> ASCDelegatesBoundSource = nullptr;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UNarrativeInventoryComponent> CachedNarrativeInventoryForWeight = nullptr;
-
-	UPROPERTY(Transient)
 	TObjectPtr<USpellRiseInventoryComponent> CachedNativeInventoryForWeight = nullptr;
 
 	UPROPERTY(Transient)
@@ -525,9 +521,6 @@ protected:
 	bool InitializeAbilitySystemFromPlayerState();
 	void ApplyStartupEffects();
 	void BindASCDelegates();
-	UNarrativeInventoryComponent* ResolveNarrativeInventoryComponent() const;
-	void BindNarrativeInventoryWeightDelegates(UNarrativeInventoryComponent* Inventory);
-	void UnbindNarrativeInventoryWeightDelegates();
 	void BindNativeInventoryWeightDelegates(USpellRiseInventoryComponent* Inventory);
 	void UnbindNativeInventoryWeightDelegates();
 	void BindEquipmentDelegates(USpellRiseEquipmentComponent* Equipment);
@@ -542,9 +535,6 @@ protected:
 	void OnMoveSpeedChanged(const FOnAttributeChangeData& Data);
 	void OnFrozenStatusChanged(const FGameplayTag CallbackTag, int32 NewCount);
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
-
-	UFUNCTION()
-	void OnNarrativeInventoryUpdatedForWeight();
 
 	UFUNCTION()
 	void OnNativeInventoryUpdatedForWeight(ESpellRiseInventoryChangeType ChangeType, FSpellRiseItemInstance Item);

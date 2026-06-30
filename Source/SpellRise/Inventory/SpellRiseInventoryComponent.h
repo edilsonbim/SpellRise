@@ -27,7 +27,7 @@ struct FSpellRiseStarterInventoryItem
 	int32 PreferredSlot = INDEX_NONE;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpellRise|Inventory")
-	bool bNoDrop = true;
+	bool bNoDrop = false;
 };
 
 USTRUCT()
@@ -93,6 +93,7 @@ public:
 	bool MoveItem_Server(const FGuid& ItemInstanceId, int32 DestinationSlot, int32 Quantity, FString& OutRejectReason);
 	bool UseItem_Server(const FGuid& ItemInstanceId, FString& OutRejectReason);
 	bool DestroyItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FString& OutRejectReason);
+	bool RepairItem_Server(const FGuid& ItemInstanceId, FString& OutRejectReason);
 	bool ExtractItem_Server(const FGuid& ItemInstanceId, int32 Quantity, FSpellRiseItemInstance& OutExtractedItem, FString& OutRejectReason);
 	bool InsertItem_Server(const FSpellRiseItemInstance& Item, int32 PreferredSlot, FString& OutRejectReason);
 	bool EnsureStarterItems_Server(const TCHAR* ContextTag);
@@ -163,6 +164,8 @@ private:
 	void ResolveRequest(int32 ClientRequestId, ESpellRiseInventoryRequestResult Result, const TCHAR* RpcName, const FString& Reason);
 	ESpellRiseInventoryRequestResult MapRejectReason(const FString& Reason) const;
 	void ForceOwnerNetUpdate() const;
+	void BeginNotificationBatch();
+	void FlushNotificationBatch();
 
 	UPROPERTY(Replicated)
 	FSpellRiseInventoryList Inventory;
@@ -197,11 +200,13 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="100.0"))
 	float MaxStorageInteractionDistance = 500.0f;
 
-	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="1000"))
-	int32 MaxQuantityPerRequest = 1000;
+	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Security", meta=(ClampMin="1", ClampMax="1000000"))
+	int32 MaxQuantityPerRequest = 1000000;
 
 	UPROPERTY(EditDefaultsOnly, Category="SpellRise|Inventory|Starter")
 	TArray<FSpellRiseStarterInventoryItem> StarterItems;
+
+	float CachedWeight = 0.0f;
 
 	FSpellRiseInventoryRateLimitState MoveRateLimit;
 	FSpellRiseInventoryRateLimitState DropRateLimit;
@@ -211,4 +216,6 @@ private:
 	TSet<int32> RecentRequestIds;
 	TArray<int32> RecentRequestOrder;
 	int32 NextRevision = 1;
+	bool bBatchingNotifications = false;
+	TArray<TTuple<ESpellRiseInventoryChangeType, FSpellRiseItemInstance>> BatchedNotifications;
 };

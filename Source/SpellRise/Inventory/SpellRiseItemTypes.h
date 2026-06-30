@@ -100,8 +100,7 @@ struct SPELLRISE_API FSpellRiseInventoryList : public FFastArraySerializer
 	void SetOwner(USpellRiseInventoryComponent* InOwner) { Owner = InOwner; }
 
 private:
-	UPROPERTY(NotReplicated)
-	TObjectPtr<USpellRiseInventoryComponent> Owner = nullptr;
+	USpellRiseInventoryComponent* Owner = nullptr;
 
 	UPROPERTY(NotReplicated)
 	TArray<FSpellRiseItemInstance> PendingRemovedNotifyItems;
